@@ -272,6 +272,58 @@ sealed class HomeUiState {
 
 ---
 
+## 演进规划
+
+### 规划：Mock 数据源独立组件化（下一个重点方向）
+
+**目标**：将当前 `MockInterceptor`（OkHttp 拦截器方案）升级为独立的 `MockDataSource`，使 Repository 层完全不感知数据真伪，Demo 具备真实新闻 App 的完整数据流。
+
+**当前问题**：
+- `MockInterceptor` 是 OkHttp 拦截器，逻辑耦合在网络层，Repository 通过 Retrofit 间接"感知"到 Mock
+- 错误状态、延迟模拟、分页边界等行为难以通过拦截器精细控制
+- 无法模拟真实场景：网络波动、空数据、服务端错误码等
+
+**目标架构**：
+
+```
+Presentation (HomeScreen/ViewModel)
+    ↕
+Domain (NewsRepository 接口)
+    ↕
+Data (NewsRepositoryImpl)
+    ↕
+RemoteDataSource 接口 ←── MockDataSource（实现）
+                         （或 RetrofitDataSource（实现））
+    ↕
+Room LocalDataSource
+```
+
+**MockDataSource 职责**：
+- 实现 `RemoteDataSource` 接口，与 `RetrofitDataSource` 互换
+- 模拟真实后端行为：分页（REFRESH/APPEND）、延迟 200-800ms、channel 参数过滤
+- 支持错误模拟：按概率返回 500/超时/空数据，用于验证 Error 态 UI
+- 本地预置 JSON / 代码生成数据，不依赖网络层
+- Repository 只调用 `remoteDataSource.fetchFeed(channel, page, size)`，不关心底层是 Mock 还是真实 API
+
+**需要改动的文件**：
+- `data/remote/datasource/RemoteDataSource.kt`（新增接口）
+- `data/remote/datasource/MockDataSource.kt`（新增实现）
+- `data/remote/datasource/RetrofitDataSource.kt`（新增实现，包装 NewsApi）
+- `data/repository/NewsRepositoryImpl.kt`（注入 RemoteDataSource 接口而非直接调用 NewsApi）
+- `di/NetworkModule.kt`（提供 MockDataSource 或 RetrofitDataSource 的切换绑定）
+- 删除 `data/remote/interceptor/MockInterceptor.kt`（由 MockDataSource 替代）
+
+**验收标准**：
+- [ ] RepositoryImpl 不直接持有 NewsApi，只持有 RemoteDataSource 接口
+- [ ] MockDataSource 支持 REFRESH（page=0，清空旧数据感）和 APPEND（page>0，追加感）
+- [ ] 支持模拟网络延迟（200-800ms 随机）
+- [ ] 支持模拟错误状态（可控概率返回 NetworkError / EmptyResponse / ServerError）
+- [ ] 支持多 channel 数据隔离（推荐/热榜/视频/社会各自独立数据集）
+- [ ] Room 缓存流程不变，RemoteMediator 通过 RemoteDataSource 获取数据
+- [ ] 切换真实后端时，仅需在 DI 模块中替换 RemoteDataSource 实现类，零业务代码改动
+
+---
+
 ## 修改硬约束
 
 ### 1. 改行为，不只改代码
