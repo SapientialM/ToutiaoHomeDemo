@@ -324,6 +324,88 @@ Room LocalDataSource
 
 ---
 
+### 规划：GitHub 工作流与版本管理（项目管理基建）
+
+**目标**：建立规范的项目管理流程，将代码质量门禁、版本管理和协作规范沉淀到 GitHub 工作流中，使 Demo 具备真实商业项目的工程管理素养。
+
+**当前问题**：
+- 当前开发直接在 `main` 分支提交，无分支保护、无 PR Review 流程
+- 无自动化 CI/CD，代码合并前依赖手动 `./gradlew assembleDebug` 验证
+- 无版本 Tag 管理和 CHANGELOG，迭代历史不清晰
+- 无 Issue 模板和里程碑管理，需求追踪和 Bug 管理散落在对话中
+
+**目标架构**：
+
+```
+GitHub Repository
+├── Branches
+│   ├── main（受保护，仅通过 PR 合并）
+│   ├── develop（集成测试分支，可选）
+│   └── feature/* / fix/*（开发分支）
+├── Pull Requests（强制 Review + CI 通过）
+├── Issues（Bug / Feature / Task 分类）
+├── Milestones（迭代规划）
+├── Actions（CI/CD 流水线）
+│   ├── Build & Lint（assembleDebug + ktlint/detekt）
+│   ├── Unit Test（./gradlew test）
+│   └── Release（自动打 Tag + 生成 CHANGELOG）
+└── Releases（语义化版本 + APK 产物）
+```
+
+**Git 工作流规范**：
+
+| 环节 | 规范 |
+|------|------|
+| 分支策略 | GitHub Flow：`main` 为唯一长期分支，功能开发从 `main` checkout 出 `feature/xxx` 或 `fix/xxx` |
+| 分支保护 | `main` 开启保护：禁止直接 push，必须通过 PR 合并；PR 至少 1 个 Review Approval |
+| Commit 规范 | `<类型>: <简述>`，类型包括 `feat/fix/docs/refactor/perf/test/chore` |
+| PR 模板 | 包含"改动说明 / 影响范围 / 测试方式 / 截图"四部分 |
+| 合并策略 | Squash and Merge，保持 `main` 提交历史线性整洁 |
+
+**CI/CD 流水线设计**：
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [pull_request, push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with: { java-version: '17', distribution: 'temurin' }
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug
+      - name: Run ktlint
+        run: ./gradlew ktlintCheck
+      - name: Run Unit Tests
+        run: ./gradlew test
+```
+
+**版本管理策略**：
+
+- 采用语义化版本（SemVer）：`MAJOR.MINOR.PATCH`
+  - `MAJOR`：架构重构或不兼容 API 变更
+  - `MINOR`：新功能（如 MockDataSource、搜索功能）
+  - `PATCH`：Bug 修复、文档更新
+- 每个 Release 对应一个 Git Tag（如 `v1.3.0`）
+- 自动生成 CHANGELOG.md，按类型分类（Features / Fixes / Refactors）
+
+**验收标准**：
+- [ ] `main` 分支开启保护规则，禁止直接 push
+- [ ] PR 必须至少 1 个 Review Approval 才能合并
+- [ ] CI 流水线在 PR 时自动触发：编译 + ktlint + 单元测试
+- [ ] 建立 Issue 模板（Bug Report / Feature Request）和 PR 模板
+- [ ] 创建至少 1 个 Milestone 管理 MockDataSource 开发迭代
+- [ ] 建立 CHANGELOG.md 并记录已有版本变更
+- [ ] 发布至少一个 GitHub Release（含 APK 产物）
+
+---
+
 ## 修改硬约束
 
 ### 1. 改行为，不只改代码
