@@ -1,5 +1,8 @@
 package com.example.toutiao.domain.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 sealed class FeedCard {
     abstract val id: String
     abstract val title: String

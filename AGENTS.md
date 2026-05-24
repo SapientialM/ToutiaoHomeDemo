@@ -36,17 +36,19 @@
   - ✅ 4 种卡片类型渲染（TextTop / LeftTextRightImage / LargeImage / Video）
   - ✅ 顶部 Tab 切换（推荐 / 热榜 / 视频 / 社会）
   - ✅ 底部导航栏 UI（首页 / 视频 / 搜索 / 任务 / 我的，纯视觉）
-  - ✅ 下拉刷新（PullToRefreshBox）+ 滑动加载更多（derivedStateOf 检测）
-  - ✅ Room 双表设计（feed_items + remote_keys）+ DAO/Database/Entity
+  - ✅ Paging3 + RemoteMediator 混合分页（替换手动分页，支持下拉刷新与自动加载更多）
+  - ✅ Room 缓存优先离线展示（PagingSource 读取 Room，RemoteMediator 写入 Room，断网展示缓存）
+  - ✅ Room 双表设计（feed_items + remote_keys）+ DAO/Database/Entity + WAL 模式
   - ✅ MockInterceptor 零侵入 Mock 方案：不修改业务代码即可跑通完整数据流
   - ✅ Hilt + KSP 依赖注入（NetworkModule / DatabaseModule / RepositoryModule）
-  - ✅ Timber 全链路日志（ViewModel → Repository → MockInterceptor）
+  - ✅ Timber 全链路日志（ViewModel → Repository → MockInterceptor → NewsRemoteMediator）
   - ✅ Compose 多状态 Preview（Loading / Success / Error / Empty / Refreshing）
+  - ✅ 搜索栏交互（点击展开、输入、提交、取消，展示 Mock 搜索结果）
+  - ✅ 性能优化基础（FeedCard @Immutable、Room channel 索引、Coil ImageLoader 内存缓存配置）
 - **当前未开始**：
-  - ⬜ Paging3 + RemoteMediator 混合分页（当前是手动分页逻辑）
-  - ⬜ Room 缓存优先的离线展示（当前网络成功后才写 Room，未走 Flow 监听缓存）
-  - ⬜ 搜索栏交互 / 新闻详情页 / 视频播放
-  - ⬜ 性能优化（Compose 重组分析、图片尺寸适配）
+  - ⬜ 新闻详情页 / 视频播放
+  - ⬜ Compose 重组深度分析、图片尺寸严格限制
+  - ⬜ ktlint / detekt 代码规范检查
 - **结论**：如果你看到 HomeScreen 能正常展示 4 种卡片、Tab 切换、下拉刷新和加载更多，但还没有 Paging3 的 RemoteMediator，这是当前仓库的真实状态，不是你看错
 
 ---
@@ -99,7 +101,7 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 - 4 个频道：推荐(recommend) / 热榜(hot) / 视频(video) / 社会(society)
 - 切换 Tab 时重置 page=0，进入 Loading 状态后请求新数据
 - 当前选中 Tab 字体更大(18sp)、加粗、纯白；未选中略小(15sp)、半透明
-- 搜索栏是视觉占位，当前不可交互
+- 搜索栏支持点击展开输入框、输入关键词、提交搜索、返回取消，展示 Mock 搜索结果
 
 ### 3. 下拉刷新
 
@@ -107,12 +109,12 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 - 下拉时触发 `HomeUiEvent.OnRefresh` → ViewModel 请求 page=0 数据 → `isRefreshing` 状态控制刷新指示器
 - 刷新完成后保持当前 Tab，列表回到顶部由调用方控制
 
-### 4. 加载更多
+### 4. 加载更多（Paging3 自动处理）
 
-- `derivedStateOf` 监听 `LazyListState`，当最后可见项抵达倒数第 3 项时触发
-- `LaunchedEffect(shouldLoadMore)` 中判断 `!isLoadingMore` 后发起 `OnLoadMore`
-- 新数据通过 `Success.feedItems + items` 追加，不是替换
-- `hasMore` 由 Repository 返回，当前 Mock 逻辑为 page < 2 时还有更多
+- Paging3 `LazyPagingItems` 自动检测到底部并触发 `RemoteMediator.LoadType.APPEND`
+- `NewsRemoteMediator` 从 `remote_keys` 表获取下一页页码，请求网络后写入 Room
+- `FeedDao.getFeedPagingSource()` 感知 Room 数据变化，自动刷新列表
+- 底部显示 Loading Footer 由 `loadState.append is LoadState.Loading` 控制
 
 ### 5. 四种卡片类型
 
@@ -138,11 +140,13 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 ### 7. 数据层
 
 - **网络**：Retrofit + OkHttp + Kotlinx Serialization，`NewsApi.getNewsFeed(channel, page, size)`
-- **本地**：Room，`AppDatabase` 含 `feed_items` 和 `remote_keys` 两张表
+- **本地**：Room，`AppDatabase` 含 `feed_items` 和 `remote_keys` 两张表，WAL 模式已开启
 - **Repository**：`NewsRepositoryImpl` 实现 `NewsRepository` 接口
-  - `getNewsFeed()`：先请求 API，成功后将 Entity 写入 Room，再转换为 Domain Model 返回
-  - `hasMore()`：单独请求 API 判断分页边界
-  - `getCachedFeed()`：返回 `Flow<List<FeedCard>>`，供后续离线场景使用
+  - `getFeedPagingData(channel)`：返回 `Flow<PagingData<FeedCard>>`，内部使用 `Pager` + `NewsRemoteMediator`
+  - `getNewsFeed()` / `hasMore()`：保留用于兼容和直接调用
+  - `getCachedFeed()`：返回 `Flow<List<FeedCard>>`
+  - `searchNews(query)`：Mock 搜索结果
+- **RemoteMediator**：`NewsRemoteMediator` 处理 `REFRESH` / `APPEND`，网络成功后写入 Room
 - **Mapper**：`NewsMapper.kt` 负责 DTO ↔ Entity ↔ Domain 三层转换
 
 ### 8. 底部导航栏
@@ -173,7 +177,7 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 | 网络 | Retrofit2 + OkHttp3 + Kotlinx Serialization | 禁止使用 Gson |
 | 图片 | Coil Compose | 禁止使用 Glide |
 | 数据库 | Room + KSP | 禁止使用 raw SQLite |
-| 分页 | Paging3 + RemoteMediator | 混合网络+本地分页方案（规划中） |
+| 分页 | Paging3 + RemoteMediator | 混合网络+本地分页方案（已落地） |
 | 构建 | Gradle Kotlin DSL + Version Catalog | 依赖版本统一在 `libs.versions.toml` |
 
 ### 架构约束
@@ -255,13 +259,13 @@ sealed class HomeUiState {
 
 下面这些内容在技术设计文档或需求文档里出现了，但当前仓库还没有真正交付：
 
-- **Paging3 + RemoteMediator**：当前使用手动分页（ViewModel 维护 currentPage），未接入 Paging3 框架
-- **Room 缓存优先离线展示**：当前 Repository 只在网络请求成功后才写 Room；`getCachedFeed()` 已提供 Flow，但 ViewModel 尚未切换为优先读取缓存
-- **搜索栏交互**：当前是视觉占位，不可点击
+- ~~Paging3 + RemoteMediator~~：已接入，替换手动分页逻辑
+- ~~Room 缓存优先离线展示~~：已通过 Paging3 + RemoteMediator 实现，PagingSource 读取 Room，RemoteMediator 自动写入
+- ~~搜索栏交互~~：已实现点击展开、输入、提交、取消，展示 Mock 搜索结果
 - **新闻详情页**：点击卡片仅上报事件，无页面跳转
 - **视频播放**：VideoCard 仅展示封面和播放按钮 UI，无实际播放能力
 - **底部导航页面切换**：5 个 Tab 仅改变本地 selectedIndex，不切换页面
-- **性能优化**：未做 Compose 重组分析、未做图片尺寸限制、未开启 Room WAL 模式
+- **性能优化**：已做基础优化（FeedCard @Immutable、Room WAL 模式、channel 索引、Coil 内存缓存），未做 Compose 重组深度分析、未做图片尺寸严格限制
 - **ktlint / detekt**：规划中但尚未配置
 
 不要把 `docs/02_技术设计文档.md` 中"将来要做"误读成"现在已经有"。

@@ -1,5 +1,6 @@
 package com.example.toutiao.data.local.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -11,6 +12,9 @@ import kotlinx.coroutines.flow.Flow
 interface FeedDao {
     @Query("SELECT * FROM feed_items WHERE channel = :channel ORDER BY created_at DESC")
     fun getFeedByChannel(channel: String): Flow<List<FeedItemEntity>>
+
+    @Query("SELECT * FROM feed_items WHERE channel = :channel ORDER BY created_at DESC")
+    fun getFeedPagingSource(channel: String): PagingSource<Int, FeedItemEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<FeedItemEntity>)

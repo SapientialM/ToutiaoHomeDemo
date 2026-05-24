@@ -2,101 +2,98 @@ package com.example.toutiao.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.domain.repository.NewsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import timber.log.Timber
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val newsRepository: NewsRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
+    private val _currentTab = MutableStateFlow("recommend")
+    val currentTab: StateFlow<String> = _currentTab.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _searchResults = MutableStateFlow<List<FeedCard>>(emptyList())
+    val searchResults: StateFlow<List<FeedCard>> = _searchResults.asStateFlow()
+
+    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Success())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    private var currentPage = 0
+    val feedPagingData: Flow<PagingData<FeedCard>> = _currentTab
+        .flatMapLatest { tab ->
+            Timber.d("feedPagingData — switching to tab=$tab")
+            newsRepository.getFeedPagingData(tab)
+        }
+        .cachedIn(viewModelScope)
 
     init {
-        Timber.d("HomeViewModel init — starting loadFeed for recommend")
-        loadFeed("recommend", 0)
+        Timber.d("HomeViewModel init")
     }
 
     fun onEvent(event: HomeUiEvent) {
         when (event) {
             is HomeUiEvent.OnTabSelected -> switchTab(event.tab)
-            is HomeUiEvent.OnRefresh -> refresh()
-            is HomeUiEvent.OnLoadMore -> loadMore()
-            is HomeUiEvent.OnCardClick -> { /* TODO: navigate to detail */ }
-            is HomeUiEvent.OnRetry -> refresh()
+            is HomeUiEvent.OnRefresh -> {
+                Timber.d("OnRefresh — will be handled by UI layer (lazyPagingItems.refresh())")
+            }
+            is HomeUiEvent.OnLoadMore -> {
+                Timber.d("OnLoadMore — handled automatically by Paging3")
+            }
+            is HomeUiEvent.OnCardClick -> {
+                Timber.d("Card clicked: ${event.cardId}")
+            }
+            is HomeUiEvent.OnRetry -> {
+                Timber.d("OnRetry — will be handled by UI layer (lazyPagingItems.retry())")
+            }
+            is HomeUiEvent.OnSearchClicked -> {
+                _uiState.update { (it as? HomeUiState.Success)?.copy(isSearching = true) ?: it }
+            }
+            is HomeUiEvent.OnSearchQueryChanged -> {
+                _searchQuery.value = event.query
+            }
+            is HomeUiEvent.OnSearchSubmit -> {
+                performSearch(_searchQuery.value)
+            }
+            is HomeUiEvent.OnSearchDismiss -> {
+                _searchQuery.value = ""
+                _searchResults.value = emptyList()
+                _uiState.update { (it as? HomeUiState.Success)?.copy(isSearching = false) ?: it }
+            }
         }
     }
 
     private fun switchTab(tab: String) {
-        currentPage = 0
-        _uiState.update { HomeUiState.Loading }
-        loadFeed(tab, 0)
+        Timber.d("switchTab — tab=$tab")
+        _currentTab.value = tab
+        _uiState.update { HomeUiState.Success(currentTab = tab) }
     }
 
-    private fun refresh() {
-        val tab = (_uiState.value as? HomeUiState.Success)?.currentTab ?: "recommend"
-        currentPage = 0
-        _uiState.update {
-            (it as? HomeUiState.Success)?.copy(isRefreshing = true) ?: HomeUiState.Loading
-        }
-        loadFeed(tab, 0, isRefresh = true)
-    }
-
-    private fun loadMore() {
-        val state = _uiState.value as? HomeUiState.Success ?: return
-        if (state.isLoadingMore || !state.hasMore) return
-        _uiState.update { state.copy(isLoadingMore = true) }
-        loadFeed(state.currentTab, currentPage + 1, isLoadMore = true)
-    }
-
-    private fun loadFeed(channel: String, page: Int, isRefresh: Boolean = false, isLoadMore: Boolean = false) {
-        Timber.d("loadFeed called: channel=$channel, page=$page, isRefresh=$isRefresh, isLoadMore=$isLoadMore")
+    private fun performSearch(query: String) {
+        if (query.isBlank()) return
+        Timber.d("performSearch — query=$query")
         viewModelScope.launch {
             try {
-                val items = newsRepository.getNewsFeed(channel, page)
-                Timber.d("loadFeed — got ${items.size} items from repository")
-                val hasMore = newsRepository.hasMore(channel, page)
-                currentPage = page
-                _uiState.update { current ->
-                    when {
-                        items.isEmpty() && !isLoadMore -> {
-                            Timber.d("loadFeed — items empty, transitioning to Empty")
-                            HomeUiState.Empty
-                        }
-                        else -> {
-                            Timber.d("loadFeed — transitioning to Success (items=${items.size}, hasMore=$hasMore)")
-                            HomeUiState.Success(
-                                feedItems = if (isLoadMore) {
-                                    (current as? HomeUiState.Success)?.feedItems.orEmpty() + items
-                                } else {
-                                    items
-                                },
-                                hasMore = hasMore,
-                                currentTab = channel,
-                                isRefreshing = false,
-                                isLoadingMore = false,
-                            )
-                        }
-                    }
-                }
+                val results = newsRepository.searchNews(query)
+                _searchResults.value = results
             } catch (e: Exception) {
-                Timber.e(e, "loadFeed failed")
-                _uiState.update {
-                    HomeUiState.Error(
-                        message = e.message ?: "加载失败，请重试",
-                        retryable = true,
-                    )
-                }
+                Timber.e(e, "performSearch failed")
             }
         }
     }

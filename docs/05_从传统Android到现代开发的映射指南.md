@@ -414,7 +414,7 @@ app/src/main/java/com/example/toutiao/
 | 添加一个新的列表卡片 | 新建 `res/layout/item_xxx.xml` + ViewHolder | 新建 `@Composable fun XxxCard(...)` |
 | 点击列表项跳转详情 | Adapter 里 `holder.itemView.setOnClickListener` | `LazyColumn` 的 `items { Box(Modifier.clickable { onCardClick(id) }) }` |
 | 下拉刷新 | `SwipeRefreshLayout` 包裹 RecyclerView | `PullToRefreshBox(isRefreshing = ..., onRefresh = { ... })` |
-| 加载更多 | `RecyclerView.OnScrollListener` + `adapter.addFooter()` | `LazyListState` + `derivedStateOf` 检测到底部 |
+| 加载更多 | `RecyclerView.OnScrollListener` + `adapter.addFooter()` | Paging3 `LazyPagingItems` 自动触发 `RemoteMediator.APPEND` |
 | 保存配置变更（旋转屏幕）| `onSaveInstanceState` 手动存取 | **自动的**。ViewModel 在配置变更时存活，状态不丢失。 |
 | 网络请求 | `Retrofit.create().enqueue()` 回调 | ViewModel 里 `viewModelScope.launch { newsApi.getNewsFeed(...) }`（挂起函数） |
 | 图片加载 | Glide / Picasso.into(imageView) | Coil 的 `AsyncImage(model = url, ...)` |

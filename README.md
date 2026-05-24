@@ -23,7 +23,7 @@
 | JSON | Kotlinx Serialization | 1.8.0 |
 | 图片 | Coil Compose | 2.7.0 |
 | 数据库 | Room + KSP | 2.7.0 |
-| 分页 | Paging3 | 3.3.0 |
+| 分页 | Paging3 + RemoteMediator | 3.3.0 |
 | 日志 | Timber | 5.0.1 |
 
 ## 架构
@@ -65,12 +65,12 @@ app/src/main/java/com/example/toutiao/
 - [x] 下拉刷新 + 滑动加载更多
 - [x] Loading / Success / Error / Empty 状态管理
 - [x] 底部导航栏（首页 / 视频 / 搜索 / 任务 / 我的）
-- [x] 搜索栏 UI 占位
+- [x] 搜索栏交互（点击展开 / 输入 / 提交 / 取消 / Mock 结果）
 - [x] MockInterceptor — Demo 模式零延迟返回 Mock JSON
 - [x] Room 本地数据库缓存
 - [x] Compose Preview 多状态预览
-- [ ] Paging3 RemoteMediator 分页集成
-- [ ] 离线缓存展示
+- [x] Paging3 + RemoteMediator 分页集成
+- [x] 离线缓存展示（Paging3 自动实现）
 
 ## 构建与运行
 

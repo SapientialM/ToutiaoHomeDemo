@@ -2,9 +2,13 @@ package com.example.toutiao.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "feed_items")
+@Entity(
+    tableName = "feed_items",
+    indices = [Index(value = ["channel"])],
+)
 data class FeedItemEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "type") val type: String,

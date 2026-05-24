@@ -9,7 +9,7 @@ import com.example.toutiao.data.local.entity.RemoteKeyEntity
 
 @Database(
     entities = [FeedItemEntity::class, RemoteKeyEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
