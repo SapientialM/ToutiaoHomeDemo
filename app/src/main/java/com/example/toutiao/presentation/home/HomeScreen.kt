@@ -89,6 +89,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val lazyPagingItems = viewModel.feedPagingData.collectAsLazyPagingItems()
     var showDebugDialog by remember { mutableStateOf(false) }
+    var selectedBottomNav by remember { mutableIntStateOf(0) }
 
     HomeScreenContent(
         uiState = uiState,
@@ -97,7 +98,9 @@ fun HomeScreen(viewModel: HomeViewModel) {
         searchResults = searchResults,
         lazyPagingItems = lazyPagingItems,
         showDebugDialog = showDebugDialog,
+        selectedBottomNav = selectedBottomNav,
         onToggleDebug = { showDebugDialog = !showDebugDialog },
+        onBottomNavSelected = { selectedBottomNav = it },
         onEvent = viewModel::onEvent,
     )
 }
@@ -111,7 +114,9 @@ private fun HomeScreenContent(
     searchResults: List<FeedCard>,
     lazyPagingItems: LazyPagingItems<FeedCard>,
     showDebugDialog: Boolean,
+    selectedBottomNav: Int,
     onToggleDebug: () -> Unit,
+    onBottomNavSelected: (Int) -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
     val isSearching = (uiState as? HomeUiState.Success)?.isSearching ?: false
@@ -120,18 +125,28 @@ private fun HomeScreenContent(
 
     Scaffold(
         topBar = {
-            HomeTopBar(
-                uiState = uiState,
-                currentTab = currentTab,
-                searchQuery = searchQuery,
-                onToggleDebug = onToggleDebug,
-                onEvent = onEvent,
+            if (selectedBottomNav != 4) {
+                HomeTopBar(
+                    uiState = uiState,
+                    currentTab = currentTab,
+                    searchQuery = searchQuery,
+                    onToggleDebug = onToggleDebug,
+                    onEvent = onEvent,
+                )
+            }
+        },
+        bottomBar = {
+            HomeBottomNav(
+                selectedIndex = selectedBottomNav,
+                onSelected = onBottomNavSelected,
             )
         },
-        bottomBar = { HomeBottomNav() },
         containerColor = Color(0xFFF5F5F5),
     ) { innerPadding ->
         when {
+            selectedBottomNav == 4 -> {
+                ProfileNotLoggedIn(modifier = Modifier.padding(innerPadding))
+            }
             isSearching && searchQuery.isNotEmpty() && searchResults.isNotEmpty() -> {
                 SearchResultList(
                     results = searchResults,
@@ -421,6 +436,97 @@ private fun SearchInputBar(
     }
 }
 
+// ── "我的" Tab — 未登录状态 ──────────────────────────────────────────────────
+// 点击底部导航"我的"时展示，模拟未登录用户的个人中心页面
+@Composable
+private fun ProfileNotLoggedIn(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(80.dp))
+
+        // 头像占位
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .clip(RoundedCornerShape(40.dp))
+                .background(Color(0xFFE0E0E0)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Person,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(48.dp),
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Text(
+            text = "未登录",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF333333),
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = "登录后可查看个性化推荐",
+            fontSize = 14.sp,
+            color = Color.Gray,
+        )
+
+        Spacer(Modifier.height(32.dp))
+
+        Button(
+            onClick = { /* 预留登录入口，不做具体实现 */ },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 60.dp)
+                .height(44.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFD81E06),
+            ),
+        ) {
+            Text("登录 / 注册", color = Color.White, fontSize = 16.sp)
+        }
+
+        Spacer(Modifier.height(40.dp))
+
+        // 功能入口占位
+        ProfileMenuItem(icon = Icons.Filled.Star, label = "我的收藏", subtitle = "登录后查看收藏内容")
+        ProfileMenuItem(icon = Icons.Filled.Search, label = "浏览历史", subtitle = "登录后查看历史记录")
+        ProfileMenuItem(icon = Icons.Filled.Build, label = "设置", subtitle = "通用设置与隐私管理")
+    }
+}
+
+@Composable
+private fun ProfileMenuItem(icon: ImageVector, label: String, subtitle: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { /* 不实现具体跳转 */ }
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color(0xFF666666),
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(16.dp))
+        Column {
+            Text(text = label, fontSize = 15.sp, color = Color(0xFF333333))
+            Text(text = subtitle, fontSize = 12.sp, color = Color.Gray)
+        }
+    }
+}
+
 // ── 调试面板 ─────────────────────────────────────────────────────────────────
 // 使用 AlertDialog 展示网络延迟模拟和错误模拟的开关。
 // DebugControls 是全局单例，修改后立即生效，下次数据请求（下拉刷新/切换Tab）时触发模拟效果。
@@ -527,7 +633,7 @@ private data class NavItem(
 )
 
 @Composable
-private fun HomeBottomNav() {
+private fun HomeBottomNav(selectedIndex: Int, onSelected: (Int) -> Unit) {
     val items = listOf(
         NavItem("首页", Icons.Filled.Home, Icons.Outlined.Home),
         NavItem("视频", Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow),
@@ -535,7 +641,6 @@ private fun HomeBottomNav() {
         NavItem("任务", Icons.Filled.Star, Icons.Outlined.Star),
         NavItem("我的", Icons.Filled.Person, Icons.Outlined.Person),
     )
-    var selectedIndex by remember { mutableIntStateOf(0) }
 
     NavigationBar {
         items.forEachIndexed { index, item ->
@@ -548,7 +653,7 @@ private fun HomeBottomNav() {
                 },
                 label = { Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 selected = index == selectedIndex,
-                onClick = { selectedIndex = index },
+                onClick = { onSelected(index) },
             )
         }
     }
@@ -635,7 +740,9 @@ private fun HomeScreenSuccessPreview() {
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
             showDebugDialog = false,
+            selectedBottomNav = 0,
             onToggleDebug = {},
+            onBottomNavSelected = {},
             onEvent = {},
         )
     }
@@ -654,7 +761,9 @@ private fun HomeScreenLoadingPreview() {
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
             showDebugDialog = false,
+            selectedBottomNav = 0,
             onToggleDebug = {},
+            onBottomNavSelected = {},
             onEvent = {},
         )
     }
@@ -673,7 +782,9 @@ private fun HomeScreenErrorPreview() {
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
             showDebugDialog = false,
+            selectedBottomNav = 0,
             onToggleDebug = {},
+            onBottomNavSelected = {},
             onEvent = {},
         )
     }
@@ -692,7 +803,9 @@ private fun HomeScreenEmptyPreview() {
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
             showDebugDialog = false,
+            selectedBottomNav = 0,
             onToggleDebug = {},
+            onBottomNavSelected = {},
             onEvent = {},
         )
     }
