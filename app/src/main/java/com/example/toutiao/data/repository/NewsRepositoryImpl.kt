@@ -9,7 +9,7 @@ import com.example.toutiao.data.local.dao.FeedDao
 import com.example.toutiao.data.local.dao.RemoteKeyDao
 import com.example.toutiao.data.mapper.toDomain
 import com.example.toutiao.data.mapper.toEntity
-import com.example.toutiao.data.remote.api.NewsApi
+import com.example.toutiao.data.remote.datasource.RemoteDataSource
 import com.example.toutiao.data.remote.mediator.NewsRemoteMediator
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.domain.repository.NewsRepository
@@ -21,24 +21,19 @@ import timber.log.Timber
 
 @Singleton
 class NewsRepositoryImpl @Inject constructor(
-    private val newsApi: NewsApi,
+    private val remoteDataSource: RemoteDataSource,
     private val feedDao: FeedDao,
     private val remoteKeyDao: RemoteKeyDao,
 ) : NewsRepository {
 
     override suspend fun getNewsFeed(channel: String, page: Int, size: Int): List<FeedCard> {
         return try {
-            Timber.d("getNewsFeed — calling API: channel=$channel, page=$page, size=$size")
-            val response = newsApi.getNewsFeed(channel, page, size)
-            Timber.d("getNewsFeed — API response: code=${response.code}, listSize=${response.data.list.size}")
+            Timber.d("getNewsFeed — channel=$channel, page=$page")
+            val response = remoteDataSource.getNewsFeed(channel, page, size)
             if (response.code == 0) {
                 val entities = response.data.list.map { it.toEntity(channel) }
-                Timber.d("getNewsFeed — mapped ${entities.size} entities, inserting into Room")
                 feedDao.insertAll(entities)
-                Timber.d("getNewsFeed — Room insert done")
-                val cards = entities.map { it.toDomain() }
-                Timber.d("getNewsFeed — returning ${cards.size} FeedCard items")
-                cards
+                entities.map { it.toDomain() }
             } else {
                 Timber.w("getNewsFeed — API returned non-zero code: ${response.code}")
                 emptyList()
@@ -51,8 +46,7 @@ class NewsRepositoryImpl @Inject constructor(
 
     override suspend fun hasMore(channel: String, page: Int): Boolean {
         return try {
-            val response = newsApi.getNewsFeed(channel, page, 1)
-            response.data.hasMore
+            remoteDataSource.getNewsFeed(channel, page, 1).data.hasMore
         } catch (e: Exception) {
             Timber.e(e, "hasMore failed")
             false
@@ -76,7 +70,7 @@ class NewsRepositoryImpl @Inject constructor(
             ),
             remoteMediator = NewsRemoteMediator(
                 channel = channel,
-                newsApi = newsApi,
+                remoteDataSource = remoteDataSource,
                 feedDao = feedDao,
                 remoteKeyDao = remoteKeyDao,
             ),

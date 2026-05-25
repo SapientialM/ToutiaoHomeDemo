@@ -9,7 +9,7 @@ import com.example.toutiao.data.local.dao.RemoteKeyDao
 import com.example.toutiao.data.local.entity.FeedItemEntity
 import com.example.toutiao.data.local.entity.RemoteKeyEntity
 import com.example.toutiao.data.mapper.toEntity
-import com.example.toutiao.data.remote.api.NewsApi
+import com.example.toutiao.data.remote.datasource.RemoteDataSource
 import retrofit2.HttpException
 import timber.log.Timber
 import java.io.IOException
@@ -17,7 +17,7 @@ import java.io.IOException
 @OptIn(ExperimentalPagingApi::class)
 class NewsRemoteMediator(
     private val channel: String,
-    private val newsApi: NewsApi,
+    private val remoteDataSource: RemoteDataSource,
     private val feedDao: FeedDao,
     private val remoteKeyDao: RemoteKeyDao,
 ) : RemoteMediator<Int, FeedItemEntity>() {
@@ -53,7 +53,7 @@ class NewsRemoteMediator(
 
         try {
             Timber.d("NewsRemoteMediator.load — loadType=$loadType, channel=$channel, page=$page")
-            val response = newsApi.getNewsFeed(channel = channel, page = page)
+            val response = remoteDataSource.getNewsFeed(channel = channel, page = page)
             Timber.d("NewsRemoteMediator.load — response code=${response.code}, items=${response.data.list.size}, hasMore=${response.data.hasMore}")
 
             if (response.code != 0) {
@@ -73,12 +73,7 @@ class NewsRemoteMediator(
             val prevKey = if (page == 0) null else page - 1
             val nextKey = if (endOfPaginationReached) null else page + 1
             val keys = entities.map {
-                RemoteKeyEntity(
-                    id = it.id,
-                    prevKey = prevKey,
-                    nextKey = nextKey,
-                    channel = channel,
-                )
+                RemoteKeyEntity(id = it.id, prevKey = prevKey, nextKey = nextKey, channel = channel)
             }
 
             feedDao.insertAll(entities)

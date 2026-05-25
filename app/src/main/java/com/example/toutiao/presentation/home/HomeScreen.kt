@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
@@ -31,7 +32,9 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,6 +42,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -48,6 +52,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,6 +72,7 @@ import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import com.example.toutiao.data.remote.datasource.DebugControls
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.home.components.LargeImageCard
 import com.example.toutiao.presentation.home.components.LeftTextRightImageCard
@@ -82,6 +88,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val lazyPagingItems = viewModel.feedPagingData.collectAsLazyPagingItems()
+    var showDebugDialog by remember { mutableStateOf(false) }
 
     HomeScreenContent(
         uiState = uiState,
@@ -89,6 +96,8 @@ fun HomeScreen(viewModel: HomeViewModel) {
         searchQuery = searchQuery,
         searchResults = searchResults,
         lazyPagingItems = lazyPagingItems,
+        showDebugDialog = showDebugDialog,
+        onToggleDebug = { showDebugDialog = !showDebugDialog },
         onEvent = viewModel::onEvent,
     )
 }
@@ -101,9 +110,13 @@ private fun HomeScreenContent(
     searchQuery: String,
     searchResults: List<FeedCard>,
     lazyPagingItems: LazyPagingItems<FeedCard>,
+    showDebugDialog: Boolean,
+    onToggleDebug: () -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
     val isSearching = (uiState as? HomeUiState.Success)?.isSearching ?: false
+
+    DebugDialog(showDialog = showDebugDialog, onDismiss = onToggleDebug)
 
     Scaffold(
         topBar = {
@@ -111,6 +124,7 @@ private fun HomeScreenContent(
                 uiState = uiState,
                 currentTab = currentTab,
                 searchQuery = searchQuery,
+                onToggleDebug = onToggleDebug,
                 onEvent = onEvent,
             )
         },
@@ -263,6 +277,7 @@ private fun HomeTopBar(
     uiState: HomeUiState,
     currentTab: String,
     searchQuery: String,
+    onToggleDebug: () -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
     val tabs = listOf("recommend" to "推荐", "hot" to "热榜", "video" to "视频", "society" to "社会")
@@ -282,7 +297,19 @@ private fun HomeTopBar(
                 onDismiss = { onEvent(HomeUiEvent.OnSearchDismiss) },
             )
         } else {
-            SearchPlaceholderBar(onClick = { onEvent(HomeUiEvent.OnSearchClicked) })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    SearchPlaceholderBar(onClick = { onEvent(HomeUiEvent.OnSearchClicked) })
+                }
+                IconButton(onClick = onToggleDebug, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Build,
+                        contentDescription = "调试",
+                        tint = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         }
 
         TabRow(
@@ -392,6 +419,105 @@ private fun SearchInputBar(
             Text("搜索", color = Color.White, fontSize = 14.sp)
         }
     }
+}
+
+// ── 调试面板 ─────────────────────────────────────────────────────────────────
+// 使用 AlertDialog 展示网络延迟模拟和错误模拟的开关。
+// DebugControls 是全局单例，修改后立即生效，下次数据请求（下拉刷新/切换Tab）时触发模拟效果。
+@Composable
+private fun DebugDialog(showDialog: Boolean, onDismiss: () -> Unit) {
+    if (!showDialog) return
+    var selectedDelay by remember { mutableStateOf(DebugControls.networkDelayMs) }
+    var simulateError by remember { mutableStateOf(DebugControls.shouldSimulateError) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("调试控制") },
+        text = {
+            Column {
+                Text("网络延迟模拟", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Spacer(Modifier.height(4.dp))
+                DebugControls.delayOptions.forEach { delay ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedDelay = delay
+                                DebugControls.networkDelayMs = delay
+                            }
+                            .padding(vertical = 2.dp),
+                    ) {
+                        RadioButton(
+                            selected = selectedDelay == delay,
+                            onClick = {
+                                selectedDelay = delay
+                                DebugControls.networkDelayMs = delay
+                            },
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(DebugControls.delayLabel(delay), fontSize = 13.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            simulateError = !simulateError
+                            DebugControls.shouldSimulateError = simulateError
+                        }
+                        .padding(vertical = 4.dp),
+                ) {
+                    Checkbox(
+                        checked = simulateError,
+                        onCheckedChange = {
+                            simulateError = it
+                            DebugControls.shouldSimulateError = it
+                        },
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("模拟网络错误", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+                Text(
+                    text = "开启后，下次请求将返回错误状态",
+                    fontSize = 11.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(start = 48.dp),
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = {
+                        DebugControls.reset()
+                        selectedDelay = 0L
+                        simulateError = false
+                    },
+                ) {
+                    Text("重置所有调试选项", fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        },
+    )
+}
+
+@Composable
+private fun HorizontalDivider(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Color(0xFFEEEEEE)),
+    )
 }
 
 private data class NavItem(
@@ -508,6 +634,8 @@ private fun HomeScreenSuccessPreview() {
             searchQuery = "",
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
+            showDebugDialog = false,
+            onToggleDebug = {},
             onEvent = {},
         )
     }
@@ -525,6 +653,8 @@ private fun HomeScreenLoadingPreview() {
             searchQuery = "",
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
+            showDebugDialog = false,
+            onToggleDebug = {},
             onEvent = {},
         )
     }
@@ -542,6 +672,8 @@ private fun HomeScreenErrorPreview() {
             searchQuery = "",
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
+            showDebugDialog = false,
+            onToggleDebug = {},
             onEvent = {},
         )
     }
@@ -559,6 +691,8 @@ private fun HomeScreenEmptyPreview() {
             searchQuery = "",
             searchResults = emptyList(),
             lazyPagingItems = lazyPagingItems,
+            showDebugDialog = false,
+            onToggleDebug = {},
             onEvent = {},
         )
     }

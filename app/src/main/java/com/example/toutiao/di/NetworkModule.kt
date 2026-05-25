@@ -1,7 +1,6 @@
 package com.example.toutiao.di
 
 import com.example.toutiao.data.remote.api.NewsApi
-import com.example.toutiao.data.remote.interceptor.MockInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -33,7 +32,6 @@ object NetworkModule {
         return OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
-            .addInterceptor(MockInterceptor(BASE_URL))
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
                     level = HttpLoggingInterceptor.Level.HEADERS
