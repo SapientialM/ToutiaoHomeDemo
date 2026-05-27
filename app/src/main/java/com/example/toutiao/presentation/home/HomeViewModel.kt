@@ -18,24 +18,57 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import timber.log.Timber
 
+// =============================================================================
+// HomeViewModel — MVI 状态管理 + Paging3 数据管道
+//
+// 角色：连接 Repository（数据层）和 Screen（UI 层）的桥梁。
+//       ViewModel 不关心数据来自 Mock 还是真实 API 还是 Room 缓存——
+//       它只调用 NewsRepository 接口方法，由 DI 层决定注入什么实现。
+//
+// 核心数据管道：
+//   _currentTab (MutableStateFlow<String>)
+//     ↓ flatMapLatest — Tab 切换时自动取消旧流，启动新流
+//   newsRepository.getFeedPagingData(tab)
+//     ↓ 返回 Flow<PagingData<FeedCard>>
+//   .cachedIn(viewModelScope)
+//     ↓ 将冷流转为热流，ViewModel 存活期间保持数据缓存
+//   feedPagingData: Flow<PagingData<FeedCard>>
+//     ↓ UI 层 collectAsLazyPagingItems() 消费
+//   LazyPagingItems<FeedCard>
+//     ↓ LazyColumn 渲染
+//
+// 为什么用 flatMapLatest：
+//   Tab 切换 → _currentTab 变化 → flatMapLatest 自动取消旧的 getFeedPagingData 流
+//   → 启动新的 getFeedPagingData(新 tab) → 新的 Pager → 新的 RemoteMediator
+//   → 清空旧 tab 的 Room 数据 → 写入新 tab 的数据 → UI 自动更新
+// =============================================================================
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val newsRepository: NewsRepository,
 ) : ViewModel() {
 
+    // 当前选中的 Tab（recommend/hot/video/society）
+    // 变化时通过 flatMapLatest 自动触发新 PagingData 流的创建
     private val _currentTab = MutableStateFlow("recommend")
     val currentTab: StateFlow<String> = _currentTab.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    // 搜索结果用普通 List（不走 Paging3，数据量小）
     private val _searchResults = MutableStateFlow<List<FeedCard>>(emptyList())
     val searchResults: StateFlow<List<FeedCard>> = _searchResults.asStateFlow()
 
+    // UiState 控制搜索 UI 状态（是否展开搜索框），不控制列表内容
+    // 列表内容由 feedPagingData 和 LazyPagingItems.loadState 驱动
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Success())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    // 这是整个数据流的核心管道：
+    // Tab 变化 → 新 Pager → 新 PagingData → UI
+    // flatMapLatest: 新 Tab 触发时自动取消旧 Tab 的流
+    // cachedIn: 让流在 ViewModel 范围内保持活跃，跨 Compose 重组不丢失
     val feedPagingData: Flow<PagingData<FeedCard>> = _currentTab
         .flatMapLatest { tab ->
             Timber.d("feedPagingData — switching to tab=$tab")

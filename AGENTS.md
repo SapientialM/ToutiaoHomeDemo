@@ -39,9 +39,9 @@
   - ✅ Paging3 + RemoteMediator 混合分页（替换手动分页，支持下拉刷新与自动加载更多）
   - ✅ Room 缓存优先离线展示（PagingSource 读取 Room，RemoteMediator 写入 Room，断网展示缓存）
   - ✅ Room 双表设计（feed_items + remote_keys）+ DAO/Database/Entity + WAL 模式
-  - ✅ MockInterceptor 零侵入 Mock 方案：不修改业务代码即可跑通完整数据流
+  - ✅ MockDataSource 组件化 Mock 方案：Repository 层通过 RemoteDataSource 接口获取数据，不感知数据真伪
   - ✅ Hilt + KSP 依赖注入（NetworkModule / DatabaseModule / RepositoryModule）
-  - ✅ Timber 全链路日志（ViewModel → Repository → MockInterceptor → NewsRemoteMediator）
+  - ✅ Timber 全链路日志（ViewModel → Repository → MockDataSource → NewsRemoteMediator）
   - ✅ Compose 多状态 Preview（Loading / Success / Error / Empty / Refreshing）
   - ✅ 搜索栏交互（点击展开、输入、提交、取消，展示 Mock 搜索结果）
   - ✅ 性能优化基础（FeedCard @Immutable、Room channel 索引、Coil ImageLoader 内存缓存配置）
@@ -60,7 +60,7 @@
 - Android SDK API 36（compileSdk），最低运行设备 API 26（Android 8.0）
 - 可用的 Android 模拟器或真机（API 26+）
 
-本地构建无需真实后端，MockInterceptor 会拦截所有 API 请求返回预置 JSON。
+本地构建无需真实后端，MockDataSource 会从 assets/news_data.json 加载 1421 条真实新闻数据并返回分页结果。
 
 ---
 
@@ -131,11 +131,11 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 ### 6. Mock 数据流
 
-- `MockInterceptor` 拦截所有匹配 `baseUrl` 的请求，返回预置 JSON
-- 支持 `channel` 和 `page` 参数，page=0 返回 8 条数据，page>0 返回 2 条数据
-- `hasMore` 在 page < 2 时为 true
-- 图片使用 `picsum.photos` 占位图服务
-- 移除 MockInterceptor 只需删除 `NetworkModule` 中的 `.addInterceptor()` 一行，即可切换到真实 API
+- `MockDataSource` 实现 `RemoteDataSource` 接口，从 `assets/news_data.json` 加载 1421 条真实新闻数据
+- 支持 `channel` 和 `page` 参数，按频道过滤后分页返回（page=0 返回前 8 条，依此类推）
+- `hasMore` 根据实际数据量动态计算
+- 图片使用新闻自带的封面图 URL
+- 切换真实后端时，只需在 `di/DataSourceModule.kt` 中替换 `RemoteDataSource` 的实现类，零业务代码改动
 
 ### 7. 数据层
 
@@ -274,16 +274,11 @@ sealed class HomeUiState {
 
 ## 演进规划
 
-### 规划：Mock 数据源独立组件化（下一个重点方向）
+### ✅ 已完成：Mock 数据源独立组件化
 
-**目标**：将当前 `MockInterceptor`（OkHttp 拦截器方案）升级为独立的 `MockDataSource`，使 Repository 层完全不感知数据真伪，Demo 具备真实新闻 App 的完整数据流。
+Mock 数据方案已从 `MockInterceptor`（OkHttp 拦截器）升级为 `MockDataSource`（独立数据源组件），Repository 层通过 `RemoteDataSource` 接口获取数据，完全不感知数据真伪。
 
-**当前问题**：
-- `MockInterceptor` 是 OkHttp 拦截器，逻辑耦合在网络层，Repository 通过 Retrofit 间接"感知"到 Mock
-- 错误状态、延迟模拟、分页边界等行为难以通过拦截器精细控制
-- 无法模拟真实场景：网络波动、空数据、服务端错误码等
-
-**目标架构**：
+**当前架构**：
 
 ```
 Presentation (HomeScreen/ViewModel)
@@ -299,28 +294,27 @@ Room LocalDataSource
 ```
 
 **MockDataSource 职责**：
-- 实现 `RemoteDataSource` 接口，与 `RetrofitDataSource` 互换
-- 模拟真实后端行为：分页（REFRESH/APPEND）、延迟 200-800ms、channel 参数过滤
-- 支持错误模拟：按概率返回 500/超时/空数据，用于验证 Error 态 UI
-- 本地预置 JSON / 代码生成数据，不依赖网络层
-- Repository 只调用 `remoteDataSource.fetchFeed(channel, page, size)`，不关心底层是 Mock 还是真实 API
+- 实现 `RemoteDataSource` 接口，从 `assets/news_data.json` 加载 1421 条真实新闻数据
+- 按频道过滤（推荐/热榜/视频/社会）+ 时间倒序排序 + 分页截取
+- 支持模拟网络延迟（通过 `DebugControls.networkDelayMs` 控制）
+- 支持模拟错误状态（通过 `DebugControls.shouldSimulateError` 控制）
+- Repository 只调用 `remoteDataSource.getNewsFeed(channel, page, size)`，不关心底层是 Mock 还是真实 API
 
-**需要改动的文件**：
-- `data/remote/datasource/RemoteDataSource.kt`（新增接口）
-- `data/remote/datasource/MockDataSource.kt`（新增实现）
-- `data/remote/datasource/RetrofitDataSource.kt`（新增实现，包装 NewsApi）
-- `data/repository/NewsRepositoryImpl.kt`（注入 RemoteDataSource 接口而非直接调用 NewsApi）
-- `di/NetworkModule.kt`（提供 MockDataSource 或 RetrofitDataSource 的切换绑定）
-- 删除 `data/remote/interceptor/MockInterceptor.kt`（由 MockDataSource 替代）
+**关键文件**：
+- `data/remote/datasource/RemoteDataSource.kt`（接口）
+- `data/remote/datasource/MockDataSource.kt`（Mock 实现）
+- `data/remote/datasource/RetrofitDataSource.kt`（真实 API 实现，尚未接入）
+- `di/DataSourceModule.kt`（绑定 RemoteDataSource 实现类）
+- `data/remote/datasource/DebugControls.kt`（调试控制：延迟/错误模拟开关）
 
-**验收标准**：
-- [ ] RepositoryImpl 不直接持有 NewsApi，只持有 RemoteDataSource 接口
-- [ ] MockDataSource 支持 REFRESH（page=0，清空旧数据感）和 APPEND（page>0，追加感）
-- [ ] 支持模拟网络延迟（200-800ms 随机）
-- [ ] 支持模拟错误状态（可控概率返回 NetworkError / EmptyResponse / ServerError）
-- [ ] 支持多 channel 数据隔离（推荐/热榜/视频/社会各自独立数据集）
-- [ ] Room 缓存流程不变，RemoteMediator 通过 RemoteDataSource 获取数据
-- [ ] 切换真实后端时，仅需在 DI 模块中替换 RemoteDataSource 实现类，零业务代码改动
+**已验收**：
+- [x] RepositoryImpl 不直接持有 NewsApi，只持有 RemoteDataSource 接口
+- [x] MockDataSource 支持 REFRESH（page=0）和 APPEND（page>0）
+- [x] 支持模拟网络延迟（通过 DebugControls 控制）
+- [x] 支持模拟错误状态（通过 DebugControls 控制）
+- [x] 支持多 channel 数据隔离（推荐/热榜/视频/社会各自独立数据集）
+- [x] Room 缓存流程不变，RemoteMediator 通过 RemoteDataSource 获取数据
+- [x] 切换真实后端时，仅需在 `di/DataSourceModule.kt` 中替换实现类，零业务代码改动
 
 ---
 
@@ -437,7 +431,7 @@ jobs:
 - 对应 Mapper（三层转换必须同步）
 - `FeedCard` 密封类（如果 Domain Model 变化）
 - 卡片组件（如果新增/删除字段）
-- `MockInterceptor`（Mock JSON 结构必须与 DTO 一致）
+- `MockDataSource`（assets/news_data.json 的字段结构必须与 DTO 一致）
 - `AGENTS.md`
 
 ### 4. 改 Repository 接口或实现，要联动这几处
@@ -455,11 +449,12 @@ jobs:
 
 禁止在未明确要求时引入新第三方库。
 
-### 6. 改 Mock 数据或拦截器逻辑
+### 6. 改 Mock 数据源逻辑
 
-- `MockInterceptor.kt`
-- 注意 `buildMockItems` 中 JSON 字符串的字段名必须与 `NewsItemDto` 的 `@SerialName` 一致
-- 注意 `hasMore` 逻辑与 ViewModel 分页逻辑的协同
+- `MockDataSource.kt`
+- 注意 `assets/news_data.json` 的字段名必须与 `RawNewsItem` / `NewsItemDto` 的 `@SerialName` 一致
+- 注意 `filterByChannel`、`hasMore` 逻辑与 ViewModel 分页逻辑的协同
+- 改延迟/错误模拟行为时同步检查 `DebugControls.kt`
 
 ### 7. 禁止提交敏感信息或产物垃圾
 
@@ -507,7 +502,7 @@ jobs:
 
 ### 修改了数据层或 Mapper
 
-- 验证 `MockInterceptor` 返回的 JSON 能否被正确解析
+- 验证 `MockDataSource` 返回的数据能否被正确解析（检查 assets/news_data.json 格式）
 - 验证 Room 写入和读取是否一致（可通过 Database Inspector）
 - 运行单元测试：
 
@@ -542,7 +537,7 @@ jobs:
 
 - **UI/交互问题**：先看 `HomeScreen.kt` + `HomeViewModel.kt` + `HomeUiState.kt`/`HomeUiEvent.kt`
 - **卡片组件问题**：先看 `presentation/home/components/` 下对应组件
-- **数据流/网络问题**：先看 `data/remote/api/NewsApi.kt` + `data/repository/NewsRepositoryImpl.kt` + `MockInterceptor.kt`
+- **数据流/网络问题**：先看 `data/remote/api/NewsApi.kt` + `data/repository/NewsRepositoryImpl.kt` + `data/remote/datasource/MockDataSource.kt`
 - **数据库问题**：先看 `data/local/entity/` + `data/local/dao/` + `data/local/database/AppDatabase.kt`
 - **Mapper/模型问题**：先看 `domain/model/FeedCard.kt` + `data/mapper/NewsMapper.kt` + `data/remote/dto/`
 - **DI 配置问题**：先看 `di/NetworkModule.kt` + `di/DatabaseModule.kt` + `di/RepositoryModule.kt`

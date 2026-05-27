@@ -80,13 +80,33 @@ import com.example.toutiao.presentation.home.components.TextTopCard
 import com.example.toutiao.presentation.home.components.VideoCard
 import kotlinx.coroutines.flow.flowOf
 
+// =============================================================================
+// HomeScreen — 数据链路终点：Flow<PagingData> → LazyPagingItems → LazyColumn
+//
+// 这是数据流从 JSON 文件到屏幕像素的最后一步：
+//
+//   viewModel.feedPagingData          ← Flow<PagingData<FeedCard>>
+//          ↓ collectAsLazyPagingItems()
+//   lazyPagingItems                   ← LazyPagingItems<FeedCard>
+//          ↓ 传递给 PagingFeedList
+//   lazyPagingItems.loadState.refresh ← 驱动 Loading/Error/Empty/Success 四态
+//   lazyPagingItems.itemCount         ← 列表项数量
+//   lazyPagingItems[index]            ← 第 index 项的 FeedCard（可空）
+//          ↓ when (card) { ... }
+//   TextTopCard / LeftTextRightImageCard / LargeImageCard / VideoCard
+//
+// collectAsStateWithLifecycle(): 生命周期感知收集，App 后台时暂停更新
+// collectAsLazyPagingItems(): 将 Flow<PagingData> 转换为 UI 可直接消费的列表对象
+// =============================================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: HomeViewModel) {
+    // StateFlow 收集（生命周期感知）
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
+    // PagingData Flow → LazyPagingItems（Paging3 的标准 Compose 消费方式）
     val lazyPagingItems = viewModel.feedPagingData.collectAsLazyPagingItems()
     var showDebugDialog by remember { mutableStateOf(false) }
     var selectedBottomNav by remember { mutableIntStateOf(0) }
@@ -173,6 +193,16 @@ private fun HomeScreenContent(
     }
 }
 
+// ── Paging3 列表渲染：LazyPagingItems.loadState 驱动四种 UI 态 ──────────────
+// 不再使用 HomeUiState 密封类的 Loading/Error/Empty 分支，
+// 而是使用 Paging3 自带的 loadState.refresh 来判断：
+//   LoadState.Loading + itemCount==0 → 首次加载（转圈）
+//   LoadState.Loading + itemCount>0  → 下拉刷新（PullToRefreshBox 指示器）
+//   LoadState.Error   + itemCount==0 → 错误态（重试按钮）
+//   LoadState.NotLoading + itemCount==0 → 空态
+//   LoadState.NotLoading + itemCount>0  → 正常列表
+//
+// 加载更多的 Footer 由 loadState.append is LoadState.Loading 控制
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PagingFeedList(

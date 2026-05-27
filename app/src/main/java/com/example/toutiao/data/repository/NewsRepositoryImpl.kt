@@ -59,6 +59,38 @@ class NewsRepositoryImpl @Inject constructor(
         }
     }
 
+    // =========================================================================
+    // getFeedPagingData — Paging3 分页数据流的主入口
+    //
+    // 这是 ViewModel 调用的核心方法，返回 Flow<PagingData<FeedCard>>。
+    //
+    // Pager 是 Paging3 的核心组件，它组合了两个数据通道：
+    //
+    //   ┌─────────────────────────────────────────────────┐
+    //   │                    Pager                         │
+    //   │                                                  │
+    //   │  remoteMediator: NewsRemoteMediator              │
+    //   │    ↓ 负责：从网络/Mock 获取数据 → 写入 Room      │
+    //   │    ↓ 触发时机：REFRESH / APPEND / PREPEND        │
+    //   │                                                  │
+    //   │  pagingSourceFactory: FeedDao.getFeedPagingSource│
+    //   │    ↓ 负责：从 Room 读取数据                      │
+    //   │    ↓ 触发时机：Room 数据变化时自动通知            │
+    //   │                                                  │
+    //   │  两者协作：                                       │
+    //   │    RemoteMediator 写入 Room                      │
+    //   │    → PagingSource 感知 Room 变化                 │
+    //   │    → 发射新 PagingData                           │
+    //   │    → UI 自动重组                                 │
+    //   └─────────────────────────────────────────────────┘
+    //
+    // pageSize = 8: 每次加载 8 条
+    // prefetchDistance = 2: 当前可见项距离底部 2 条时触发 APPEND
+    // enablePlaceholders = false: 不显示占位骨架屏
+    //
+    // .flow.map { pagingData -> pagingData.map { it.toDomain() } }
+    //   将 FeedItemEntity 类型的 PagingData 转换为 FeedCard 类型
+    // =========================================================================
     @OptIn(ExperimentalPagingApi::class)
     override fun getFeedPagingData(channel: String): Flow<PagingData<FeedCard>> {
         Timber.d("getFeedPagingData — creating Pager for channel=$channel")
@@ -76,7 +108,7 @@ class NewsRepositoryImpl @Inject constructor(
             ),
             pagingSourceFactory = { feedDao.getFeedPagingSource(channel) },
         ).flow.map { pagingData ->
-            pagingData.map { it.toDomain() }
+            pagingData.map { it.toDomain() } // Entity → Domain 映射
         }
     }
 

@@ -13,25 +13,38 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-/**
- * Mock 远程数据源，从 `assets/news_data.json` 读取 1421 条真实新闻数据，
- * 按时间排序、按频道分类，支持分页拉取。
- *
- * 频道映射：
- *   recommend → 全量（综合推荐）
- *   hot → 社会/财经/科技/娱乐/体育/国际/国内/军事
- *   video → 仅「视频」分类
- *   society → 社会/法治/法律/时政/国内/中国/地方/教育/健康
- *
- * 分页策略：
- *   时间倒序排列（最新在前），每页 8 条，按 page 偏移取数据。
- */
+// =============================================================================
+// MockDataSource — 数据链路的起点
+//
+// 角色：实现 RemoteDataSource 接口，从 assets/news_data.json 加载真实新闻数据，
+//       按频道过滤 + 时间排序 + 分页，返回 NewsFeedResponse（DTO）。
+//
+// 调用链中的位置：
+//   assets/news_data.json  ← 这是唯一的数据来源（1421 条真实新闻）
+//          ↓ loadFromAssets()
+//   List<RawNewsItem>      ← 全部原始数据缓存在内存中（by lazy，首次调用时加载）
+//          ↓ filterByChannel()
+//          ↓ sortedByDescending (时间倒序)
+//          ↓ drop(offset).take(size)  ← 基于 page 的分页截取
+//   List<NewsItemDto>      ← mapToDto() 完成 RawNewsItem → NewsItemDto 转换
+//          ↓
+//   NewsFeedResponse       ← 返回给调用方（NewsRemoteMediator 或 NewsRepositoryImpl）
+//
+// 谁调用这里：
+//   NewsRemoteMediator.load()  → Paging3 分页时调用（主要路径）
+//   NewsRepositoryImpl.getNewsFeed() → 直接调用（兼容路径）
+//   NewsRepositoryImpl.hasMore()     → 检查是否还有更多页
+// =============================================================================
 class MockDataSource(context: Context) : RemoteDataSource {
 
+    // by lazy：首次调用 getNewsFeed() 时才从 assets 读 JSON，不阻塞 App 启动
     private val allItems: List<RawNewsItem> by lazy {
         loadFromAssets(context)
     }
 
+    // 这是 RemoteDataSource 接口的唯一方法，也是数据流的唯一切入点。
+    // channel 来自 ViewModel 的当前 Tab（recommend/hot/video/society）
+    // page 来自 Paging3 的 LoadType（REFRESH=0, APPEND=N, PREPEND=N-1）
     override suspend fun getNewsFeed(channel: String, page: Int, size: Int): NewsFeedResponse {
         val delayMs = DebugControls.networkDelayMs
         if (delayMs > 0) {
@@ -44,9 +57,11 @@ class MockDataSource(context: Context) : RemoteDataSource {
             throw IOException(DebugControls.DEFAULT_ERROR_MESSAGE)
         }
 
+        // 步骤 2：按频道过滤（1421 条 → 约 N 条，取决于频道映射）
         val filtered = filterByChannel(allItems, channel)
-        // 按时间倒序排列
+        // 步骤 3：按时间倒序排列（最新新闻在前）
         val sorted = filtered.sortedByDescending { parseDatetime(it.datetime) }
+        // 步骤 4：基于 page 的分页截取（page=0 取前 8 条，page=1 取第 9~16 条...）
         val offset = page * size
         val pageItems = if (offset >= sorted.size) {
             emptyList()
@@ -57,11 +72,13 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
         Timber.d("MockDataSource — channel=$channel, page=$page, total=${sorted.size}, returned=${pageItems.size}, hasMore=$hasMore")
 
+        // 步骤 5：RawNewsItem → NewsItemDto（原始 JSON 结构 → Retrofit 期望的 DTO 结构）
         val dtoList = pageItems.mapIndexed { index, raw ->
             val globalIndex = offset + index
             mapToDto(raw, channel, globalIndex)
         }
 
+        // 步骤 6：包装为 NewsFeedResponse（这是 Retrofit API 的标准响应格式）
         return NewsFeedResponse(
             code = 0,
             data = NewsFeedData(list = dtoList, hasMore = hasMore),
@@ -95,7 +112,17 @@ class MockDataSource(context: Context) : RemoteDataSource {
         return if (categories == null) items else items.filter { it.category in categories }
     }
 
-    // ── RawNewsItem → NewsItemDto 映射 ────────────────────────────────────────
+    // ── RawNewsItem → NewsItemDto 映射（核心转换逻辑） ─────────────────────────
+    // 这里的转换决定了每条新闻最终以哪种卡片类型渲染：
+    //   text_top → TextTopCard（纯文字置顶）
+    //   left_text_right_image → LeftTextRightImageCard（左文右图）
+    //   large_image → LargeImageCard（大图）
+    //   video → VideoCard（视频播放按钮 + 时长）
+    //
+    // 推断规则：
+    //   分类 == "视频" → video
+    //   无封面图 → text_top
+    //   有封面图 → 按 index % 3 交替分配 large_image 和 left_text_right_image
     private fun mapToDto(raw: RawNewsItem, channel: String, index: Int): NewsItemDto {
         val type = determineType(raw.category, raw.imageUrl, index)
         val relativeTime = formatRelativeTime(raw.datetime)
