@@ -59,10 +59,10 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
         // 步骤 2：按频道过滤（1421 条 → 约 N 条，取决于频道映射）
         val filtered = filterByChannel(allItems, channel)
-        // 步骤 3：排序 — 置顶优先（isTop=true 在前），同组内按时间倒序
+        // 步骤 3：排序 — 首选日期倒序，同日期的置顶在前
         val sorted = filtered.sortedWith(
-            compareByDescending<RawNewsItem> { isPinned(it.source) }
-                .thenByDescending { parseDatetime(it.datetime) }
+            compareByDescending<RawNewsItem> { parseDatetime(it.datetime) }
+                .thenByDescending { isPinned(it.source) }
         )
         // 步骤 4：基于 page 的分页截取（page=0 取前 8 条，page=1 取第 9~16 条...）
         val offset = page * size
