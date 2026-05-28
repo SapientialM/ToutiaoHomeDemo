@@ -42,7 +42,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -156,13 +155,11 @@ private fun HomeScreenContent(
                 }
             }
             else -> {
-                key(currentTab) {
-                    PagingFeedList(
-                        lazyPagingItems = lazyPagingItems,
-                        onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
-                        modifier = Modifier.padding(innerPadding),
-                    )
-                }
+                PagingFeedList(
+                    lazyPagingItems = lazyPagingItems,
+                    onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                    modifier = Modifier.padding(innerPadding),
+                )
             }
         }
     }
@@ -194,11 +191,18 @@ private fun PagingFeedList(
 
     val listState = rememberLazyListState()
 
-    // 下拉刷新完成后自动滚动回顶部，避免刷新后列表停留在半途触发 APPEND
-    LaunchedEffect(isRefreshing) {
-        if (!isRefreshing) {
+    // Tab 切换或下拉刷新完成后，数据加载完毕时自动回顶。
+    // 不能仅依赖 isRefreshing 布尔值——isRefreshing 变 false 时
+    // LazyPagingItems.itemCount 可能仍为 0（PagingSource 尚未重读 Room），
+    // 此时 scrollToItem(0) 无效，列表不会真正回顶。
+    // 改用 LoadState.Loading → NotLoading 的转换 + itemCount > 0 双重条件。
+    var wasLoading by remember { mutableStateOf(true) }
+    val isLoading = refreshLoadState is LoadState.Loading
+    LaunchedEffect(isLoading) {
+        if (wasLoading && !isLoading && lazyPagingItems.itemCount > 0) {
             listState.scrollToItem(0)
         }
+        wasLoading = isLoading
     }
 
     when {
