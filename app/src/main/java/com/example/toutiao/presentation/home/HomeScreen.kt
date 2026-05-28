@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -305,7 +306,14 @@ private fun HomeTopBar(
     onToggleDebug: () -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
-    val tabs = listOf("recommend" to "推荐", "hot" to "热榜", "video" to "视频", "society" to "社会", "tech" to "科技")
+    val tabs = listOf(
+        "follow" to "关注",
+        "recommend" to "推荐",
+        "hot" to "热榜",
+        "newera" to "新时代",
+        "novel" to "小说",
+        "video" to "视频",
+    )
     val isSearching = (uiState as? HomeUiState.Success)?.isSearching ?: false
 
     Column(
@@ -314,6 +322,10 @@ private fun HomeTopBar(
             .background(Color(0xFFD81E06))
             .statusBarsPadding(),
     ) {
+        if (!isSearching) {
+            WeatherHeader(onToggleDebug = onToggleDebug)
+        }
+
         if (isSearching) {
             SearchInputBar(
                 query = searchQuery,
@@ -322,25 +334,14 @@ private fun HomeTopBar(
                 onDismiss = { onEvent(HomeUiEvent.OnSearchDismiss) },
             )
         } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.weight(1f)) {
-                    SearchPlaceholderBar(onClick = { onEvent(HomeUiEvent.OnSearchClicked) })
-                }
-                IconButton(onClick = onToggleDebug, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.Build,
-                        contentDescription = "调试",
-                        tint = Color.White.copy(alpha = 0.6f),
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
+            SearchPlaceholderBar(onClick = { onEvent(HomeUiEvent.OnSearchClicked) })
         }
 
-        TabRow(
+        ScrollableTabRow(
             selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0),
             containerColor = Color(0xFFD81E06),
             contentColor = Color.White,
+            edgePadding = 0.dp,
             divider = {},
         ) {
             tabs.forEach { (key, label) ->
@@ -351,11 +352,69 @@ private fun HomeTopBar(
                     text = {
                         Text(
                             text = label,
-                            fontSize = if (selected) 18.sp else 15.sp,
+                            fontSize = if (selected) 17.sp else 15.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                            color = if (selected) Color.White else Color.White.copy(alpha = 0.75f),
                         )
                     },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeatherHeader(onToggleDebug: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = "天气",
+                tint = Color.Yellow,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text("14°", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(6.dp))
+            Column {
+                Text("北京 多云", color = Color.White, fontSize = 12.sp)
+                Text("空气质量良", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.2f))
+                    .clickable { }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text("AI回答", color = Color.White, fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.25f))
+                    .clickable { },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("+", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = onToggleDebug, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Build,
+                    contentDescription = "调试",
+                    tint = Color.White.copy(alpha = 0.5f),
+                    modifier = Modifier.size(14.dp),
                 )
             }
         }
@@ -370,7 +429,7 @@ private fun SearchPlaceholderBar(onClick: () -> Unit) {
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .height(36.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.3f))
+            .background(Color.White)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -381,13 +440,13 @@ private fun SearchPlaceholderBar(onClick: () -> Unit) {
             Icon(
                 imageVector = Icons.Filled.Search,
                 contentDescription = null,
-                tint = Color.White.copy(alpha = 0.7f),
+                tint = Color(0xFFD81E06),
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(6.dp))
             Text(
                 text = "搜索",
-                color = Color.White.copy(alpha = 0.7f),
+                color = Color.Gray,
                 fontSize = 14.sp,
             )
         }

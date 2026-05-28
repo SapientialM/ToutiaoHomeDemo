@@ -14,8 +14,10 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 
@@ -47,6 +49,11 @@ fun AppBottomNav(selectedIndex: Int, onSelected: (Int) -> Unit) {
                 label = { Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 selected = index == selectedIndex,
                 onClick = { onSelected(index) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = Color(0xFFD81E06),
+                    selectedTextColor = Color(0xFFD81E06),
+                    indicatorColor = Color.Transparent,
+                ),
             )
         }
     }

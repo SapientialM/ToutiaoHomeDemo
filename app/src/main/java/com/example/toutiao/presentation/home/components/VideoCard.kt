@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,79 +41,92 @@ fun VideoCard(card: FeedCard.Video, modifier: Modifier = Modifier) {
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(0.dp),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (card.isTop) {
-                    Surface(
-                        color = Color(0xFFD81E06),
-                        shape = RoundedCornerShape(2.dp),
-                    ) {
-                        Text(
-                            "置顶",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                        )
+        Box(modifier = Modifier.padding(12.dp)) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (card.isTop) {
+                        Surface(
+                            color = Color(0xFFD81E06),
+                            shape = RoundedCornerShape(2.dp),
+                        ) {
+                            Text(
+                                "置顶",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
                     }
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(
-                    text = card.title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(4.dp)),
-            ) {
-                AsyncImage(
-                    model = card.imageUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                // Play button overlay
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.Black.copy(alpha = 0.6f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "播放",
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp),
+                    Text(
+                        text = card.title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                // Duration label
-                if (card.duration.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(4.dp)),
+                ) {
+                    AsyncImage(
+                        model = card.imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Play button overlay
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(Color.Black.copy(alpha = 0.7f)),
+                            .align(Alignment.Center)
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.Black.copy(alpha = 0.6f)),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = card.duration,
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = "播放",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp),
                         )
                     }
+                    // Duration label
+                    if (card.duration.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.Black.copy(alpha = 0.7f)),
+                        ) {
+                            Text(
+                                text = card.duration,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
                 }
+                Spacer(Modifier.height(8.dp))
+                BottomInfoRow(card.source, card.commentCount, card.publishTime)
             }
-            Spacer(Modifier.height(8.dp))
-            BottomInfoRow(card.source, card.commentCount, card.publishTime)
+            // 关闭按钮
+            Text(
+                text = "×",
+                fontSize = 16.sp,
+                color = Color.LightGray,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 4.dp, bottom = 4.dp)
+                    .clickable { },
+            )
         }
     }
 }

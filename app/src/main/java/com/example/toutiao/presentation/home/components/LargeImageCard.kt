@@ -1,5 +1,6 @@
 package com.example.toutiao.presentation.home.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextAlign
 import coil.compose.AsyncImage
 import com.example.toutiao.domain.model.FeedCard
 
@@ -34,42 +37,55 @@ fun LargeImageCard(card: FeedCard.LargeImage, modifier: Modifier = Modifier) {
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(0.dp),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (card.isTop) {
-                    Surface(
-                        color = Color(0xFFD81E06),
-                        shape = RoundedCornerShape(2.dp),
-                    ) {
-                        Text(
-                            "置顶",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                        )
+        Box(modifier = Modifier.padding(12.dp)) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (card.isTop) {
+                        Surface(
+                            color = Color(0xFFD81E06),
+                            shape = RoundedCornerShape(2.dp),
+                        ) {
+                            Text(
+                                "置顶",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = card.title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                Text(
-                    text = card.title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                Spacer(Modifier.height(8.dp))
+                AsyncImage(
+                    model = card.imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(4.dp)),
                 )
+                Spacer(Modifier.height(8.dp))
+                BottomInfoRow(card.source, card.commentCount, card.publishTime)
             }
-            Spacer(Modifier.height(8.dp))
-            AsyncImage(
-                model = card.imageUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            // 关闭按钮
+            Text(
+                text = "×",
+                fontSize = 16.sp,
+                color = Color.LightGray,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(4.dp)),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 4.dp, bottom = 4.dp)
+                    .clickable { },
             )
-            Spacer(Modifier.height(8.dp))
-            BottomInfoRow(card.source, card.commentCount, card.publishTime)
         }
     }
 }

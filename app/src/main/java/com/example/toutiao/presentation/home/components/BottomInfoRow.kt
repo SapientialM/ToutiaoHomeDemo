@@ -15,15 +15,13 @@ fun BottomInfoRow(source: String, commentCount: Int, publishTime: String, modifi
     Row(modifier = modifier) {
         Text(text = source, fontSize = 12.sp, color = Color.Gray)
         if (commentCount > 0) {
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 text = "${formatCount(commentCount)}评论",
                 fontSize = 12.sp,
                 color = Color.Gray,
             )
         }
-        Spacer(Modifier.width(12.dp))
-        Text(text = publishTime, fontSize = 12.sp, color = Color.Gray)
     }
 }
 
