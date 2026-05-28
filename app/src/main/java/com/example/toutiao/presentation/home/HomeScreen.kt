@@ -42,6 +42,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,36 +67,23 @@ import com.example.toutiao.presentation.home.components.LargeImageCard
 import com.example.toutiao.presentation.home.components.LeftTextRightImageCard
 import com.example.toutiao.presentation.home.components.TextTopCard
 import com.example.toutiao.presentation.home.components.VideoCard
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
 // =============================================================================
-// HomeScreen — 数据链路终点：Flow<PagingData> → LazyPagingItems → LazyColumn
+// HomeScreen — MVI 入口 + Tab 切换数据隔离
 //
-// 这是数据流从 JSON 文件到屏幕像素的最后一步：
-//
-//   viewModel.feedPagingData          ← Flow<PagingData<FeedCard>>
-//          ↓ collectAsLazyPagingItems()
-//   lazyPagingItems                   ← LazyPagingItems<FeedCard>
-//          ↓ 传递给 PagingFeedList
-//   lazyPagingItems.loadState.refresh ← 驱动 Loading/Error/Empty/Success 四态
-//   lazyPagingItems.itemCount         ← 列表项数量
-//   lazyPagingItems[index]            ← 第 index 项的 FeedCard（可空）
-//          ↓ when (card) { ... }
-//   TextTopCard / LeftTextRightImageCard / LargeImageCard / VideoCard
-//
-// collectAsStateWithLifecycle(): 生命周期感知收集，App 后台时暂停更新
-// collectAsLazyPagingItems(): 将 Flow<PagingData> 转换为 UI 可直接消费的列表对象
+// 关键设计：用 key(currentTab) 包裹 Paging3 数据收集和列表渲染，
+// Tab 切换时 Compose 丢弃旧 key 内的所有状态（包括 LazyPagingItems 和
+// LazyListState），新 key 内从 Loading 态全新开始，消除旧数据闪现。
 // =============================================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: HomeViewModel) {
-    // StateFlow 收集（生命周期感知）
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
-    // PagingData Flow → LazyPagingItems（Paging3 的标准 Compose 消费方式）
-    val lazyPagingItems = viewModel.feedPagingData.collectAsLazyPagingItems()
     var showDebugDialog by remember { mutableStateOf(false) }
 
     HomeScreenContent(
@@ -103,7 +91,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
         currentTab = currentTab,
         searchQuery = searchQuery,
         searchResults = searchResults,
-        lazyPagingItems = lazyPagingItems,
+        feedPagingData = viewModel.feedPagingData,
         showDebugDialog = showDebugDialog,
         onToggleDebug = { showDebugDialog = !showDebugDialog },
         onEvent = viewModel::onEvent,
@@ -117,7 +105,7 @@ private fun HomeScreenContent(
     currentTab: String,
     searchQuery: String,
     searchResults: List<FeedCard>,
-    lazyPagingItems: LazyPagingItems<FeedCard>,
+    feedPagingData: Flow<PagingData<FeedCard>>,
     showDebugDialog: Boolean,
     onToggleDebug: () -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
@@ -128,13 +116,13 @@ private fun HomeScreenContent(
 
     Scaffold(
         topBar = {
-                HomeTopBar(
-                    uiState = uiState,
-                    currentTab = currentTab,
-                    searchQuery = searchQuery,
-                    onToggleDebug = onToggleDebug,
-                    onEvent = onEvent,
-                )
+            HomeTopBar(
+                uiState = uiState,
+                currentTab = currentTab,
+                searchQuery = searchQuery,
+                onToggleDebug = onToggleDebug,
+                onEvent = onEvent,
+            )
         },
         containerColor = Color(0xFFF5F5F5),
     ) { innerPadding ->
@@ -155,31 +143,37 @@ private fun HomeScreenContent(
                 }
             }
             else -> {
-                PagingFeedList(
-                    currentTab = currentTab,
-                    lazyPagingItems = lazyPagingItems,
-                    onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
-                    modifier = Modifier.padding(innerPadding),
-                )
+                // key(currentTab): Tab 切换时销毁整个子树（LazyPagingItems + LazyListState），
+                // 新子树从 Loading 态开始，避免：
+                //  1. 旧 Tab 数据闪现（LazyPagingItems 是全新创建的，初始 0 条）
+                //  2. 滚动位置残留（LazyListState 是全新创建的，位置为 0）
+                key(currentTab) {
+                    val lazyPagingItems = feedPagingData.collectAsLazyPagingItems()
+                    val listState = remember { LazyListState() }
+
+                    // Tab 切换时 key 变化，LazyListState 是全新的，但 Paging3 的
+                    // differ 过程可能在数据到达前就把列表滚离顶部。这里显式保证回顶。
+                    LaunchedEffect(Unit) {
+                        listState.scrollToItem(0)
+                    }
+
+                    PagingFeedList(
+                        listState = listState,
+                        lazyPagingItems = lazyPagingItems,
+                        onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                        modifier = Modifier.padding(innerPadding),
+                    )
+                }
             }
         }
     }
 }
 
-// ── Paging3 列表渲染：LazyPagingItems.loadState 驱动四种 UI 态 ──────────────
-// 不再使用 HomeUiState 密封类的 Loading/Error/Empty 分支，
-// 而是使用 Paging3 自带的 loadState.refresh 来判断：
-//   LoadState.Loading + itemCount==0 → 首次加载（转圈）
-//   LoadState.Loading + itemCount>0  → 下拉刷新（PullToRefreshBox 指示器）
-//   LoadState.Error   + itemCount==0 → 错误态（重试按钮）
-//   LoadState.NotLoading + itemCount==0 → 空态
-//   LoadState.NotLoading + itemCount>0  → 正常列表
-//
-// 加载更多的 Footer 由 loadState.append is LoadState.Loading 控制
+// ── Paging3 列表渲染 ─────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PagingFeedList(
-    currentTab: String,
+    listState: LazyListState,
     lazyPagingItems: LazyPagingItems<FeedCard>,
     onCardClick: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -191,21 +185,15 @@ private fun PagingFeedList(
     val isError = refreshLoadState is LoadState.Error && lazyPagingItems.itemCount == 0
     val errorMessage = (refreshLoadState as? LoadState.Error)?.error?.message ?: "加载失败"
 
-    val listState = remember(currentTab) { LazyListState() }
-    // remember(currentTab) 保证：Tab 切换时丢弃旧 LazyListState、创建新实例，
-    // 新实例初始位置为 0，天然回顶。下拉刷新时 tab 不变、state 复用，
-    // 由下方 LoadState 检测完成后的 scrollToItem(0) 回顶。
-
-    // 下拉刷新完成后自动回顶。
-    // 用 LoadState.Loading → NotLoading 转换 + itemCount > 0 双重条件，
-    // 确保 scroll 在数据实际到位后执行。
-    var wasLoading by remember { mutableStateOf(true) }
-    val isLoading = refreshLoadState is LoadState.Loading
-    LaunchedEffect(isLoading) {
-        if (wasLoading && !isLoading && lazyPagingItems.itemCount > 0) {
+    // Tab 切换：key(currentTab) 重建整个子树，LazyListState 初始位置为 0，
+    // 天然回到顶部。下拉刷新：LaunchedEffect 监听 loadState.refresh 变化，
+    // 当 LoadState 变为 NotLoading 且有数据时，scrollToItem(0) 回顶。
+    LaunchedEffect(lazyPagingItems.loadState.refresh) {
+        if (lazyPagingItems.loadState.refresh is LoadState.NotLoading
+            && lazyPagingItems.itemCount > 0
+        ) {
             listState.scrollToItem(0)
         }
-        wasLoading = isLoading
     }
 
     when {
@@ -459,8 +447,6 @@ private fun SearchInputBar(
 }
 
 // ── 调试面板 ─────────────────────────────────────────────────────────────────
-// 使用 AlertDialog 展示网络延迟模拟和错误模拟的开关。
-// DebugControls 是全局单例，修改后立即生效，下次数据请求（下拉刷新/切换Tab）时触发模拟效果。
 @Composable
 private fun DebugDialog(showDialog: Boolean, onDismiss: () -> Unit) {
     if (!showDialog) return
@@ -552,147 +538,35 @@ private fun DebugDialog(showDialog: Boolean, onDismiss: () -> Unit) {
     )
 }
 
+// ── Preview ──────────────────────────────────────────────────────────────────
 private val mockFeedItems = listOf(
-    FeedCard.TextTop(
-        id = "1",
-        title = "Title 1",
-        source = "Source 1",
-        commentCount = 12876,
-        publishTime = "3 hours ago",
-    ),
-    FeedCard.LeftTextRightImage(
-        id = "2",
-        title = "Title 2",
-        source = "Source 2",
-        commentCount = 5432,
-        publishTime = "5 hours ago",
-        imageUrl = "https://picsum.photos/seed/news2/400/300",
-    ),
-    FeedCard.LargeImage(
-        id = "3",
-        title = "Title 3",
-        source = "Source 3",
-        commentCount = 9876,
-        publishTime = "1 hour ago",
-        imageUrl = "https://picsum.photos/seed/news3/800/450",
-    ),
-    FeedCard.Video(
-        id = "4",
-        title = "Title 4",
-        source = "Source 4",
-        commentCount = 23456,
-        publishTime = "2 hours ago",
-        imageUrl = "https://picsum.photos/seed/news4/800/450",
-        videoUrl = "",
-        duration = "08:25",
-    ),
-    FeedCard.LeftTextRightImage(
-        id = "5",
-        title = "Title 5",
-        source = "Source 5",
-        commentCount = 3456,
-        publishTime = "6 hours ago",
-        imageUrl = "https://picsum.photos/seed/news5/400/300",
-    ),
-    FeedCard.TextTop(
-        id = "6",
-        title = "Title 6",
-        source = "Source 6",
-        commentCount = 5678,
-        publishTime = "4 hours ago",
-    ),
-    FeedCard.LargeImage(
-        id = "7",
-        title = "Title 7",
-        source = "Source 7",
-        commentCount = 7890,
-        publishTime = "2 hours ago",
-        imageUrl = "https://picsum.photos/seed/news7/800/450",
-    ),
-    FeedCard.Video(
-        id = "8",
-        title = "Title 8",
-        source = "Source 8",
-        commentCount = 15678,
-        publishTime = "1 hour ago",
-        imageUrl = "https://picsum.photos/seed/news8/800/450",
-        videoUrl = "",
-        duration = "12:40",
-    ),
+    FeedCard.TextTop(id = "1", title = "Title 1", source = "Source 1", commentCount = 12876, publishTime = "3 hours ago"),
+    FeedCard.LeftTextRightImage(id = "2", title = "Title 2", source = "Source 2", commentCount = 5432, publishTime = "5 hours ago", imageUrl = "https://picsum.photos/seed/news2/400/300"),
+    FeedCard.LargeImage(id = "3", title = "Title 3", source = "Source 3", commentCount = 9876, publishTime = "1 hour ago", imageUrl = "https://picsum.photos/seed/news3/800/450"),
+    FeedCard.Video(id = "4", title = "Title 4", source = "Source 4", commentCount = 23456, publishTime = "2 hours ago", imageUrl = "https://picsum.photos/seed/news4/800/450", videoUrl = "", duration = "08:25"),
+    FeedCard.LeftTextRightImage(id = "5", title = "Title 5", source = "Source 5", commentCount = 3456, publishTime = "6 hours ago", imageUrl = "https://picsum.photos/seed/news5/400/300"),
+    FeedCard.TextTop(id = "6", title = "Title 6", source = "Source 6", commentCount = 5678, publishTime = "4 hours ago"),
+    FeedCard.LargeImage(id = "7", title = "Title 7", source = "Source 7", commentCount = 7890, publishTime = "2 hours ago", imageUrl = "https://picsum.photos/seed/news7/800/450"),
+    FeedCard.Video(id = "8", title = "Title 8", source = "Source 8", commentCount = 15678, publishTime = "1 hour ago", imageUrl = "https://picsum.photos/seed/news8/800/450", videoUrl = "", duration = "12:40"),
 )
 
 @Preview(name = "Success", showBackground = true, showSystemUi = true)
 @Composable
 private fun HomeScreenSuccessPreview() {
-    val flow = flowOf(PagingData.from(mockFeedItems))
-    val lazyPagingItems = flow.collectAsLazyPagingItems()
     com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme {
-        HomeScreenContent(
-            uiState = HomeUiState.Success(currentTab = "recommend"),
-            currentTab = "recommend",
-            searchQuery = "",
-            searchResults = emptyList(),
-            lazyPagingItems = lazyPagingItems,
-            showDebugDialog = false,
-            onToggleDebug = {},
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "Loading", showBackground = true, showSystemUi = true)
-@Composable
-private fun HomeScreenLoadingPreview() {
-    val flow = flowOf(PagingData.empty<FeedCard>())
-    val lazyPagingItems = flow.collectAsLazyPagingItems()
-    com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme {
-        HomeScreenContent(
-            uiState = HomeUiState.Loading,
-            currentTab = "recommend",
-            searchQuery = "",
-            searchResults = emptyList(),
-            lazyPagingItems = lazyPagingItems,
-            showDebugDialog = false,
-            onToggleDebug = {},
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "Error", showBackground = true, showSystemUi = true)
-@Composable
-private fun HomeScreenErrorPreview() {
-    val flow = flowOf(PagingData.empty<FeedCard>())
-    val lazyPagingItems = flow.collectAsLazyPagingItems()
-    com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme {
-        HomeScreenContent(
-            uiState = HomeUiState.Error(message = "Network error"),
-            currentTab = "recommend",
-            searchQuery = "",
-            searchResults = emptyList(),
-            lazyPagingItems = lazyPagingItems,
-            showDebugDialog = false,
-            onToggleDebug = {},
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "Empty", showBackground = true, showSystemUi = true)
-@Composable
-private fun HomeScreenEmptyPreview() {
-    val flow = flowOf(PagingData.empty<FeedCard>())
-    val lazyPagingItems = flow.collectAsLazyPagingItems()
-    com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme {
-        HomeScreenContent(
-            uiState = HomeUiState.Empty,
-            currentTab = "recommend",
-            searchQuery = "",
-            searchResults = emptyList(),
-            lazyPagingItems = lazyPagingItems,
-            showDebugDialog = false,
-            onToggleDebug = {},
-            onEvent = {},
-        )
+        val flow = flowOf(PagingData.from(mockFeedItems))
+        key("preview_success") {
+            val lazyItems = flow.collectAsLazyPagingItems()
+            HomeScreenContent(
+                uiState = HomeUiState.Success(currentTab = "recommend"),
+                currentTab = "recommend",
+                searchQuery = "",
+                searchResults = emptyList(),
+                feedPagingData = flow,
+                showDebugDialog = false,
+                onToggleDebug = {},
+                onEvent = {},
+            )
+        }
     }
 }

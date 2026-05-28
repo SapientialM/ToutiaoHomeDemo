@@ -143,6 +143,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
             duration = if (type == "video") generateDuration(index) else null,
             publishTime = relativeTime,
             isTop = isPinned(raw.source),
+            createdAt = parseDatetimeToMillis(raw.datetime),
         )
     }
 
@@ -168,6 +169,15 @@ class MockDataSource(context: Context) : RemoteDataSource {
             LocalDateTime.parse(datetime, datetimeFormatter)
         } catch (e: Exception) {
             LocalDateTime.MIN
+        }
+    }
+
+    private fun parseDatetimeToMillis(datetime: String): Long {
+        return try {
+            java.time.ZoneId.systemDefault()
+                .let { LocalDateTime.parse(datetime, datetimeFormatter).atZone(it).toInstant().toEpochMilli() }
+        } catch (e: Exception) {
+            0L
         }
     }
 

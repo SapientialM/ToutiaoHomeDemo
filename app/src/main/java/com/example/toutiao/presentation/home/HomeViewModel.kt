@@ -3,15 +3,16 @@ package com.example.toutiao.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
-import androidx.paging.cachedIn
+
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.domain.repository.NewsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -30,17 +31,17 @@ import timber.log.Timber
 //     ↓ flatMapLatest — Tab 切换时自动取消旧流，启动新流
 //   newsRepository.getFeedPagingData(tab)
 //     ↓ 返回 Flow<PagingData<FeedCard>>
-//   .cachedIn(viewModelScope)
-//     ↓ 将冷流转为热流，ViewModel 存活期间保持数据缓存
 //   feedPagingData: Flow<PagingData<FeedCard>>
 //     ↓ UI 层 collectAsLazyPagingItems() 消费
 //   LazyPagingItems<FeedCard>
 //     ↓ LazyColumn 渲染
 //
-// 为什么用 flatMapLatest：
+// 为什么用 flatMapLatest（不用 cachedIn）：
 //   Tab 切换 → _currentTab 变化 → flatMapLatest 自动取消旧的 getFeedPagingData 流
 //   → 启动新的 getFeedPagingData(新 tab) → 新的 Pager → 新的 RemoteMediator
 //   → 清空旧 tab 的 Room 数据 → 写入新 tab 的数据 → UI 自动更新
+//   不使用 cachedIn 是为了避免 Tab 切换时，新订阅者先收到 SharedFlow replay
+//   缓存里的旧 Tab PagingData，导致旧数据闪现（闪烁）且滚动位置错乱。
 // =============================================================================
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -68,13 +69,11 @@ class HomeViewModel @Inject constructor(
     // 这是整个数据流的核心管道：
     // Tab 变化 → 新 Pager → 新 PagingData → UI
     // flatMapLatest: 新 Tab 触发时自动取消旧 Tab 的流
-    // cachedIn: 让流在 ViewModel 范围内保持活跃，跨 Compose 重组不丢失
     val feedPagingData: Flow<PagingData<FeedCard>> = _currentTab
         .flatMapLatest { tab ->
             Timber.d("feedPagingData — switching to tab=$tab")
             newsRepository.getFeedPagingData(tab)
         }
-        .cachedIn(viewModelScope)
 
     init {
         Timber.d("HomeViewModel init")

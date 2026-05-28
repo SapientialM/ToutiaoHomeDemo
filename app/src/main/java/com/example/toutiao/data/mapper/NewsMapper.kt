@@ -36,6 +36,7 @@ fun NewsItemDto.toEntity(channel: String): FeedItemEntity = FeedItemEntity(
     publishTime = publishTime,
     isTop = isTop,
     channel = channel,
+    createdAt = createdAt,
 )
 
 // ── Entity → Domain：Room 数据转为 UI 模型 ────────────────────────────────────

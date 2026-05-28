@@ -84,7 +84,8 @@ class NewsRepositoryImpl @Inject constructor(
     //   │    → UI 自动重组                                 │
     //   └─────────────────────────────────────────────────┘
     //
-    // pageSize = 8: 每次加载 8 条
+    // pageSize = 20: 与 MockDataSource 每页返回量一致，消除因页大小不匹配
+    //   导致的"刚 REFRESH 完就触发 APPEND"抖动，滚动位置更稳定。
     // prefetchDistance = 2: 当前可见项距离底部 2 条时触发 APPEND
     // enablePlaceholders = false: 不显示占位骨架屏
     //
@@ -96,7 +97,7 @@ class NewsRepositoryImpl @Inject constructor(
         Timber.d("getFeedPagingData — creating Pager for channel=$channel")
         return Pager(
             config = PagingConfig(
-                pageSize = 8,
+                pageSize = 20,
                 prefetchDistance = 2,
                 enablePlaceholders = false,
             ),

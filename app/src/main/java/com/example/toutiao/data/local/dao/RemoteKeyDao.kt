@@ -12,6 +12,9 @@ interface RemoteKeyDao {
     @Query("SELECT * FROM remote_keys WHERE id = :id")
     suspend fun getRemoteKey(id: String): RemoteKeyEntity?
 
+    @Query("SELECT * FROM remote_keys WHERE channel = :channel ORDER BY next_key DESC LIMIT 1")
+    suspend fun getLastRemoteKeyByChannel(channel: String): RemoteKeyEntity?
+
     @Transaction
     suspend fun replaceByChannel(channel: String, keys: List<RemoteKeyEntity>) {
         deleteByChannel(channel)
