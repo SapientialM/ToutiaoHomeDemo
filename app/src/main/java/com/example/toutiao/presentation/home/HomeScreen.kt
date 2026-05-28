@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -156,6 +156,7 @@ private fun HomeScreenContent(
             }
             else -> {
                 PagingFeedList(
+                    currentTab = currentTab,
                     lazyPagingItems = lazyPagingItems,
                     onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
                     modifier = Modifier.padding(innerPadding),
@@ -178,6 +179,7 @@ private fun HomeScreenContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PagingFeedList(
+    currentTab: String,
     lazyPagingItems: LazyPagingItems<FeedCard>,
     onCardClick: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -189,13 +191,14 @@ private fun PagingFeedList(
     val isError = refreshLoadState is LoadState.Error && lazyPagingItems.itemCount == 0
     val errorMessage = (refreshLoadState as? LoadState.Error)?.error?.message ?: "加载失败"
 
-    val listState = rememberLazyListState()
+    val listState = remember(currentTab) { LazyListState() }
+    // remember(currentTab) 保证：Tab 切换时丢弃旧 LazyListState、创建新实例，
+    // 新实例初始位置为 0，天然回顶。下拉刷新时 tab 不变、state 复用，
+    // 由下方 LoadState 检测完成后的 scrollToItem(0) 回顶。
 
-    // Tab 切换或下拉刷新完成后，数据加载完毕时自动回顶。
-    // 不能仅依赖 isRefreshing 布尔值——isRefreshing 变 false 时
-    // LazyPagingItems.itemCount 可能仍为 0（PagingSource 尚未重读 Room），
-    // 此时 scrollToItem(0) 无效，列表不会真正回顶。
-    // 改用 LoadState.Loading → NotLoading 的转换 + itemCount > 0 双重条件。
+    // 下拉刷新完成后自动回顶。
+    // 用 LoadState.Loading → NotLoading 转换 + itemCount > 0 双重条件，
+    // 确保 scroll 在数据实际到位后执行。
     var wasLoading by remember { mutableStateOf(true) }
     val isLoading = refreshLoadState is LoadState.Loading
     LaunchedEffect(isLoading) {

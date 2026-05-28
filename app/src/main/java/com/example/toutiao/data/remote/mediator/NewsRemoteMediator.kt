@@ -110,11 +110,12 @@ class NewsRemoteMediator(
             //    Room 写入后，FeedDao.getFeedPagingSource() 自动感知变化，
             //    通过 Flow 发射新数据，触发 UI 重组
             if (loadType == LoadType.REFRESH) {
-                feedDao.deleteByChannel(channel)
-                remoteKeyDao.deleteByChannel(channel)
+                feedDao.replaceByChannel(channel, entities)
+                remoteKeyDao.replaceByChannel(channel, keys)
+            } else {
+                feedDao.insertAll(entities)
+                remoteKeyDao.insertAll(keys)
             }
-            feedDao.insertAll(entities)
-            remoteKeyDao.insertAll(keys)
 
             Timber.d("NewsRemoteMediator.load — inserted ${entities.size} entities, prevKey=$prevKey, nextKey=$nextKey")
             // F. 返回成功，Paging3 继续从 Room 读取并通知 UI

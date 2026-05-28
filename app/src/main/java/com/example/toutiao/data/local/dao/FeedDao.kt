@@ -5,19 +5,26 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.example.toutiao.data.local.entity.FeedItemEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FeedDao {
-    @Query("SELECT * FROM feed_items WHERE channel = :channel ORDER BY created_at DESC")
+    @Query("SELECT * FROM feed_items WHERE channel = :channel ORDER BY is_top DESC, created_at DESC")
     fun getFeedByChannel(channel: String): Flow<List<FeedItemEntity>>
 
-    @Query("SELECT * FROM feed_items WHERE channel = :channel ORDER BY created_at DESC")
+    @Query("SELECT * FROM feed_items WHERE channel = :channel ORDER BY is_top DESC, created_at DESC")
     fun getFeedPagingSource(channel: String): PagingSource<Int, FeedItemEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<FeedItemEntity>)
+
+    @Transaction
+    suspend fun replaceByChannel(channel: String, items: List<FeedItemEntity>) {
+        deleteByChannel(channel)
+        insertAll(items)
+    }
 
     @Query("DELETE FROM feed_items WHERE channel = :channel")
     suspend fun deleteByChannel(channel: String)

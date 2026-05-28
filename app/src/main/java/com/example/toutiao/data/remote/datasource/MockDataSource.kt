@@ -59,8 +59,11 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
         // 步骤 2：按频道过滤（1421 条 → 约 N 条，取决于频道映射）
         val filtered = filterByChannel(allItems, channel)
-        // 步骤 3：按时间倒序排列（最新新闻在前）
-        val sorted = filtered.sortedByDescending { parseDatetime(it.datetime) }
+        // 步骤 3：排序 — 置顶优先（isTop=true 在前），同组内按时间倒序
+        val sorted = filtered.sortedWith(
+            compareByDescending<RawNewsItem> { isPinned(it.source) }
+                .thenByDescending { parseDatetime(it.datetime) }
+        )
         // 步骤 4：基于 page 的分页截取（page=0 取前 8 条，page=1 取第 9~16 条...）
         val offset = page * size
         val pageItems = if (offset >= sorted.size) {
@@ -107,6 +110,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
             "hot" -> setOf("社会", "财经", "科技", "娱乐", "体育", "国际", "国内", "军事", "NBA", "中超", "英超")
             "video" -> setOf("视频")
             "society" -> setOf("社会", "法治", "法律", "时政", "国内", "中国", "地方", "教育", "健康", "环境", "环保")
+            "tech" -> setOf("科技", "互联网", "数码", "AI", "人工智能")
             else -> null
         }
         return if (categories == null) items else items.filter { it.category in categories }
@@ -138,7 +142,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
             videoUrl = if (type == "video") "" else null,
             duration = if (type == "video") generateDuration(index) else null,
             publishTime = relativeTime,
-            isTop = index == 0,
+            isTop = isPinned(raw.source),
         )
     }
 
@@ -149,6 +153,13 @@ class MockDataSource(context: Context) : RemoteDataSource {
     }
 
     // ── 辅助函数 ──────────────────────────────────────────────────────────────
+
+    // 权威来源标记为置顶，模拟真实新闻客户端"编辑推荐"行为
+    private fun isPinned(source: String): Boolean = when (source) {
+        "新华网", "新华社", "人民日报", "央视新闻", "央视体育", "央视纪录", "央视法治",
+        "教育部", "人社部", "法治日报", "国防部", "国务院" -> true
+        else -> false
+    }
 
     private val datetimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
