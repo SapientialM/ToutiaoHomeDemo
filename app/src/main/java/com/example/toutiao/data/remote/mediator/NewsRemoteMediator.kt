@@ -97,22 +97,22 @@ class NewsRemoteMediator(
             // B. DTO → Entity（NewsItemDto → FeedItemEntity，通过 NewsMapper.toEntity）
             val entities = items.map { it.toEntity(channel) }
 
-            // C. REFRESH 时需要清空旧数据再写入，APPEND 时追加
-            if (loadType == LoadType.REFRESH) {
-                feedDao.deleteByChannel(channel)
-                remoteKeyDao.deleteByChannel(channel)
-            }
-
-            // D. 计算 remote_keys：记录 prev/next 页码，供下次 REFRESH/APPEND 查询
+            // C. 计算 remote_keys：记录 prev/next 页码，供下次 REFRESH/APPEND 查询
             val prevKey = if (page == 0) null else page - 1
             val nextKey = if (endOfPaginationReached) null else page + 1
             val keys = entities.map {
                 RemoteKeyEntity(id = it.id, prevKey = prevKey, nextKey = nextKey, channel = channel)
             }
 
-            // E. 写入 Room：数据行 + 分页键
-            //     Room 写入后，FeedDao.getFeedPagingSource() 自动感知变化，
-            //     通过 Flow 发射新数据，触发 UI 重组
+            // D. 写入 Room：
+            //    REFRESH 时先清旧数据再写入新数据（在 load 成功后执行，避免清空后加载失败导致 UI 空态）
+            //    APPEND 时直接追加
+            //    Room 写入后，FeedDao.getFeedPagingSource() 自动感知变化，
+            //    通过 Flow 发射新数据，触发 UI 重组
+            if (loadType == LoadType.REFRESH) {
+                feedDao.deleteByChannel(channel)
+                remoteKeyDao.deleteByChannel(channel)
+            }
             feedDao.insertAll(entities)
             remoteKeyDao.insertAll(keys)
 
