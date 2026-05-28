@@ -26,6 +26,7 @@ sealed class FeedCard {
         override val commentCount: Int,
         override val publishTime: String,
         val imageUrl: String,
+        val isTop: Boolean = false,
     ) : FeedCard()
 
     data class LargeImage(
@@ -35,6 +36,7 @@ sealed class FeedCard {
         override val commentCount: Int,
         override val publishTime: String,
         val imageUrl: String,
+        val isTop: Boolean = false,
     ) : FeedCard()
 
     data class Video(
@@ -46,5 +48,6 @@ sealed class FeedCard {
         val imageUrl: String,
         val videoUrl: String,
         val duration: String,
+        val isTop: Boolean = false,
     ) : FeedCard()
 }

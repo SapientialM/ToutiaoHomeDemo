@@ -1,17 +1,21 @@
 package com.example.toutiao.presentation.home.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -31,13 +35,29 @@ fun LargeImageCard(card: FeedCard.LargeImage, modifier: Modifier = Modifier) {
         shape = RoundedCornerShape(0.dp),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = card.title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (card.isTop) {
+                    Surface(
+                        color = Color(0xFFD81E06),
+                        shape = RoundedCornerShape(2.dp),
+                    ) {
+                        Text(
+                            "置顶",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(
+                    text = card.title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.height(8.dp))
             AsyncImage(
                 model = card.imageUrl,

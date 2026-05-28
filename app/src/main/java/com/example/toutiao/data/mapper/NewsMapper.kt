@@ -65,6 +65,7 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         commentCount = commentCount,
         publishTime = publishTime ?: "",
         imageUrl = imageUrl ?: "",
+        isTop = isTop,
     )
     "large_image" -> FeedCard.LargeImage(
         id = id,
@@ -73,6 +74,7 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         commentCount = commentCount,
         publishTime = publishTime ?: "",
         imageUrl = imageUrl ?: "",
+        isTop = isTop,
     )
     "video" -> FeedCard.Video(
         id = id,
@@ -83,6 +85,7 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         imageUrl = imageUrl ?: "",
         videoUrl = videoUrl ?: "",
         duration = duration ?: "",
+        isTop = isTop,
     )
     // 未知 type 按 LeftTextRightImage 兜底渲染，避免崩溃
     else -> FeedCard.LeftTextRightImage(
@@ -92,5 +95,6 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         commentCount = commentCount,
         publishTime = publishTime ?: "",
         imageUrl = imageUrl ?: "",
+        isTop = isTop,
     )
 }
