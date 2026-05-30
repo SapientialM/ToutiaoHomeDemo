@@ -40,8 +40,11 @@ class NewsRemoteMediator(
     private val remoteKeyDao: RemoteKeyDao,
 ) : RemoteMediator<Int, FeedItemEntity>() {
 
+    // 优先使用本地缓存，避免每次 Pager 创建时（Tab 切换）都清空缓存。
+    // 这样断网时 PagingSource 能直接读到 Room 缓存数据，实现离线展示。
+    // 用户主动下拉刷新时，load(REFRESH) 会清空并重新加载最新数据。
     override suspend fun initialize(): InitializeAction {
-        return InitializeAction.LAUNCH_INITIAL_REFRESH
+        return InitializeAction.SKIP_INITIAL_REFRESH
     }
 
     override suspend fun load(

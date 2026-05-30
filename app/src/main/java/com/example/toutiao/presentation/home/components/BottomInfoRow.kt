@@ -22,6 +22,14 @@ fun BottomInfoRow(source: String, commentCount: Int, publishTime: String, modifi
                 color = Color.Gray,
             )
         }
+        if (publishTime.isNotBlank()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "· $publishTime",
+                fontSize = 12.sp,
+                color = Color.Gray,
+            )
+        }
     }
 }
 

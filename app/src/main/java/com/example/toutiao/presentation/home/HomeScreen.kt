@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -37,6 +38,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -337,26 +340,56 @@ private fun HomeTopBar(
             SearchPlaceholderBar(onClick = { onEvent(HomeUiEvent.OnSearchClicked) })
         }
 
-        ScrollableTabRow(
-            selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0),
-            containerColor = Color(0xFFD81E06),
-            contentColor = Color.White,
-            edgePadding = 0.dp,
-            divider = {},
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            tabs.forEach { (key, label) ->
-                val selected = key == currentTab
-                Tab(
-                    selected = selected,
-                    onClick = { onEvent(HomeUiEvent.OnTabSelected(key)) },
-                    text = {
-                        Text(
-                            text = label,
-                            fontSize = if (selected) 17.sp else 15.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) Color.White else Color.White.copy(alpha = 0.75f),
+            val selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0)
+            ScrollableTabRow(
+                selectedTabIndex = selectedTabIndex,
+                modifier = Modifier.weight(1f),
+                containerColor = Color(0xFFD81E06),
+                contentColor = Color.White,
+                edgePadding = 0.dp,
+                divider = {},
+                indicator = { tabPositions ->
+                    if (selectedTabIndex < tabPositions.size) {
+                        SecondaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                            height = 2.5.dp,
+                            color = Color.White,
                         )
-                    },
+                    }
+                },
+            ) {
+                tabs.forEach { (key, label) ->
+                    val selected = key == currentTab
+                    Tab(
+                        selected = selected,
+                        onClick = { onEvent(HomeUiEvent.OnTabSelected(key)) },
+                        text = {
+                            Text(
+                                text = label,
+                                fontSize = if (selected) 17.sp else 15.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) Color.White else Color.White.copy(alpha = 0.75f),
+                            )
+                        },
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .clickable { onEvent(HomeUiEvent.OnMoreChannelsClicked) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "≡",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }
@@ -373,7 +406,7 @@ private fun WeatherHeader(onToggleDebug: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
             Icon(
-                imageVector = Icons.Filled.Search,
+                imageVector = Icons.Filled.WbSunny,
                 contentDescription = "天气",
                 tint = Color.Yellow,
                 modifier = Modifier.size(20.dp),
@@ -435,19 +468,33 @@ private fun SearchPlaceholderBar(onClick: () -> Unit) {
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
         ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = Color(0xFFD81E06),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(6.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = Color(0xFFD81E06),
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "今天发生了什么",
+                    color = Color.Gray,
+                    fontSize = 14.sp,
+                )
+            }
             Text(
                 text = "搜索",
-                color = Color.Gray,
+                color = Color(0xFFD81E06),
                 fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable(onClick = onClick),
             )
         }
     }
@@ -626,6 +673,51 @@ private fun HomeScreenSuccessPreview() {
                 onToggleDebug = {},
                 onEvent = {},
             )
+        }
+    }
+}
+
+@Preview(name = "Loading", showBackground = true)
+@Composable
+private fun HomeScreenLoadingPreview() {
+    com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(color = Color(0xFFD81E06))
+        }
+    }
+}
+
+@Preview(name = "Error", showBackground = true)
+@Composable
+private fun HomeScreenErrorPreview() {
+    com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("网络连接失败", color = Color.Gray)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {}) {
+                    Text("重试")
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "Empty", showBackground = true)
+@Composable
+private fun HomeScreenEmptyPreview() {
+    com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("暂无内容", color = Color.Gray)
         }
     }
 }

@@ -75,17 +75,6 @@ fun LargeImageCard(card: FeedCard.LargeImage, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(8.dp))
                 BottomInfoRow(card.source, card.commentCount, card.publishTime)
             }
-            // 关闭按钮
-            Text(
-                text = "×",
-                fontSize = 16.sp,
-                color = Color.LightGray,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 4.dp, bottom = 4.dp)
-                    .clickable { },
-            )
         }
     }
 }

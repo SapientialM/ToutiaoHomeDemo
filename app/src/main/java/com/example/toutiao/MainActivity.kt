@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import com.example.toutiao.presentation.common.AppBottomNav
 import com.example.toutiao.presentation.home.HomeScreen
 import com.example.toutiao.presentation.home.HomeViewModel
+import com.example.toutiao.presentation.profile.ProfileScreen
 import com.example.toutiao.presentation.video.VideoScreen
 import com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -52,7 +53,7 @@ class MainActivity : ComponentActivity() {
                             1 -> VideoScreen()   // 占位页面，下一步再实现
                             2 -> SearchPlaceholderScreen()  // 占位页面
                             3 -> TaskPlaceholderScreen()    // 占位页面
-                            4 -> ProfilePlaceholderScreen() // 占位页面
+                            4 -> ProfileScreen()
                         }
                     }
                 }
@@ -75,9 +76,4 @@ fun TaskPlaceholderScreen() {
     }
 }
 
-@Composable
-fun ProfilePlaceholderScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("我的页 - 待实现", color = Color.Gray)
-    }
-}
+

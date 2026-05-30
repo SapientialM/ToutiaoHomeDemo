@@ -10,4 +10,5 @@ sealed class HomeUiEvent {
     data class OnSearchQueryChanged(val query: String) : HomeUiEvent()
     data object OnSearchSubmit : HomeUiEvent()
     data object OnSearchDismiss : HomeUiEvent()
+    data object OnMoreChannelsClicked : HomeUiEvent()
 }

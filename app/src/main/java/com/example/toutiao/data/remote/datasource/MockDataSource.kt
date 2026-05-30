@@ -59,10 +59,12 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
         // 步骤 2：按频道过滤（1421 条 → 约 N 条，取决于频道映射）
         val filtered = filterByChannel(allItems, channel)
-        // 步骤 3：排序 — 首选日期倒序，同日期的置顶在前
+        // 步骤 3：排序 — 先按日期（天）倒序，同一日内置顶在前，同日内按精确时间倒序
+        // 必须与 Room 查询排序一致：ORDER BY date(created_at/1000, 'unixepoch') DESC, is_top DESC, created_at DESC
         val sorted = filtered.sortedWith(
-            compareByDescending<RawNewsItem> { parseDatetime(it.datetime) }
+            compareByDescending<RawNewsItem> { parseDatetime(it.datetime).toLocalDate() }
                 .thenByDescending { isPinned(it.source) }
+                .thenByDescending { parseDatetime(it.datetime) }
         )
         // 步骤 4：基于 page 的分页截取（page=0 取前 8 条，page=1 取第 9~16 条...）
         val offset = page * size
@@ -107,6 +109,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
     private fun filterByChannel(items: List<RawNewsItem>, channel: String): List<RawNewsItem> {
         val categories = when (channel) {
             "recommend" -> null // 全量
+            "follow" -> setOf("关注") // 关注频道暂无独立数据源，返回空列表
             "hot" -> setOf("社会", "财经", "科技", "娱乐", "体育", "国际", "国内", "军事", "NBA", "中超", "英超")
             "video" -> setOf("视频")
             "society" -> setOf("社会", "法治", "法律", "时政", "国内", "中国", "地方", "教育", "健康", "环境", "环保")
@@ -184,7 +187,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
     private fun formatRelativeTime(datetime: String): String {
         return try {
             val dt = parseDatetime(datetime)
-            val now = LocalDateTime.of(2026, 5, 25, 23, 59)
+            val now = LocalDateTime.now()
             val days = ChronoUnit.DAYS.between(dt.toLocalDate(), now.toLocalDate())
             when {
                 days == 0L -> {

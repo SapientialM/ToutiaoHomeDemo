@@ -108,6 +108,9 @@ class HomeViewModel @Inject constructor(
                 _searchResults.value = emptyList()
                 _uiState.update { (it as? HomeUiState.Success)?.copy(isSearching = false) ?: it }
             }
+            is HomeUiEvent.OnMoreChannelsClicked -> {
+                Timber.d("OnMoreChannelsClicked — 预留更多频道入口")
+            }
         }
     }
 
