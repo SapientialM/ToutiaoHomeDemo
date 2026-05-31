@@ -24,8 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.text.style.TextAlign
 import coil.compose.AsyncImage
 import com.example.toutiao.domain.model.FeedCard
 
@@ -76,17 +74,6 @@ fun LeftTextRightImageCard(card: FeedCard.LeftTextRightImage, modifier: Modifier
                         .clip(RoundedCornerShape(4.dp)),
                 )
             }
-            // 关闭按钮
-            Text(
-                text = "×",
-                fontSize = 16.sp,
-                color = Color.LightGray,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 4.dp, bottom = 4.dp)
-                    .clickable { },
-            )
         }
     }
 }
