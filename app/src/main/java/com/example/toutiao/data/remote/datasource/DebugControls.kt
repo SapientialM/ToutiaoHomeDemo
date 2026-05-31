@@ -9,6 +9,7 @@ object DebugControls {
     @Volatile var shouldSimulateError: Boolean = false
     const val DEFAULT_ERROR_MESSAGE: String = "模拟网络错误，请重试"
 
+    @Synchronized
     fun reset() {
         networkDelayMs = 0L
         shouldSimulateError = false
