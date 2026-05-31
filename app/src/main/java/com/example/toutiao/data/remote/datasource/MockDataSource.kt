@@ -31,9 +31,7 @@ import java.time.temporal.ChronoUnit
 //   NewsFeedResponse       ← 返回给调用方（NewsRemoteMediator 或 NewsRepositoryImpl）
 //
 // 谁调用这里：
-//   NewsRemoteMediator.load()  → Paging3 分页时调用（主要路径）
-//   NewsRepositoryImpl.getNewsFeed() → 直接调用（兼容路径）
-//   NewsRepositoryImpl.hasMore()     → 检查是否还有更多页
+//   NewsRemoteMediator.load()  → Paging3 分页时调用（唯一调用路径）
 // =============================================================================
 class MockDataSource(context: Context) : RemoteDataSource {
 

@@ -7,6 +7,7 @@ sealed class HomeUiState {
         val currentTab: String = "recommend",
         val searchQuery: String = "",
         val isSearching: Boolean = false,
+        val searchError: String? = null,
     ) : HomeUiState()
     data class Error(
         val message: String,

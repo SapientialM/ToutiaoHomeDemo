@@ -106,7 +106,7 @@ class HomeViewModel @Inject constructor(
             is HomeUiEvent.OnSearchDismiss -> {
                 _searchQuery.value = ""
                 _searchResults.value = emptyList()
-                _uiState.update { (it as? HomeUiState.Success)?.copy(isSearching = false) ?: it }
+                _uiState.update { (it as? HomeUiState.Success)?.copy(isSearching = false, searchError = null) ?: it }
             }
             is HomeUiEvent.OnMoreChannelsClicked -> {
                 Timber.d("OnMoreChannelsClicked — 预留更多频道入口")
@@ -127,8 +127,11 @@ class HomeViewModel @Inject constructor(
             try {
                 val results = newsRepository.searchNews(query)
                 _searchResults.value = results
+                _uiState.update { (it as? HomeUiState.Success)?.copy(searchError = null) ?: it }
             } catch (e: Exception) {
                 Timber.e(e, "performSearch failed")
+                _searchResults.value = emptyList()
+                _uiState.update { (it as? HomeUiState.Success)?.copy(searchError = "搜索失败，请稍后重试") ?: it }
             }
         }
     }

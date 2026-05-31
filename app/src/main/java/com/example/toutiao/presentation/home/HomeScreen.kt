@@ -114,7 +114,9 @@ private fun HomeScreenContent(
     onToggleDebug: () -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
-    val isSearching = (uiState as? HomeUiState.Success)?.isSearching ?: false
+    val successState = uiState as? HomeUiState.Success
+    val isSearching = successState?.isSearching ?: false
+    val searchError = successState?.searchError
 
     DebugDialog(showDialog = showDebugDialog, onDismiss = onToggleDebug)
 
@@ -143,7 +145,15 @@ private fun HomeScreenContent(
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("点击搜索按钮查看结果", color = Color.Gray)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (searchError != null) {
+                            Text(searchError, color = Color(0xFFD81E06))
+                            Spacer(Modifier.height(4.dp))
+                            Text("点击搜索按钮重试", color = Color.Gray, fontSize = 13.sp)
+                        } else {
+                            Text("点击搜索按钮查看结果", color = Color.Gray)
+                        }
+                    }
                 }
             }
             else -> {

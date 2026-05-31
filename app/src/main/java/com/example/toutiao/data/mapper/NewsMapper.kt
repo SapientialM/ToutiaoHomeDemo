@@ -22,7 +22,7 @@ import com.example.toutiao.domain.model.FeedCard
 // =============================================================================
 
 // ── DTO → Entity：网络数据转为 Room 表行 ──────────────────────────────────────
-// 调用方：NewsRemoteMediator.load() 或 NewsRepositoryImpl.getNewsFeed()
+// 调用方：NewsRemoteMediator.load()
 // 在网络请求成功后调用，将每条 DTO 映射为 Entity 然后 batch insert 到 Room
 fun NewsItemDto.toEntity(channel: String): FeedItemEntity = FeedItemEntity(
     id = id,

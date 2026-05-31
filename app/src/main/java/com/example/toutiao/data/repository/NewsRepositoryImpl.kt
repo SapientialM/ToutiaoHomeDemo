@@ -8,7 +8,6 @@ import androidx.paging.map
 import com.example.toutiao.data.local.dao.FeedDao
 import com.example.toutiao.data.local.dao.RemoteKeyDao
 import com.example.toutiao.data.mapper.toDomain
-import com.example.toutiao.data.mapper.toEntity
 import com.example.toutiao.data.remote.datasource.RemoteDataSource
 import com.example.toutiao.data.remote.mediator.NewsRemoteMediator
 import com.example.toutiao.domain.model.FeedCard
@@ -25,39 +24,6 @@ class NewsRepositoryImpl @Inject constructor(
     private val feedDao: FeedDao,
     private val remoteKeyDao: RemoteKeyDao,
 ) : NewsRepository {
-
-    override suspend fun getNewsFeed(channel: String, page: Int, size: Int): List<FeedCard> {
-        return try {
-            Timber.d("getNewsFeed — channel=$channel, page=$page")
-            val response = remoteDataSource.getNewsFeed(channel, page, size)
-            if (response.code == 0) {
-                val entities = response.data.list.map { it.toEntity(channel) }
-                feedDao.insertAll(entities)
-                entities.map { it.toDomain() }
-            } else {
-                Timber.w("getNewsFeed — API returned non-zero code: ${response.code}")
-                emptyList()
-            }
-        } catch (e: Exception) {
-            Timber.e(e, "getNewsFeed failed")
-            emptyList()
-        }
-    }
-
-    override suspend fun hasMore(channel: String, page: Int): Boolean {
-        return try {
-            remoteDataSource.getNewsFeed(channel, page, 1).data.hasMore
-        } catch (e: Exception) {
-            Timber.e(e, "hasMore failed")
-            false
-        }
-    }
-
-    override fun getCachedFeed(channel: String): Flow<List<FeedCard>> {
-        return feedDao.getFeedByChannel(channel).map { entities ->
-            entities.map { it.toDomain() }
-        }
-    }
 
     // =========================================================================
     // getFeedPagingData — Paging3 分页数据流的主入口
