@@ -122,10 +122,11 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 | 卡片类型 | 对应组件 | 特征 |
 |----------|----------|------|
-| TextTop | `TextTopCard` | 标题 + "置顶"标签 + 来源 + 评论数 + 时间 |
+| TextTop | `TextTopCard` | 标题 + "置顶"标签 + 来源 + 评论数 + 时间（极少出现） |
 | LeftTextRightImage | `LeftTextRightImageCard` | 左侧文字区 + 右侧缩略图 |
 | LargeImage | `LargeImageCard` | 标题 + 底部大图 |
-| Video | `VideoCard` | 标题 + 封面图 + 播放按钮 + 时长 |
+
+> 注：Video 类型尚未实现，当前仅 3 种卡片。TextTop 仅在首页首条且为权威来源时出现，列表以左文右图和大图为主。
 
 所有卡片统一包裹 `clickable`，点击事件通过 `HomeUiEvent.OnCardClick(id)` 上报，当前仅打印日志，未跳转详情页。
 
@@ -134,7 +135,8 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 - `MockDataSource` 实现 `RemoteDataSource` 接口，从 `assets/news_data.json` 加载 1421 条真实新闻数据
 - 支持 `channel` 和 `page` 参数，按频道过滤后分页返回（page=0 返回前 8 条，依此类推）
 - `hasMore` 根据实际数据量动态计算
-- 图片使用新闻自带的封面图 URL
+- 图片使用新闻自带的封面图 URL；无封面图时自动使用 `picsum.photos` 占位图
+- 卡片类型分配策略：TextTop 仅保留在首页首条权威来源，其余按 1:1 分配 LargeImage 与 LeftTextRightImage，整体以图文卡片为主
 - 切换真实后端时，只需在 `di/DataSourceModule.kt` 中替换 `RemoteDataSource` 的实现类，零业务代码改动
 
 ### 7. 数据层
