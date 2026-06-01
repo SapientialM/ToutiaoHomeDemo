@@ -40,6 +40,15 @@ class MockDataSource(context: Context) : RemoteDataSource {
         loadFromAssets(context)
     }
 
+    // 从全部新闻中提取所有真实图片 URL，并将 HTTP 升级为 HTTPS，供无图新闻循环复用
+    private val imageUrlPool: List<String> by lazy {
+        allItems.mapNotNull { it.imageUrl }
+            .filter { it.isNotBlank() }
+            .map { it.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://") }
+            .distinct()
+            .also { Timber.d("MockDataSource — imageUrlPool size = ${it.size}") }
+    }
+
     // 这是 RemoteDataSource 接口的唯一方法，也是数据流的唯一切入点。
     // channel 来自 ViewModel 的当前 Tab（recommend/hot/video/society）
     // page 来自 Paging3 的 LoadType（REFRESH=0, APPEND=N, PREPEND=N-1）
@@ -119,19 +128,32 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
     // ── RawNewsItem → NewsItemDto 映射（核心转换逻辑） ─────────────────────────
     // 这里的转换决定了每条新闻最终以哪种卡片类型渲染：
-    //   text_top → TextTopCard（纯文字置顶）
+    //   text_top → TextTopCard（置顶纯文字）
     //   left_text_right_image → LeftTextRightImageCard（左文右图）
-    //   large_image → LargeImageCard（大图）
-    //   video → VideoCard（视频播放按钮 + 时长）
+    //   large_image → LargeImageCard（上文下大图）
     //
     // 推断规则：
-    //   分类 == "视频" → video
-    //   无封面图 → text_top
-    //   有封面图 → 按 index % 3 交替分配 large_image 和 left_text_right_image
+    //   首页首条权威来源 → text_top（每页最多 1 条纯文本）
+    //   其余新闻 → 按 index 1:1 分配 large_image 和 left_text_right_image
+    //
+    // 图片策略：
+    //   1. 原始 URL 存在时，自动将 HTTP 升级为 HTTPS（避免 Android 9+ 明文流量拦截）
+    //   2. 原始 URL 为空时，从 imageUrlPool 中循环分配真实新闻图片，确保所有图文卡片都有图
     private fun mapToDto(raw: RawNewsItem, channel: String, index: Int): NewsItemDto {
-        val type = determineType(raw.category, raw.imageUrl, index)
+        val pinned = isPinned(raw.source)
+        val type = determineType(raw.imageUrl, index, pinned)
         val relativeTime = formatRelativeTime(raw.datetime)
         val commentCount = generateCommentCount(raw.category, index)
+
+        val resolvedImageUrl = when {
+            type == "text_top" -> null
+            !raw.imageUrl.isNullOrBlank() -> raw.imageUrl.replace(
+                Regex("^http://", RegexOption.IGNORE_CASE),
+                "https://"
+            )
+            imageUrlPool.isNotEmpty() -> imageUrlPool[index % imageUrlPool.size]
+            else -> null
+        }
 
         return NewsItemDto(
             id = "${channel}_${index}_${raw.datetime.hashCode()}",
@@ -139,19 +161,24 @@ class MockDataSource(context: Context) : RemoteDataSource {
             title = raw.title,
             source = raw.source,
             commentCount = commentCount,
-            imageUrl = if (type != "text_top") raw.imageUrl else null,
-            videoUrl = if (type == "video") "" else null,
-            duration = if (type == "video") generateDuration(index) else null,
+            imageUrl = resolvedImageUrl,
+            videoUrl = null,
+            duration = null,
             publishTime = relativeTime,
-            isTop = isPinned(raw.source),
+            isTop = pinned,
             createdAt = parseDatetimeToMillis(raw.datetime),
         )
     }
 
-    private fun determineType(category: String, imageUrl: String?, index: Int): String {
-        if (category == "视频") return "video"
-        if (imageUrl.isNullOrBlank()) return "text_top"
-        return if (index % 3 == 0) "large_image" else "left_text_right_image"
+    private fun determineType(imageUrl: String?, index: Int, isPinned: Boolean): String {
+        // 纯文本置顶仅保留在首页首条且为权威来源时，极大减少纯文本卡片占比
+        if (isPinned && index == 0) return "text_top"
+
+        // 无论是否有封面图，均按 1:1 分配大图和左文右图，提升图文卡片整体比例
+        return when (index % 2) {
+            0 -> "large_image"
+            else -> "left_text_right_image"
+        }
     }
 
     // ── 辅助函数 ──────────────────────────────────────────────────────────────
@@ -169,6 +196,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
         return try {
             LocalDateTime.parse(datetime, datetimeFormatter)
         } catch (e: Exception) {
+            Timber.w(e, "MockDataSource — failed to parse datetime: $datetime")
             LocalDateTime.MIN
         }
     }
@@ -178,6 +206,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
             java.time.ZoneId.systemDefault()
                 .let { LocalDateTime.parse(datetime, datetimeFormatter).atZone(it).toInstant().toEpochMilli() }
         } catch (e: Exception) {
+            Timber.w(e, "MockDataSource — failed to parse datetime to millis: $datetime")
             0L
         }
     }
@@ -196,6 +225,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
                 else -> "${days}天前"
             }
         } catch (e: Exception) {
+            Timber.w(e, "MockDataSource — failed to format relative time: $datetime")
             datetime
         }
     }
@@ -210,9 +240,4 @@ class MockDataSource(context: Context) : RemoteDataSource {
         return base + (index * 137 % 9000)
     }
 
-    private fun generateDuration(index: Int): String {
-        val minutes = (index * 7 + 3) % 60
-        val seconds = (index * 13 + 7) % 60
-        return "%02d:%02d".format(minutes, seconds)
-    }
 }
