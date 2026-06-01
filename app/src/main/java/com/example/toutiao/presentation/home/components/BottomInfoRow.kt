@@ -11,8 +11,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun BottomInfoRow(source: String, commentCount: Int, publishTime: String, modifier: Modifier = Modifier) {
+fun BottomInfoRow(source: String, commentCount: Int, publishTime: String, isTop: Boolean = false, modifier: Modifier = Modifier) {
     Row(modifier = modifier) {
+        if (isTop) {
+            Text(text = "置顶", fontSize = 12.sp, color = Color(0xFFD81E06))
+            Spacer(Modifier.width(8.dp))
+        }
         Text(text = source, fontSize = 12.sp, color = Color.Gray)
         if (commentCount > 0) {
             Spacer(Modifier.width(8.dp))

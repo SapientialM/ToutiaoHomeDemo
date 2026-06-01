@@ -1,5 +1,6 @@
 package com.example.toutiao.presentation.home.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,13 +13,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,46 +34,39 @@ fun LeftTextRightImageCard(card: FeedCard.LeftTextRightImage, modifier: Modifier
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(0.dp),
     ) {
-        Box(modifier = Modifier.padding(12.dp)) {
-            Row {
-                Column(modifier = Modifier.weight(1f)) {
-                    if (card.isTop) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = Color(0xFFD81E06),
-                                shape = RoundedCornerShape(2.dp),
-                            ) {
-                                Text(
-                                    "置顶",
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Spacer(Modifier.height(4.dp))
+        Column {
+            Box(modifier = Modifier.padding(if (card.isTop) 8.dp else 12.dp)) {
+                Row {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = card.title,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(if (card.isTop) 4.dp else 8.dp))
+                        BottomInfoRow(card.source, card.commentCount, card.publishTime, isTop = card.isTop)
                     }
-                    Text(
-                        text = card.title,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                    Spacer(Modifier.width(12.dp))
+                    AsyncImage(
+                        model = card.imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        placeholder = ColorPainter(Color(0xFFEEEEEE)),
+                        error = ColorPainter(Color(0xFFDDDDDD)),
+                        modifier = Modifier
+                            .size(width = 160.dp, height = 106.dp)
+                            .clip(RoundedCornerShape(4.dp)),
                     )
-                    Spacer(Modifier.height(8.dp))
-                    BottomInfoRow(card.source, card.commentCount, card.publishTime)
                 }
-                Spacer(Modifier.width(12.dp))
-                AsyncImage(
-                    model = card.imageUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(width = 120.dp, height = 80.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                )
             }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(Color(0xFFEEEEEE))
+            )
         }
     }
 }
