@@ -2,7 +2,6 @@ package com.example.toutiao.presentation.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -70,7 +69,6 @@ import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.home.components.LargeImageCard
 import com.example.toutiao.presentation.home.components.LeftTextRightImageCard
 import com.example.toutiao.presentation.home.components.TextTopCard
-import com.example.toutiao.presentation.home.components.VideoCard
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -250,7 +248,6 @@ private fun PagingFeedList(
                 LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(
                         count = lazyPagingItems.itemCount,
@@ -263,7 +260,6 @@ private fun PagingFeedList(
                                     is FeedCard.TextTop -> TextTopCard(card)
                                     is FeedCard.LeftTextRightImage -> LeftTextRightImageCard(card)
                                     is FeedCard.LargeImage -> LargeImageCard(card)
-                                    is FeedCard.Video -> VideoCard(card)
                                 }
                             }
                         }
@@ -296,7 +292,6 @@ private fun SearchResultList(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(results, key = { it.id }) { card ->
             Box(modifier = Modifier.clickable { onCardClick(card.id) }) {
@@ -304,7 +299,6 @@ private fun SearchResultList(
                     is FeedCard.TextTop -> TextTopCard(card)
                     is FeedCard.LeftTextRightImage -> LeftTextRightImageCard(card)
                     is FeedCard.LargeImage -> LargeImageCard(card)
-                    is FeedCard.Video -> VideoCard(card)
                 }
             }
         }
@@ -471,7 +465,7 @@ private fun SearchPlaceholderBar(onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .height(36.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(4.dp))
             .background(Color.White)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.CenterStart,
@@ -538,7 +532,7 @@ private fun SearchInputBar(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .background(Color.White)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             singleLine = true,
@@ -659,11 +653,9 @@ private val mockFeedItems = listOf(
     FeedCard.TextTop(id = "1", title = "Title 1", source = "Source 1", commentCount = 12876, publishTime = "3 hours ago"),
     FeedCard.LeftTextRightImage(id = "2", title = "Title 2", source = "Source 2", commentCount = 5432, publishTime = "5 hours ago", imageUrl = "https://picsum.photos/seed/news2/400/300"),
     FeedCard.LargeImage(id = "3", title = "Title 3", source = "Source 3", commentCount = 9876, publishTime = "1 hour ago", imageUrl = "https://picsum.photos/seed/news3/800/450"),
-    FeedCard.Video(id = "4", title = "Title 4", source = "Source 4", commentCount = 23456, publishTime = "2 hours ago", imageUrl = "https://picsum.photos/seed/news4/800/450", videoUrl = "", duration = "08:25"),
     FeedCard.LeftTextRightImage(id = "5", title = "Title 5", source = "Source 5", commentCount = 3456, publishTime = "6 hours ago", imageUrl = "https://picsum.photos/seed/news5/400/300"),
     FeedCard.TextTop(id = "6", title = "Title 6", source = "Source 6", commentCount = 5678, publishTime = "4 hours ago"),
     FeedCard.LargeImage(id = "7", title = "Title 7", source = "Source 7", commentCount = 7890, publishTime = "2 hours ago", imageUrl = "https://picsum.photos/seed/news7/800/450"),
-    FeedCard.Video(id = "8", title = "Title 8", source = "Source 8", commentCount = 15678, publishTime = "1 hour ago", imageUrl = "https://picsum.photos/seed/news8/800/450", videoUrl = "", duration = "12:40"),
 )
 
 @Preview(name = "Success", showBackground = true, showSystemUi = true)

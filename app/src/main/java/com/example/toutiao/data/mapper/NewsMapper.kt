@@ -76,17 +76,6 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         imageUrl = imageUrl ?: "",
         isTop = isTop,
     )
-    "video" -> FeedCard.Video(
-        id = id,
-        title = title,
-        source = source,
-        commentCount = commentCount,
-        publishTime = publishTime ?: "",
-        imageUrl = imageUrl ?: "",
-        videoUrl = videoUrl ?: "",
-        duration = duration ?: "",
-        isTop = isTop,
-    )
     // 未知 type 按 LeftTextRightImage 兜底渲染，避免崩溃
     else -> FeedCard.LeftTextRightImage(
         id = id,
