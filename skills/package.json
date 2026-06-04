@@ -1,0 +1,31 @@
+{
+  "name": "android-dev-assist",
+  "version": "1.0.0",
+  "description": "MCP Server for Android development assistance - screenshot, interaction, build, verify",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsup src/server.ts --out-dir dist --format esm --clean",
+    "start": "node dist/server.js",
+    "dev": "tsup src/server.ts --out-dir dist --format esm --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "dotenv": "^17.4.2",
+    "openai": "^6.41.0",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/ui": "^3.2.6",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.6"
+  }
+}

@@ -34,8 +34,8 @@
 - **当前已交付**：
   - ✅ MVI + Clean Architecture 完整包结构（domain / data / presentation / di）
   - ✅ 4 种卡片类型渲染（TextTop / LeftTextRightImage / LargeImage / Video）
-  - ✅ 顶部 Tab 切换（推荐 / 热榜 / 视频 / 社会）
-  - ✅ 底部导航栏 UI（首页 / 视频 / 搜索 / 任务 / 我的，纯视觉）
+  - ✅ 顶部 Tab 切换（6 个频道：关注 / 推荐 / 热榜 / 新时代 / 小说 / 视频）
+  - ✅ 底部导航栏页面切换（首页 / 视频 / 搜索 / 任务 / 我的，5 个独立页面）
   - ✅ Paging3 + RemoteMediator 混合分页（替换手动分页，支持下拉刷新与自动加载更多）
   - ✅ Room 缓存优先离线展示（PagingSource 读取 Room，RemoteMediator 写入 Room，断网展示缓存）
   - ✅ Room 双表设计（feed_items + remote_keys）+ DAO/Database/Entity + WAL 模式
@@ -43,13 +43,15 @@
   - ✅ Hilt + KSP 依赖注入（NetworkModule / DatabaseModule / RepositoryModule）
   - ✅ Timber 全链路日志（ViewModel → Repository → MockDataSource → NewsRemoteMediator）
   - ✅ Compose 多状态 Preview（Loading / Success / Error / Empty / Refreshing）
-  - ✅ 搜索栏交互（点击展开、输入、提交、取消，展示 Mock 搜索结果）
+  - ✅ 搜索功能双入口（首页顶部搜索栏 + 底部导航独立搜索页，均展示 Mock 搜索结果）
+  - ✅ Video 视频列表页（独立页面，展示视频封面、播放按钮、时长、作者、播放量）
   - ✅ 性能优化基础（FeedCard @Immutable、Room channel 索引、Coil ImageLoader 内存缓存配置）
 - **当前未开始**：
-  - ⬜ 新闻详情页 / 视频播放
+  - ⬜ 新闻详情页（点击卡片仅打印日志，无页面跳转）
+  - ⬜ 视频实际播放能力（VideoCard 仅封面 + 播放按钮 UI）
   - ⬜ Compose 重组深度分析、图片尺寸严格限制
   - ⬜ ktlint / detekt 代码规范检查
-- **结论**：如果你看到 HomeScreen 能正常展示 4 种卡片、Tab 切换、下拉刷新和加载更多，但还没有 Paging3 的 RemoteMediator，这是当前仓库的真实状态，不是你看错
+- **结论**：项目当前已完整实现首页信息流、5 个底部导航页面、Paging3 + RemoteMediator 分页、Room 离线缓存、搜索双入口等核心功能。如果你看到底部导航只是纯视觉展示而没有页面切换，说明你看的是旧版本代码。
 
 ---
 
@@ -85,6 +87,44 @@
 
 APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
+### MCP Skill：android-dev-assist
+
+`skills/` 目录包含一个 MCP Server（`android-dev-assist`），提供以下能力：
+
+| 工具 | 功能 |
+|------|------|
+| `screenshot` | ADB 截图，返回 JSON `{path, timestamp, sizeBytes}` |
+| `tap / swipe / input_text / press_key` | ADB 基础交互，返回 JSON |
+| `vision_action` | **视觉驱动交互**：截图 → Kimi k2.6 识别元素 → 返回坐标 JSON → ADB 执行 → 截图确认。支持 `prompt` (单步) 和 `prompts` (多步串联)。所有响应为 JSON 结构化格式 |
+| `analyze_screenshot` | 3 阶段分析（PIL 像素测量 + Kimi 视觉 AI + 卡片精确验证），输出 JSON |
+| `compare_screenshots` | Kimi 视觉对比两张截图，输出 JSON |
+| `verify_ui` | UI 验证（像素对比 / 颜色检查），输出 JSON |
+| `get_logs` | ADB logcat 日志，输出 JSON `{logs[], appRunning, pid}` |
+| `build / build_deploy` | Gradle 构建 + 部署 |
+| `device_info / list_devices / shell_command` | 设备管理 |
+| `list_apps / app_info / uninstall_app / clear_app_data / stop_app` | 应用管理 |
+| `performance_metrics / record_screen` | 性能监控 |
+| `code_quality / run_tests` | 代码质量 |
+| `ui_test / regression_test` | UI 自动化测试 |
+| `project_report` | 项目综合报告 |
+| `push_file / pull_file` | 文件传输 |
+| `network_state / set_network` | 网络调试 |
+
+**所有工具输出均为标准 JSON 结构**，`isError` 字段表示错误状态。
+
+**运行要求**：
+- `MOONSHOT_API_KEY` 环境变量（Kimi 视觉 API）
+- ADB 可用 + Android 设备/模拟器连接
+- `pip install pillow`（PIL 像素分析）
+
+**构建与测试**：
+```bash
+cd skills && npm run build     # 构建
+cd skills && npm test          # 26 个单元测试
+```
+
+**注意**：`vision_action` 内部使用的 system prompt 已将 JSON 输出格式固化到 Kimi 模型层，Agent 调用时只需传入自然语言指令。
+
 ---
 
 ## 当前产品行为
@@ -98,8 +138,8 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 ### 2. 顶部 Tab 切换
 
-- 4 个频道：推荐(recommend) / 热榜(hot) / 视频(video) / 社会(society)
-- 切换 Tab 时重置 page=0，进入 Loading 状态后请求新数据
+- 6 个频道：关注(follow) / 推荐(recommend) / 热榜(hot) / 新时代(new era) / 小说(novel) / 视频(video)
+- 切换 Tab 时通过 `key(currentTab)` 销毁旧 Paging 流，新 Tab 从 page=0 开始加载
 - 当前选中 Tab 字体更大(18sp)、加粗、纯白；未选中略小(15sp)、半透明
 - 搜索栏支持点击展开输入框、输入关键词、提交搜索、返回取消，展示 Mock 搜索结果
 
@@ -125,8 +165,9 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 | TextTop | `TextTopCard` | 标题 + "置顶"标签 + 来源 + 评论数 + 时间（极少出现） |
 | LeftTextRightImage | `LeftTextRightImageCard` | 左侧文字区 + 右侧缩略图 |
 | LargeImage | `LargeImageCard` | 标题 + 底部大图 |
+| Video | `VideoCardItem` | 视频封面(16:9) + 播放按钮 + 时长标签 + 标题 + 作者/播放量 |
 
-> 注：Video 类型尚未实现，当前仅 3 种卡片。TextTop 仅在首页首条且为权威来源时出现，列表以左文右图和大图为主。
+> 注：4 种卡片类型均已实现。TextTop 仅在首页首条且为权威来源时出现，列表以左文右图和大图为主。VideoCard 仅展示封面和播放按钮 UI，无实际视频播放能力。
 
 所有卡片统一包裹 `clickable`，点击事件通过 `HomeUiEvent.OnCardClick(id)` 上报，当前仅打印日志，未跳转详情页。
 
@@ -155,7 +196,13 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 - 5 个 Tab：首页 / 视频 / 搜索 / 任务 / 我的
 - `selectedIndex` 是纯本地 UI 状态（`remember { mutableIntStateOf(0) }`），不经过 ViewModel
-- 当前仅做视觉展示，不触发页面切换
+- 使用 `when (selectedBottomNav)` 在 `MainActivity.kt` 中切换 5 个独立页面：
+  - 0 → `HomeScreen`（首页信息流）
+  - 1 → `VideoScreen`（视频列表页）
+  - 2 → `SearchScreen`（独立搜索页）
+  - 3 → `TaskScreen`（任务中心）
+  - 4 → `ProfileScreen`（个人中心）
+- 每个页面都有独立的 Screen 组件和 ViewModel（除 Task/Profile 为静态展示页）
 
 ### 9. 主题
 
@@ -203,13 +250,20 @@ com.example.toutiao/
 ├── domain/repository/     # NewsRepository 接口
 ├── data/remote/api/       # Retrofit API 接口
 ├── data/remote/dto/       # Kotlinx Serialization DTO
-├── data/local/entity/     # Room Entity
-├── data/local/dao/        # Room DAO
+├── data/remote/datasource/# RemoteDataSource 接口 + MockDataSource + RetrofitDataSource
+├── data/remote/mediator/  # NewsRemoteMediator（Paging3 混合分页）
+├── data/local/entity/     # Room Entity（FeedItemEntity + RemoteKeyEntity）
+├── data/local/dao/        # Room DAO（FeedDao + RemoteKeyDao）
 ├── data/local/database/   # AppDatabase
 ├── data/repository/       # NewsRepositoryImpl
 ├── data/mapper/           # DTO ↔ Entity ↔ Domain 转换
 ├── presentation/home/     # HomeScreen/ViewModel/UiState/UiEvent/components
-├── di/                    # Hilt Module（Network/Database/Repository）
+├── presentation/video/    # VideoScreen/VideoViewModel（视频列表页）
+├── presentation/search/   # SearchScreen/SearchViewModel（独立搜索页）
+├── presentation/task/     # TaskScreen（任务中心）
+├── presentation/profile/  # ProfileScreen（个人中心）
+├── presentation/common/   # AppBottomNav/FeedCardItem（公共组件）
+├── di/                    # Hilt Module（Network/Database/Repository/DataSource）
 └── ui/theme/              # Compose Theme
 ```
 
@@ -244,8 +298,10 @@ sealed class HomeUiState {
 **必须实现**：
 - 4 种卡片类型渲染（TextTop / LeftTextRightImage / LargeImage / Video）
 - 顶部 Tab 切换（至少推荐、热榜两个频道）
+- 底部导航栏页面切换（5 个独立页面）
 - 下拉刷新 + 加载更多
 - Room 本地缓存 + 离线展示
+- 搜索功能（双入口）
 - Loading / Empty / Error 状态切换
 
 **明确不做**：
@@ -264,9 +320,10 @@ sealed class HomeUiState {
 - ~~Paging3 + RemoteMediator~~：已接入，替换手动分页逻辑
 - ~~Room 缓存优先离线展示~~：已通过 Paging3 + RemoteMediator 实现，PagingSource 读取 Room，RemoteMediator 自动写入
 - ~~搜索栏交互~~：已实现点击展开、输入、提交、取消，展示 Mock 搜索结果
+- ~~底部导航页面切换~~：已实现 5 个独立页面（Home/Video/Search/Task/Profile）
+- ~~Video 视频列表页~~：已实现独立页面，展示视频封面、播放按钮、时长、作者、播放量
 - **新闻详情页**：点击卡片仅上报事件，无页面跳转
-- **视频播放**：VideoCard 仅展示封面和播放按钮 UI，无实际播放能力
-- **底部导航页面切换**：5 个 Tab 仅改变本地 selectedIndex，不切换页面
+- **视频播放**：VideoCard 仅展示封面和播放按钮 UI，无实际视频播放能力
 - **性能优化**：已做基础优化（FeedCard @Immutable、Room WAL 模式、channel 索引、Coil 内存缓存），未做 Compose 重组深度分析、未做图片尺寸严格限制
 - **ktlint / detekt**：规划中但尚未配置
 
