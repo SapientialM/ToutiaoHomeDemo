@@ -136,10 +136,10 @@ describe("Android Dev Assist MCP Server", () => {
 
       const result = await handleScreenshot({});
       expect(result.isError).toBeFalsy();
-      expect(result.content[0].text).toContain("Screenshot saved to");
+      expect(result.content[0].text).toContain("success");
 
       // Extract path and verify file exists
-      const match = result.content[0].text.match(/Screenshot saved to (.+)/);
+      const match = result.content[0].text.match(/"path":"(.+?)"/);
       if (match) {
         const screenshotPath = match[1];
         const exists = await fileExists(screenshotPath);

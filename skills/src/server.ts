@@ -17,6 +17,7 @@ import { handleProjectReport } from "./tools/project-report.js";
 import { handleFileOperations } from "./tools/file-operations.js";
 import { handleNetworkDebug } from "./tools/network-debug.js";
 import { handleVisionAction } from "./tools/vision-action.js";
+import { handleMeasureAppLaunch } from "./tools/launch-speed.js";
 import { log, error } from "./utils/logger.js";
 
 const server = new Server(
@@ -74,11 +75,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "input_text",
-        description: "Input text on the Android device",
+        description: "Input text on the Android device. Note: spaces will be automatically escaped as %s",
         inputSchema: {
           type: "object",
           properties: {
-            text: { type: "string", description: "Text to input" },
+            text: { type: "string", description: "Text to input (spaces will be auto-escaped as %s)" },
           },
           required: ["text"],
         },
@@ -110,11 +111,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "install_and_launch",
-        description: "Install APK and launch an app on the device",
+        description: "Install APK and launch an app on the device. If apkPath is omitted, will only launch the already-installed app",
         inputSchema: {
           type: "object",
           properties: {
-            apkPath: { type: "string", description: "Path to APK file (optional if already installed)" },
+            apkPath: { type: "string", description: "Path to APK file (optional - omit if app is already installed to just launch)" },
             packageName: { type: "string", description: "Android package name" },
             activity: { type: "string", description: "Activity to launch (optional)" },
             serial: { type: "string", description: "Device serial (optional, for multiple devices)" },
@@ -140,21 +141,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== UI验证与分析 =====
       {
         name: "verify_ui",
-        description: "Verify UI by comparing screenshots, checking color, or OCR text detection",
+        description: "Verify UI by comparing screenshots, checking color, or OCR text detection. Type 'compare' requires baselinePath and currentPath; Type 'color' requires checkColor, x, y; Type 'ocr' requires checkText",
         inputSchema: {
           type: "object",
           properties: {
             type: {
               type: "string",
               enum: ["compare", "color", "ocr"],
-              description: "Verification type",
+              description: "Verification type: compare (screenshot comparison), color (pixel color check), ocr (text recognition)",
             },
-            baselinePath: { type: "string", description: "Baseline image path (for compare)" },
-            currentPath: { type: "string", description: "Current screenshot path" },
-            checkText: { type: "string", description: "Expected text (for OCR)" },
-            checkColor: { type: "string", description: "Expected hex color (for color check)" },
-            x: { type: "number", description: "X coordinate (for color check)" },
-            y: { type: "number", description: "Y coordinate (for color check)" },
+            baselinePath: { type: "string", description: "Baseline image path (required for 'compare' mode)" },
+            currentPath: { type: "string", description: "Current screenshot path (required for 'compare' mode)" },
+            checkText: { type: "string", description: "Expected text to find (required for 'ocr' mode)" },
+            checkColor: { type: "string", description: "Expected hex color e.g. '#FF0000' (required for 'color' mode)" },
+            x: { type: "number", description: "X coordinate for color check (required for 'color' mode)" },
+            y: { type: "number", description: "Y coordinate for color check (required for 'color' mode)" },
           },
           required: ["type"],
         },
@@ -213,7 +214,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== 设备管理 =====
       {
         name: "list_devices",
-        description: "List all connected Android devices with detailed information",
+        description: "List all connected Android devices with detailed information (model, Android version, resolution, DPI, serial, state)",
         inputSchema: {
           type: "object",
           properties: {},
@@ -221,7 +222,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "device_info",
-        description: "Get detailed information about a specific device",
+        description: "Get detailed information about a specific device (properties from getprop, screen resolution, DPI, battery status, CPU info, memory info)",
         inputSchema: {
           type: "object",
           properties: {
@@ -246,19 +247,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== 应用管理 =====
       {
         name: "list_apps",
-        description: "List installed applications on the device",
+        description: "List installed applications on the device. By default shows only third-party apps (excluding system apps)",
         inputSchema: {
           type: "object",
           properties: {
             serial: { type: "string", description: "Device serial (optional)" },
-            system: { type: "boolean", description: "Include system apps", default: false },
-            thirdParty: { type: "boolean", description: "Include third-party apps only", default: true },
+            system: { type: "boolean", description: "Include system apps (default: false)" },
+            thirdParty: { type: "boolean", description: "Show only third-party apps i.e. exclude system apps (default: true)" },
           },
         },
       },
       {
         name: "app_info",
-        description: "Get detailed information about a specific app",
+        description: "Get detailed information about a specific app (version name/code, install time, data directory, permissions, enabled state)",
         inputSchema: {
           type: "object",
           properties: {
@@ -319,6 +320,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "measure_app_launch",
+        description: "Measure app launch speed (cold start / warm start / page transition). Reports TTID, TTFD, TotalTime with statistics and grade.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            packageName: { type: "string", description: "Package name to measure" },
+            launchType: { type: "string", enum: ["cold_start", "warm_start", "page_transition"], description: "Launch type", default: "cold_start" },
+            activityName: { type: "string", description: "Specific activity to launch (optional, e.g. com.example.MainActivity)" },
+            iterations: { type: "number", description: "Number of measurements to average", default: 3 },
+          },
+          required: ["packageName"],
+        },
+      },
+      {
         name: "record_screen",
         description: "Record device screen for specified duration",
         inputSchema: {
@@ -334,23 +349,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== 代码质量 =====
       {
         name: "code_quality",
-        description: "Run code quality checks: ktlint, complexity analysis, line counts",
+        description: "Run code quality checks: ktlint style check, cyclomatic complexity analysis, and line count statistics. Optionally auto-fix ktlint issues",
         inputSchema: {
           type: "object",
           properties: {
             projectPath: { type: "string", description: "Path to Android project", default: "." },
-            fix: { type: "boolean", description: "Auto-fix ktlint issues", default: false },
+            fix: { type: "boolean", description: "Auto-fix ktlint style issues (default: false)", default: false },
           },
         },
       },
       {
         name: "run_tests",
-        description: "Run unit tests and instrumented tests",
+        description: "Run unit tests (JVM tests) or instrumented tests (on-device tests) via Gradle",
         inputSchema: {
           type: "object",
           properties: {
             projectPath: { type: "string", description: "Path to Android project", default: "." },
-            type: { type: "string", description: "Test type: unit/instrumented/all", default: "unit" },
+            type: { type: "string", description: "Test type: unit (JVM unit tests) / instrumented (on-device tests) / all", default: "unit" },
             module: { type: "string", description: "Specific module to test (optional)" },
           },
         },
@@ -359,18 +374,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== UI自动化测试 =====
       {
         name: "ui_test",
-        description: "Run UI automation test with specified steps",
+        description: "Run UI automation test with a sequence of steps. Each step has an action (tap/swipe/input/wait/screenshot) and params (coordinates, text, duration, etc.)",
         inputSchema: {
           type: "object",
           properties: {
             steps: {
               type: "array",
-              description: "Test steps array",
+              description: "Test steps array. Each step: { action: 'tap'|'swipe'|'input'|'wait'|'screenshot', params: { x, y, text, duration, ... } }",
               items: {
                 type: "object",
                 properties: {
-                  action: { type: "string", enum: ["tap", "swipe", "input", "wait", "screenshot"] },
-                  params: { type: "object" },
+                  action: { type: "string", enum: ["tap", "swipe", "input", "wait", "screenshot"], description: "Action type: tap (click at x,y), swipe (drag from x1,y1 to x2,y2), input (type text), wait (pause in ms), screenshot (capture screen)" },
+                  params: { type: "object", description: "Action parameters: tap/swipe need x,y; input needs text; wait needs durationMs; screenshot needs no params" },
                 },
               },
             },
@@ -380,7 +395,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "regression_test",
-        description: "Run regression test suite: app launch, screenshot, UI hierarchy",
+        description: "Run regression test suite: launch app → take screenshot → verify UI hierarchy structure, checking basic functionality is working",
         inputSchema: {
           type: "object",
           properties: {
@@ -540,6 +555,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // 性能监控
       case "performance_metrics":
         return handlePerformanceMonitor(args as Record<string, unknown>);
+      case "measure_app_launch":
+        return handleMeasureAppLaunch(args as Record<string, unknown>);
       case "record_screen":
         return handleDeviceManagement(args as Record<string, unknown>, "record_screen");
       

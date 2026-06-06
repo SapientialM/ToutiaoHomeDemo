@@ -2749,6 +2749,283 @@ async function handleVisionAction(args) {
   };
 }
 
+// src/utils/launch-speed.ts
+async function forceStopApp(packageName) {
+  await execAsyncWithTimeout(`adb shell am force-stop ${packageName}`, { timeout: 5e3 });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+}
+async function clearAppData2(packageName) {
+  await execAsyncWithTimeout(`adb shell pm clear ${packageName}`, { timeout: 1e4 });
+  await new Promise((resolve) => setTimeout(resolve, 1e3));
+}
+async function measureWithAmStart(packageName, activityName) {
+  const component = activityName ? `${packageName}/${activityName}` : `${packageName}/.MainActivity`;
+  const { stdout, stderr } = await execAsyncWithTimeout(
+    `adb shell am start -W -n ${component}`,
+    { timeout: 3e4 }
+  );
+  const output = stdout || stderr;
+  log(`am start output: ${output}`);
+  const thisTimeMatch = output.match(/ThisTime:\s*(\d+)/);
+  const totalTimeMatch = output.match(/TotalTime:\s*(\d+)/);
+  const waitTimeMatch = output.match(/WaitTime:\s*(\d+)/);
+  const thisTime = thisTimeMatch ? parseInt(thisTimeMatch[1]) : 0;
+  const totalTime = totalTimeMatch ? parseInt(totalTimeMatch[1]) : 0;
+  const waitTime = waitTimeMatch ? parseInt(waitTimeMatch[1]) : 0;
+  log(`Parsed: thisTime=${thisTime}, totalTime=${totalTime}, waitTime=${waitTime}`);
+  return {
+    thisTime,
+    totalTime,
+    waitTime
+  };
+}
+async function getDisplayedTimeFromLogcat(packageName, timeoutMs = 1e4) {
+  const startTime = Date.now();
+  let ttid = 0;
+  let ttfd = 0;
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const { stdout } = await execAsyncWithTimeout(
+        `adb logcat -d | grep -i "displayed.*${packageName}"`,
+        { timeout: 5e3 }
+      );
+      const ttidMatchMs = stdout.match(/Displayed\s+[^:]+:\s*\+(\d+)ms/);
+      const ttidMatchSec = stdout.match(/Displayed\s+[^:]+:\s*\+(\d+)s(\d+)ms/);
+      if (ttid === 0) {
+        if (ttidMatchMs) {
+          ttid = parseInt(ttidMatchMs[1]) || 0;
+        } else if (ttidMatchSec) {
+          const seconds = parseInt(ttidMatchSec[1]) || 0;
+          const millis = parseInt(ttidMatchSec[2]) || 0;
+          ttid = seconds * 1e3 + millis;
+        }
+      }
+      const ttfdMatch = stdout.match(/Fully drawn\s+[^:]+:\s*\+(\d+)s(\d+)ms/);
+      const ttfdMatchMs = stdout.match(/Fully drawn\s+[^:]+:\s*\+(\d+)ms/);
+      if (ttfdMatch) {
+        const seconds = parseInt(ttfdMatch[1]) || 0;
+        const millis = parseInt(ttfdMatch[2]) || 0;
+        ttfd = seconds * 1e3 + millis;
+      } else if (ttfdMatchMs) {
+        ttfd = parseInt(ttfdMatchMs[1]) || 0;
+      }
+      if (ttid > 0) break;
+    } catch {
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return { ttid, ttfd };
+}
+async function measureSingleLaunch(packageName, launchType, activityName, iteration = 1) {
+  log(`Measuring ${launchType} iteration ${iteration} for ${packageName}`);
+  if (launchType === "cold_start") {
+    await forceStopApp(packageName);
+    await clearAppData2(packageName);
+  } else {
+    await execAsyncWithTimeout("adb shell input keyevent 3", { timeout: 5e3 });
+    await new Promise((resolve) => setTimeout(resolve, 1e3));
+  }
+  await execAsyncWithTimeout("adb logcat -c", { timeout: 5e3 });
+  const amStartResult = await measureWithAmStart(packageName, activityName);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const { ttid, ttfd } = await getDisplayedTimeFromLogcat(packageName);
+  const finalTtid = ttid > 0 ? ttid : amStartResult.thisTime > 0 ? amStartResult.thisTime : amStartResult.totalTime;
+  const finalTtfd = ttfd > 0 ? ttfd : amStartResult.totalTime;
+  log(`Measurement result: ttid=${finalTtid}, ttfd=${finalTtfd}, totalTime=${amStartResult.totalTime}, waitTime=${amStartResult.waitTime}`);
+  return {
+    iteration,
+    ttid: finalTtid,
+    ttfd: finalTtfd,
+    totalTime: amStartResult.totalTime,
+    waitTime: amStartResult.waitTime,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function calculateStatistics(values) {
+  if (values.length === 0) {
+    return { min: 0, max: 0, avg: 0, p95: 0 };
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length);
+  const p95Index = Math.ceil(sorted.length * 0.95) - 1;
+  const p95 = sorted[Math.max(0, p95Index)];
+  return { min, max, avg, p95 };
+}
+function getGrade(ttidAvg) {
+  if (ttidAvg < 1e3) return "A";
+  if (ttidAvg < 2e3) return "B";
+  if (ttidAvg < 3e3) return "C";
+  return "D";
+}
+function generateRecommendations(stats, launchType) {
+  const recommendations = [];
+  const ttidAvg = stats.ttid.avg;
+  const ttfdAvg = stats.ttfd.avg;
+  if (ttidAvg < 500) {
+    recommendations.push(`\u2705 ${launchType} TTID \u4F18\u79C0 (${ttidAvg}ms)\uFF0C\u7EE7\u7EED\u4FDD\u6301`);
+  } else if (ttidAvg < 1e3) {
+    recommendations.push(`\u2705 ${launchType} TTID \u826F\u597D (${ttidAvg}ms)`);
+  } else if (ttidAvg < 2e3) {
+    recommendations.push(`\u26A0\uFE0F ${launchType} TTID \u4E00\u822C (${ttidAvg}ms)\uFF0C\u5EFA\u8BAE\u4F18\u5316\u81F3 1s \u4EE5\u5185`);
+  } else {
+    recommendations.push(`\u274C ${launchType} TTID \u8F83\u5DEE (${ttidAvg}ms)\uFF0C\u9700\u8981\u91CD\u70B9\u4F18\u5316`);
+  }
+  if (ttfdAvg > 0 && ttfdAvg > ttidAvg * 1.5) {
+    recommendations.push(`\u26A0\uFE0F TTFD (${ttfdAvg}ms) \u6BD4 TTID \u6162 ${Math.round((ttfdAvg / ttidAvg - 1) * 100)}%\uFF0C\u5EFA\u8BAE\u68C0\u67E5\u5F02\u6B65\u52A0\u8F7D\u903B\u8F91`);
+  }
+  const variance = stats.ttid.max - stats.ttid.min;
+  if (variance > 500) {
+    recommendations.push(`\u26A0\uFE0F \u542F\u52A8\u65F6\u95F4\u6CE2\u52A8\u8F83\u5927 (${stats.ttid.min}ms ~ ${stats.ttid.max}ms)\uFF0C\u5EFA\u8BAE\u68C0\u67E5\u662F\u5426\u6709\u963B\u585E IO \u64CD\u4F5C`);
+  }
+  return recommendations;
+}
+async function measureAppLaunch(packageName, options = {}) {
+  const {
+    launchType = "cold_start",
+    activityName,
+    iterations = 3
+  } = options;
+  log(`Starting ${launchType} measurement for ${packageName} (${iterations} iterations)`);
+  const results = [];
+  for (let i = 1; i <= iterations; i++) {
+    try {
+      const metric = await measureSingleLaunch(packageName, launchType, activityName, i);
+      results.push(metric);
+      if (i < iterations) {
+        await new Promise((resolve) => setTimeout(resolve, 2e3));
+      }
+    } catch (e) {
+      error(`Measurement iteration ${i} failed:`, e);
+    }
+  }
+  const ttidValues = results.map((r) => r.ttid).filter((v) => v > 0);
+  const ttfdValues = results.map((r) => r.ttfd).filter((v) => v > 0);
+  const totalTimeValues = results.map((r) => r.totalTime).filter((v) => v > 0);
+  const statistics = {
+    ttid: calculateStatistics(ttidValues),
+    ttfd: calculateStatistics(ttfdValues),
+    totalTime: calculateStatistics(totalTimeValues)
+  };
+  const grade = getGrade(statistics.ttid.avg);
+  const recommendations = generateRecommendations(statistics, launchType);
+  return {
+    packageName,
+    launchType,
+    activityName,
+    iterations: results.length,
+    results,
+    statistics,
+    grade,
+    recommendations
+  };
+}
+function formatLaunchReport(result) {
+  const lines = [
+    "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+    "\u{1F680} APP LAUNCH SPEED REPORT",
+    "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+    `\u{1F4E6} Package: ${result.packageName}`,
+    `\u{1F504} Type: ${result.launchType}`,
+    result.activityName ? `\u{1F3AF} Activity: ${result.activityName}` : "",
+    `\u{1F4CA} Iterations: ${result.iterations}`,
+    `\u{1F3C6} Grade: ${result.grade}`,
+    "",
+    "\u23F1\uFE0F  STATISTICS (ms)",
+    "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    `TTID (Initial Display):`,
+    `   Min: ${result.statistics.ttid.min}ms`,
+    `   Max: ${result.statistics.ttid.max}ms`,
+    `   Avg: ${result.statistics.ttid.avg}ms`,
+    `   P95: ${result.statistics.ttid.p95}ms`,
+    "",
+    `TTFD (Full Display):`,
+    `   Min: ${result.statistics.ttfd.min}ms`,
+    `   Max: ${result.statistics.ttfd.max}ms`,
+    `   Avg: ${result.statistics.ttfd.avg}ms`,
+    `   P95: ${result.statistics.ttfd.p95}ms`,
+    "",
+    `Total Time (am start -W):`,
+    `   Min: ${result.statistics.totalTime.min}ms`,
+    `   Max: ${result.statistics.totalTime.max}ms`,
+    `   Avg: ${result.statistics.totalTime.avg}ms`,
+    "",
+    "\u{1F4CB} RAW RESULTS",
+    "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    ...result.results.map(
+      (r) => `  #${r.iteration}: TTID=${r.ttid}ms, TTFD=${r.ttfd}ms, Total=${r.totalTime}ms`
+    ),
+    "",
+    "\u{1F4A1} RECOMMENDATIONS",
+    "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+    ...result.recommendations.map((r) => `  ${r}`),
+    "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550"
+  ];
+  return lines.filter((line) => line !== "").join("\n");
+}
+
+// src/tools/launch-speed.ts
+async function handleMeasureAppLaunch(args) {
+  const {
+    packageName,
+    launchType = "cold_start",
+    activityName,
+    iterations = 3
+  } = args;
+  if (!packageName) {
+    return {
+      isError: true,
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: false,
+          error: "packageName is required"
+        })
+      }]
+    };
+  }
+  try {
+    log(`Measuring app launch: ${packageName}, type: ${launchType}, iterations: ${iterations}`);
+    const result = await measureAppLaunch(packageName, {
+      launchType,
+      activityName,
+      iterations
+    });
+    const report = formatLaunchReport(result);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          packageName: result.packageName,
+          launchType: result.launchType,
+          activityName: result.activityName,
+          iterations: result.iterations,
+          grade: result.grade,
+          statistics: result.statistics,
+          results: result.results,
+          recommendations: result.recommendations,
+          report
+        }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    log("measure_app_launch failed:", err);
+    return {
+      isError: true,
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: false,
+          error: err.message || "Failed to measure app launch speed"
+        })
+      }]
+    };
+  }
+}
+
 // src/server.ts
 var server = new Server(
   {
@@ -2804,11 +3081,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "input_text",
-        description: "Input text on the Android device",
+        description: "Input text on the Android device. Note: spaces will be automatically escaped as %s",
         inputSchema: {
           type: "object",
           properties: {
-            text: { type: "string", description: "Text to input" }
+            text: { type: "string", description: "Text to input (spaces will be auto-escaped as %s)" }
           },
           required: ["text"]
         }
@@ -2839,11 +3116,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "install_and_launch",
-        description: "Install APK and launch an app on the device",
+        description: "Install APK and launch an app on the device. If apkPath is omitted, will only launch the already-installed app",
         inputSchema: {
           type: "object",
           properties: {
-            apkPath: { type: "string", description: "Path to APK file (optional if already installed)" },
+            apkPath: { type: "string", description: "Path to APK file (optional - omit if app is already installed to just launch)" },
             packageName: { type: "string", description: "Android package name" },
             activity: { type: "string", description: "Activity to launch (optional)" },
             serial: { type: "string", description: "Device serial (optional, for multiple devices)" }
@@ -2868,21 +3145,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== UI验证与分析 =====
       {
         name: "verify_ui",
-        description: "Verify UI by comparing screenshots, checking color, or OCR text detection",
+        description: "Verify UI by comparing screenshots, checking color, or OCR text detection. Type 'compare' requires baselinePath and currentPath; Type 'color' requires checkColor, x, y; Type 'ocr' requires checkText",
         inputSchema: {
           type: "object",
           properties: {
             type: {
               type: "string",
               enum: ["compare", "color", "ocr"],
-              description: "Verification type"
+              description: "Verification type: compare (screenshot comparison), color (pixel color check), ocr (text recognition)"
             },
-            baselinePath: { type: "string", description: "Baseline image path (for compare)" },
-            currentPath: { type: "string", description: "Current screenshot path" },
-            checkText: { type: "string", description: "Expected text (for OCR)" },
-            checkColor: { type: "string", description: "Expected hex color (for color check)" },
-            x: { type: "number", description: "X coordinate (for color check)" },
-            y: { type: "number", description: "Y coordinate (for color check)" }
+            baselinePath: { type: "string", description: "Baseline image path (required for 'compare' mode)" },
+            currentPath: { type: "string", description: "Current screenshot path (required for 'compare' mode)" },
+            checkText: { type: "string", description: "Expected text to find (required for 'ocr' mode)" },
+            checkColor: { type: "string", description: "Expected hex color e.g. '#FF0000' (required for 'color' mode)" },
+            x: { type: "number", description: "X coordinate for color check (required for 'color' mode)" },
+            y: { type: "number", description: "Y coordinate for color check (required for 'color' mode)" }
           },
           required: ["type"]
         }
@@ -2939,7 +3216,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== 设备管理 =====
       {
         name: "list_devices",
-        description: "List all connected Android devices with detailed information",
+        description: "List all connected Android devices with detailed information (model, Android version, resolution, DPI, serial, state)",
         inputSchema: {
           type: "object",
           properties: {}
@@ -2947,7 +3224,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "device_info",
-        description: "Get detailed information about a specific device",
+        description: "Get detailed information about a specific device (properties from getprop, screen resolution, DPI, battery status, CPU info, memory info)",
         inputSchema: {
           type: "object",
           properties: {
@@ -2971,19 +3248,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== 应用管理 =====
       {
         name: "list_apps",
-        description: "List installed applications on the device",
+        description: "List installed applications on the device. By default shows only third-party apps (excluding system apps)",
         inputSchema: {
           type: "object",
           properties: {
             serial: { type: "string", description: "Device serial (optional)" },
-            system: { type: "boolean", description: "Include system apps", default: false },
-            thirdParty: { type: "boolean", description: "Include third-party apps only", default: true }
+            system: { type: "boolean", description: "Include system apps (default: false)" },
+            thirdParty: { type: "boolean", description: "Show only third-party apps i.e. exclude system apps (default: true)" }
           }
         }
       },
       {
         name: "app_info",
-        description: "Get detailed information about a specific app",
+        description: "Get detailed information about a specific app (version name/code, install time, data directory, permissions, enabled state)",
         inputSchema: {
           type: "object",
           properties: {
@@ -3043,6 +3320,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
+        name: "measure_app_launch",
+        description: "Measure app launch speed (cold start / warm start / page transition). Reports TTID, TTFD, TotalTime with statistics and grade.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            packageName: { type: "string", description: "Package name to measure" },
+            launchType: { type: "string", enum: ["cold_start", "warm_start", "page_transition"], description: "Launch type", default: "cold_start" },
+            activityName: { type: "string", description: "Specific activity to launch (optional, e.g. com.example.MainActivity)" },
+            iterations: { type: "number", description: "Number of measurements to average", default: 3 }
+          },
+          required: ["packageName"]
+        }
+      },
+      {
         name: "record_screen",
         description: "Record device screen for specified duration",
         inputSchema: {
@@ -3057,23 +3348,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== 代码质量 =====
       {
         name: "code_quality",
-        description: "Run code quality checks: ktlint, complexity analysis, line counts",
+        description: "Run code quality checks: ktlint style check, cyclomatic complexity analysis, and line count statistics. Optionally auto-fix ktlint issues",
         inputSchema: {
           type: "object",
           properties: {
             projectPath: { type: "string", description: "Path to Android project", default: "." },
-            fix: { type: "boolean", description: "Auto-fix ktlint issues", default: false }
+            fix: { type: "boolean", description: "Auto-fix ktlint style issues (default: false)", default: false }
           }
         }
       },
       {
         name: "run_tests",
-        description: "Run unit tests and instrumented tests",
+        description: "Run unit tests (JVM tests) or instrumented tests (on-device tests) via Gradle",
         inputSchema: {
           type: "object",
           properties: {
             projectPath: { type: "string", description: "Path to Android project", default: "." },
-            type: { type: "string", description: "Test type: unit/instrumented/all", default: "unit" },
+            type: { type: "string", description: "Test type: unit (JVM unit tests) / instrumented (on-device tests) / all", default: "unit" },
             module: { type: "string", description: "Specific module to test (optional)" }
           }
         }
@@ -3081,18 +3372,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ===== UI自动化测试 =====
       {
         name: "ui_test",
-        description: "Run UI automation test with specified steps",
+        description: "Run UI automation test with a sequence of steps. Each step has an action (tap/swipe/input/wait/screenshot) and params (coordinates, text, duration, etc.)",
         inputSchema: {
           type: "object",
           properties: {
             steps: {
               type: "array",
-              description: "Test steps array",
+              description: "Test steps array. Each step: { action: 'tap'|'swipe'|'input'|'wait'|'screenshot', params: { x, y, text, duration, ... } }",
               items: {
                 type: "object",
                 properties: {
-                  action: { type: "string", enum: ["tap", "swipe", "input", "wait", "screenshot"] },
-                  params: { type: "object" }
+                  action: { type: "string", enum: ["tap", "swipe", "input", "wait", "screenshot"], description: "Action type: tap (click at x,y), swipe (drag from x1,y1 to x2,y2), input (type text), wait (pause in ms), screenshot (capture screen)" },
+                  params: { type: "object", description: "Action parameters: tap/swipe need x,y; input needs text; wait needs durationMs; screenshot needs no params" }
                 }
               }
             }
@@ -3102,7 +3393,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "regression_test",
-        description: "Run regression test suite: app launch, screenshot, UI hierarchy",
+        description: "Run regression test suite: launch app \u2192 take screenshot \u2192 verify UI hierarchy structure, checking basic functionality is working",
         inputSchema: {
           type: "object",
           properties: {
@@ -3249,6 +3540,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // 性能监控
       case "performance_metrics":
         return handlePerformanceMonitor(args);
+      case "measure_app_launch":
+        return handleMeasureAppLaunch(args);
       case "record_screen":
         return handleDeviceManagement(args, "record_screen");
       // 代码质量
