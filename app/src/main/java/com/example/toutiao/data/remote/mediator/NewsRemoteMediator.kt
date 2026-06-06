@@ -4,8 +4,7 @@ import androidx.paging.ExperimentalPagingApi
 import androidx.paging.LoadType
 import androidx.paging.PagingState
 import androidx.paging.RemoteMediator
-import com.example.toutiao.data.local.dao.FeedDao
-import com.example.toutiao.data.local.dao.RemoteKeyDao
+import com.example.toutiao.data.local.database.AppDatabase
 import com.example.toutiao.data.local.entity.FeedItemEntity
 import com.example.toutiao.data.local.entity.RemoteKeyEntity
 import com.example.toutiao.data.mapper.toEntity
@@ -36,15 +35,15 @@ import java.io.IOException
 class NewsRemoteMediator(
     private val channel: String,
     private val remoteDataSource: RemoteDataSource,
-    private val feedDao: FeedDao,
-    private val remoteKeyDao: RemoteKeyDao,
+    private val appDatabase: AppDatabase,
 ) : RemoteMediator<Int, FeedItemEntity>() {
 
-    // 优先使用本地缓存，避免每次 Pager 创建时（Tab 切换）都清空缓存。
-    // 这样断网时 PagingSource 能直接读到 Room 缓存数据，实现离线展示。
-    // 用户主动下拉刷新时，load(REFRESH) 会清空并重新加载最新数据。
+    // LAUNCH_INITIAL_REFRESH 确保首次安装/DB清空时自动加载数据。
+    // 用户下拉刷新时也会触发 REFRESH 清空并重新加载。
+    // Tab 切换重建 Pager 时同样会触发初始刷新，因 MockDataSource 是本地数据源，
+    // 延迟极低（<50ms），不会造成可见的闪烁。
     override suspend fun initialize(): InitializeAction {
-        return InitializeAction.SKIP_INITIAL_REFRESH
+        return InitializeAction.LAUNCH_INITIAL_REFRESH
     }
 
     override suspend fun load(
@@ -57,7 +56,7 @@ class NewsRemoteMediator(
                 return MediatorResult.Success(endOfPaginationReached = true)
             }
             LoadType.APPEND -> {
-                val remoteKey = remoteKeyDao.getLastRemoteKeyByChannel(channel)
+                val remoteKey = appDatabase.remoteKeyDao().getLastRemoteKeyByChannel(channel)
                 remoteKey?.nextKey
                     ?: return MediatorResult.Success(endOfPaginationReached = true)
             }
@@ -84,11 +83,9 @@ class NewsRemoteMediator(
             }
 
             if (loadType == LoadType.REFRESH) {
-                feedDao.replaceByChannel(channel, entities)
-                remoteKeyDao.replaceByChannel(channel, keys)
+                appDatabase.replaceFeedAndKeys(channel, entities, keys)
             } else {
-                feedDao.insertAll(entities)
-                remoteKeyDao.insertAll(keys)
+                appDatabase.insertFeedAndKeys(entities, keys)
             }
 
             Timber.d("NewsRemoteMediator.load — inserted ${entities.size} entities, prevKey=$prevKey, nextKey=$nextKey")

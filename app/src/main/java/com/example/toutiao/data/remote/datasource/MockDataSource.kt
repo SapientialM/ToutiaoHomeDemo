@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.io.IOException
+import kotlin.math.absoluteValue
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -49,6 +50,24 @@ class MockDataSource(context: Context) : RemoteDataSource {
             .also { Timber.d("MockDataSource — imageUrlPool size = ${it.size}") }
     }
 
+    // 视频专用数据池 - 从所有新闻中筛选出适合视频的条目
+    private val videoItems: List<RawNewsItem> by lazy {
+        allItems.filter { it.category in setOf("视频", "娱乐", "体育", "科技", "社会") }
+            .shuffled()
+            .take(50)
+            .also { Timber.d("MockDataSource — videoItems size = ${it.size}") }
+    }
+
+    // 搜索专用数据池
+    private fun getSearchResults(query: String, size: Int): List<RawNewsItem> {
+        val lowerQuery = query.lowercase()
+        return allItems.filter { item ->
+            item.title.lowercase().contains(lowerQuery) ||
+            item.source.lowercase().contains(lowerQuery) ||
+            item.category.lowercase().contains(lowerQuery)
+        }.take(size)
+    }
+
     // 这是 RemoteDataSource 接口的唯一方法，也是数据流的唯一切入点。
     // channel 来自 ViewModel 的当前 Tab（recommend/hot/video/society）
     // page 来自 Paging3 的 LoadType（REFRESH=0, APPEND=N, PREPEND=N-1）
@@ -85,10 +104,14 @@ class MockDataSource(context: Context) : RemoteDataSource {
         Timber.d("MockDataSource — channel=$channel, page=$page, total=${sorted.size}, returned=${pageItems.size}, hasMore=$hasMore")
 
         // 步骤 5：RawNewsItem → NewsItemDto（原始 JSON 结构 → Retrofit 期望的 DTO 结构）
+        Timber.i("MockDataSource — About to map ${pageItems.size} items to DTO")
         val dtoList = pageItems.mapIndexed { index, raw ->
             val globalIndex = offset + index
+            Timber.i("MockDataSource — Mapping item $index: ${raw.title.take(20)}...")
             mapToDto(raw, channel, globalIndex)
         }
+        Timber.i("MockDataSource — Mapped ${dtoList.size} items, first image URL: ${dtoList.firstOrNull()?.imageUrl}")
+        Timber.i("MockDataSource — Mapped ${dtoList.size} items, first image URL: ${dtoList.firstOrNull()?.imageUrl}")
 
         // 步骤 6：包装为 NewsFeedResponse（这是 Retrofit API 的标准响应格式）
         return NewsFeedResponse(
@@ -121,6 +144,8 @@ class MockDataSource(context: Context) : RemoteDataSource {
             "video" -> setOf("视频")
             "society" -> setOf("社会", "法治", "法律", "时政", "国内", "中国", "地方", "教育", "健康", "环境", "环保")
             "tech" -> setOf("科技", "互联网", "数码", "AI", "人工智能")
+            "newera" -> setOf("时政", "国内", "中国", "新时代", "党建", "政策")
+            "novel" -> setOf("小说", "文学", "文化", "读书", "故事")
             else -> null
         }
         return if (categories == null) items else items.filter { it.category in categories }
@@ -140,6 +165,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
     //   1. 原始 URL 存在时，自动将 HTTP 升级为 HTTPS（避免 Android 9+ 明文流量拦截）
     //   2. 原始 URL 为空时，从 imageUrlPool 中循环分配真实新闻图片，确保所有图文卡片都有图
     private fun mapToDto(raw: RawNewsItem, channel: String, index: Int): NewsItemDto {
+        println("MockDataSource — mapToDto called for: ${raw.title.take(30)}...")
         val pinned = isPinned(raw.source)
         val type = determineType(raw.imageUrl, index, pinned)
         val relativeTime = formatRelativeTime(raw.datetime)
@@ -147,12 +173,14 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
         val resolvedImageUrl = when {
             type == "text_top" -> null
-            !raw.imageUrl.isNullOrBlank() -> raw.imageUrl.replace(
-                Regex("^http://", RegexOption.IGNORE_CASE),
-                "https://"
-            )
-            imageUrlPool.isNotEmpty() -> imageUrlPool[index % imageUrlPool.size]
-            else -> null
+            // 使用 picsum.photos 生成基于新闻标题的确定性图片，确保同一新闻总是显示同一张图片，
+            // 不同新闻显示不同图片。使用 800x450 尺寸适配大图卡片，Coil 会自动裁剪适配左文右图卡片。
+            else -> {
+                val seed = raw.title.hashCode().absoluteValue
+                val url = "https://picsum.photos/seed/$seed/800/450"
+                println("MockDataSource — image URL for '${raw.title.take(20)}...': $url")
+                url
+            }
         }
 
         return NewsItemDto(
@@ -238,6 +266,76 @@ class MockDataSource(context: Context) : RemoteDataSource {
             else -> 3000
         }
         return base + (index * 137 % 9000)
+    }
+
+    // =========================================================================
+    // 视频频道数据 - 从视频分类中筛选
+    // =========================================================================
+    override suspend fun getVideoFeed(page: Int, size: Int): NewsFeedResponse {
+        val delayMs = DebugControls.networkDelayMs
+        if (delayMs > 0) delay(delayMs)
+        if (DebugControls.shouldSimulateError) throw IOException(DebugControls.DEFAULT_ERROR_MESSAGE)
+
+        val offset = page * size
+        val pageItems = if (offset >= videoItems.size) {
+            emptyList()
+        } else {
+            videoItems.drop(offset).take(size)
+        }
+        val hasMore = (offset + size) < videoItems.size
+
+        val dtoList = pageItems.mapIndexed { index, raw ->
+            mapToVideoDto(raw, offset + index)
+        }
+
+        return NewsFeedResponse(
+            code = 0,
+            data = NewsFeedData(list = dtoList, hasMore = hasMore),
+        )
+    }
+
+    private fun mapToVideoDto(raw: RawNewsItem, index: Int): NewsItemDto {
+        val seed = raw.title.hashCode().absoluteValue
+        return NewsItemDto(
+            id = "video_${index}_${raw.datetime.hashCode()}",
+            type = "video",
+            title = raw.title,
+            source = raw.source,
+            commentCount = generateCommentCount(raw.category, index),
+            imageUrl = "https://picsum.photos/seed/$seed/800/450",
+            videoUrl = "https://example.com/video/$seed",
+            duration = "${(seed % 300) / 60}:${String.format("%02d", (seed % 300) % 60)}",
+            publishTime = formatRelativeTime(raw.datetime),
+            isTop = false,
+            createdAt = parseDatetimeToMillis(raw.datetime),
+        )
+    }
+
+    // =========================================================================
+    // 搜索功能 - 从所有新闻中匹配
+    // =========================================================================
+    override suspend fun searchNews(query: String, page: Int, size: Int): NewsFeedResponse {
+        val delayMs = DebugControls.networkDelayMs
+        if (delayMs > 0) delay(delayMs)
+        if (DebugControls.shouldSimulateError) throw IOException(DebugControls.DEFAULT_ERROR_MESSAGE)
+
+        val results = getSearchResults(query, 100) // 最多返回100条
+        val offset = page * size
+        val pageItems = if (offset >= results.size) {
+            emptyList()
+        } else {
+            results.drop(offset).take(size)
+        }
+        val hasMore = (offset + size) < results.size
+
+        val dtoList = pageItems.mapIndexed { index, raw ->
+            mapToDto(raw, "search", offset + index)
+        }
+
+        return NewsFeedResponse(
+            code = 0,
+            data = NewsFeedData(list = dtoList, hasMore = hasMore),
+        )
     }
 
 }

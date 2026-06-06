@@ -7,7 +7,10 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "feed_items",
-    indices = [Index(value = ["channel"])],
+    indices = [
+        Index(value = ["channel"]),
+        Index(value = ["channel", "is_top", "created_at"]),
+    ],
 )
 data class FeedItemEntity(
     @PrimaryKey val id: String,
@@ -21,5 +24,5 @@ data class FeedItemEntity(
     @ColumnInfo(name = "publish_time") val publishTime: String? = null,
     @ColumnInfo(name = "is_top") val isTop: Boolean = false,
     @ColumnInfo(name = "channel") val channel: String,
-    @ColumnInfo(name = "created_at") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "created_at") val createdAt: Long,
 )

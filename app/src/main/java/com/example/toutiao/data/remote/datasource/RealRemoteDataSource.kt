@@ -17,4 +17,14 @@ class RealRemoteDataSource @Inject constructor(
     override suspend fun getNewsFeed(channel: String, page: Int, size: Int): NewsFeedResponse {
         return newsApi.getNewsFeed(channel, page, size)
     }
+
+    override suspend fun getVideoFeed(page: Int, size: Int): NewsFeedResponse {
+        // TODO: 接入真实视频API
+        return newsApi.getNewsFeed("video", page, size)
+    }
+
+    override suspend fun searchNews(query: String, page: Int, size: Int): NewsFeedResponse {
+        // TODO: 接入真实搜索API
+        return newsApi.getNewsFeed("recommend", page, size)
+    }
 }

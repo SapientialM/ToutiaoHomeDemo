@@ -18,5 +18,5 @@ object DataSourceModule {
     @Singleton
     // 如果要切换真实API，直接切为 RealRemoteDataSource 即可
     fun provideRemoteDataSource(@ApplicationContext context: Context): RemoteDataSource =
-        MockDataSource(context)
+        MockDataSource(context.applicationContext)
 }

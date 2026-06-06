@@ -6,7 +6,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map
 import com.example.toutiao.data.local.dao.FeedDao
-import com.example.toutiao.data.local.dao.RemoteKeyDao
+import com.example.toutiao.data.local.database.AppDatabase
 import com.example.toutiao.data.mapper.toDomain
 import com.example.toutiao.data.remote.datasource.RemoteDataSource
 import com.example.toutiao.data.remote.mediator.NewsRemoteMediator
@@ -21,8 +21,7 @@ import timber.log.Timber
 @Singleton
 class NewsRepositoryImpl @Inject constructor(
     private val remoteDataSource: RemoteDataSource,
-    private val feedDao: FeedDao,
-    private val remoteKeyDao: RemoteKeyDao,
+    private val appDatabase: AppDatabase,
 ) : NewsRepository {
 
     // =========================================================================
@@ -50,9 +49,9 @@ class NewsRepositoryImpl @Inject constructor(
     //   │    → UI 自动重组                                 │
     //   └─────────────────────────────────────────────────┘
     //
-    // pageSize = 20: 与 MockDataSource 每页返回量一致，消除因页大小不匹配
+    // pageSize = 20: 与 RemoteDataSource 默认 size 一致，消除因页大小不匹配
     //   导致的"刚 REFRESH 完就触发 APPEND"抖动，滚动位置更稳定。
-    // prefetchDistance = 2: 当前可见项距离底部 2 条时触发 APPEND
+    // prefetchDistance = 5: 当前可见项距离底部 5 条时触发 APPEND
     // enablePlaceholders = false: 不显示占位骨架屏
     //
     // .flow.map { pagingData -> pagingData.map { it.toDomain() } }
@@ -64,16 +63,16 @@ class NewsRepositoryImpl @Inject constructor(
         return Pager(
             config = PagingConfig(
                 pageSize = 20,
-                prefetchDistance = 2,
+                prefetchDistance = 5,
                 enablePlaceholders = false,
+                initialLoadSize = 40,
             ),
             remoteMediator = NewsRemoteMediator(
                 channel = channel,
                 remoteDataSource = remoteDataSource,
-                feedDao = feedDao,
-                remoteKeyDao = remoteKeyDao,
+                appDatabase = appDatabase,
             ),
-            pagingSourceFactory = { feedDao.getFeedPagingSource(channel) },
+            pagingSourceFactory = { appDatabase.feedDao().getFeedPagingSource(channel) },
         ).flow.map { pagingData ->
             pagingData.map { it.toDomain() } // Entity → Domain 映射
         }
@@ -81,30 +80,63 @@ class NewsRepositoryImpl @Inject constructor(
 
     override suspend fun searchNews(query: String): List<FeedCard> {
         Timber.d("searchNews — query=$query")
-        return listOf(
-            FeedCard.TextTop(
-                id = "search_1",
-                title = "\"$query\" 相关置顶新闻",
-                source = "搜索",
-                commentCount = 123,
-                publishTime = "刚刚",
-            ),
-            FeedCard.LeftTextRightImage(
-                id = "search_2",
-                title = "$query 最新动态：市场反应积极",
-                source = "财经网",
-                commentCount = 456,
-                publishTime = "1小时前",
-                imageUrl = "https://picsum.photos/seed/search2/400/300",
-            ),
-            FeedCard.LargeImage(
-                id = "search_3",
-                title = "深度解析：$query 背后的真相",
-                source = "虎嗅",
-                commentCount = 789,
-                publishTime = "2小时前",
-                imageUrl = "https://picsum.photos/seed/search3/800/450",
-            ),
-        )
+        val response = remoteDataSource.searchNews(query, 0, 20)
+        return response.data.list.map { dto ->
+            when (dto.type) {
+                "text_top" -> FeedCard.TextTop(
+                    id = dto.id,
+                    title = dto.title,
+                    source = dto.source,
+                    commentCount = dto.commentCount,
+                    publishTime = dto.publishTime ?: "",
+                    isTop = dto.isTop,
+                )
+                "left_text_right_image" -> FeedCard.LeftTextRightImage(
+                    id = dto.id,
+                    title = dto.title,
+                    source = dto.source,
+                    commentCount = dto.commentCount,
+                    publishTime = dto.publishTime ?: "",
+                    imageUrl = dto.imageUrl ?: "",
+                    isTop = dto.isTop,
+                )
+                "large_image" -> FeedCard.LargeImage(
+                    id = dto.id,
+                    title = dto.title,
+                    source = dto.source,
+                    commentCount = dto.commentCount,
+                    publishTime = dto.publishTime ?: "",
+                    imageUrl = dto.imageUrl ?: "",
+                    isTop = dto.isTop,
+                )
+                else -> FeedCard.LeftTextRightImage(
+                    id = dto.id,
+                    title = dto.title,
+                    source = dto.source,
+                    commentCount = dto.commentCount,
+                    publishTime = dto.publishTime ?: "",
+                    imageUrl = dto.imageUrl ?: "",
+                    isTop = dto.isTop,
+                )
+            }
+        }
+    }
+
+    override suspend fun getVideoFeed(page: Int, size: Int): List<FeedCard.Video> {
+        Timber.d("getVideoFeed — page=$page, size=$size")
+        val response = remoteDataSource.getVideoFeed(page, size)
+        return response.data.list.map { dto ->
+            FeedCard.Video(
+                id = dto.id,
+                title = dto.title,
+                source = dto.source,
+                commentCount = dto.commentCount,
+                publishTime = dto.publishTime ?: "",
+                imageUrl = dto.imageUrl ?: "",
+                videoUrl = dto.videoUrl,
+                duration = dto.duration,
+                isTop = dto.isTop,
+            )
+        }
     }
 }

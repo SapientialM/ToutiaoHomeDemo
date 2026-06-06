@@ -7,4 +7,5 @@ import kotlinx.coroutines.flow.Flow
 interface NewsRepository {
     fun getFeedPagingData(channel: String): Flow<PagingData<FeedCard>>
     suspend fun searchNews(query: String): List<FeedCard>
+    suspend fun getVideoFeed(page: Int, size: Int): List<FeedCard.Video>
 }
