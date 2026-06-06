@@ -13,3 +13,14 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Runtime artifacts
+data/
+logs/
+.opencode-lark/
+node_modules/
+package*.json
+skills/node_modules/
+skills/screenshots/
+skills/*.txt
+skills/*.sh
