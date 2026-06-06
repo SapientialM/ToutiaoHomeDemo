@@ -46,6 +46,8 @@
   - ✅ 搜索功能双入口（首页顶部搜索栏 + 底部导航独立搜索页，均展示 Mock 搜索结果）
   - ✅ Video 视频列表页（独立页面，展示视频封面、播放按钮、时长、作者、播放量）
   - ✅ 性能优化基础（FeedCard @Immutable、Room channel 索引、Coil ImageLoader 内存缓存配置）
+  - ✅ MCP Skill 增强：新增 `measure_app_launch` 启动速度测量工具（冷启动/热启动/页面跳转，TTID/TTFD/TotalTime/WaitTime 多指标，多次采样统计，智能评分 A/B/C/D）
+  - ✅ MCP Skill 优化：全部 31 个工具 description 质量提升（补充返回值说明、消除参数歧义、解释专业术语、增加使用提示）
 - **当前未开始**：
   - ⬜ 新闻详情页（点击卡片仅打印日志，无页面跳转）
   - ⬜ 视频实际播放能力（VideoCard 仅封面 + 播放按钮 UI）
@@ -103,7 +105,9 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 | `build / build_deploy` | Gradle 构建 + 部署 |
 | `device_info / list_devices / shell_command` | 设备管理 |
 | `list_apps / app_info / uninstall_app / clear_app_data / stop_app` | 应用管理 |
-| `performance_metrics / record_screen` | 性能监控 |
+| `performance_metrics` | 性能监控（CPU/内存/FPS/电池/温度） |
+| `measure_app_launch` | **启动速度测量**：冷启动/热启动/页面跳转，输出 TTID/TTFD/TotalTime/WaitTime，多次采样统计，智能评分 A/B/C/D |
+| `record_screen` | 录屏 |
 | `code_quality / run_tests` | 代码质量 |
 | `ui_test / regression_test` | UI 自动化测试 |
 | `project_report` | 项目综合报告 |
