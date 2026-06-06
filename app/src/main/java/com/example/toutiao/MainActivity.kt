@@ -6,22 +6,21 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.example.toutiao.presentation.common.AppBottomNav
 import com.example.toutiao.presentation.home.HomeScreen
 import com.example.toutiao.presentation.home.HomeViewModel
 import com.example.toutiao.presentation.profile.ProfileScreen
+import com.example.toutiao.presentation.search.SearchScreen
+import com.example.toutiao.presentation.task.TaskScreen
+import com.example.toutiao.presentation.video.VideoScreen
 import com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -49,9 +48,9 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.padding(innerPadding)) {
                         when (selectedBottomNav) {
                             0 -> HomeScreen(viewModel = viewModel)
-                            1 -> VideoPlaceholderScreen()
-                            2 -> SearchPlaceholderScreen()
-                            3 -> TaskPlaceholderScreen()
+                            1 -> VideoScreen()
+                            2 -> SearchScreen()
+                            3 -> TaskScreen()
                             4 -> ProfileScreen()
                         }
                     }
@@ -61,25 +60,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-fun VideoPlaceholderScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("视频页 - 待实现", color = Color.Gray)
-    }
-}
 
-@Composable
-fun SearchPlaceholderScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("搜索页 - 待实现", color = Color.Gray)
-    }
-}
-
-@Composable
-fun TaskPlaceholderScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("任务页 - 待实现", color = Color.Gray)
-    }
-}
 
 
