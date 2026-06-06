@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
@@ -36,7 +37,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults.SecondaryIndicator
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
@@ -54,7 +54,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,9 +69,8 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.example.toutiao.data.remote.datasource.DebugControls
 import com.example.toutiao.domain.model.FeedCard
-import com.example.toutiao.presentation.home.components.LargeImageCard
-import com.example.toutiao.presentation.home.components.LeftTextRightImageCard
-import com.example.toutiao.presentation.home.components.TextTopCard
+import com.example.toutiao.presentation.common.FeedCardItem
+import com.example.toutiao.ui.theme.RedMain
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -94,8 +96,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
         searchQuery = searchQuery,
         searchResults = searchResults,
         feedPagingData = viewModel.feedPagingData,
-        showDebugDialog = showDebugDialog,
-        onToggleDebug = { showDebugDialog = !showDebugDialog },
         onEvent = viewModel::onEvent,
     )
 }
@@ -108,73 +108,73 @@ private fun HomeScreenContent(
     searchQuery: String,
     searchResults: List<FeedCard>,
     feedPagingData: Flow<PagingData<FeedCard>>,
-    showDebugDialog: Boolean,
-    onToggleDebug: () -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
     val successState = uiState as? HomeUiState.Success
     val isSearching = successState?.isSearching ?: false
     val searchError = successState?.searchError
 
-    DebugDialog(showDialog = showDebugDialog, onDismiss = onToggleDebug)
+    Column(
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        HomeTopBar(
+            uiState = uiState,
+            currentTab = currentTab,
+            searchQuery = searchQuery,
+            onEvent = onEvent,
+        )
 
-    Scaffold(
-        topBar = {
-            HomeTopBar(
-                uiState = uiState,
-                currentTab = currentTab,
-                searchQuery = searchQuery,
-                onToggleDebug = onToggleDebug,
-                onEvent = onEvent,
-            )
-        },
-        containerColor = Color(0xFFF5F5F5),
-    ) { innerPadding ->
-        when {
-            isSearching && searchQuery.isNotEmpty() && searchResults.isNotEmpty() -> {
-                SearchResultList(
-                    results = searchResults,
-                    onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
-                    modifier = Modifier.padding(innerPadding),
-                )
-            }
-            isSearching && searchQuery.isNotEmpty() && searchResults.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(innerPadding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (searchError != null) {
-                            Text(searchError, color = Color(0xFFD81E06))
-                            Spacer(Modifier.height(4.dp))
-                            Text("点击搜索按钮重试", color = Color.Gray, fontSize = 13.sp)
-                        } else {
-                            Text("点击搜索按钮查看结果", color = Color.Gray)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            when {
+                isSearching && searchQuery.isNotEmpty() && searchResults.isNotEmpty() -> {
+                    SearchResultList(
+                        results = searchResults,
+                        onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                isSearching && searchQuery.isNotEmpty() && searchResults.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (searchError != null) {
+                                Text(searchError, color = RedMain)
+                                Spacer(Modifier.height(4.dp))
+                                Text("点击搜索按钮重试", color = Color.Gray, fontSize = 13.sp)
+                            } else {
+                                Text("点击搜索按钮查看结果", color = Color.Gray)
+                            }
                         }
                     }
                 }
-            }
-            else -> {
-                // key(currentTab): Tab 切换时销毁整个子树（LazyPagingItems + LazyListState），
-                // 新子树从 Loading 态开始，避免：
-                //  1. 旧 Tab 数据闪现（LazyPagingItems 是全新创建的，初始 0 条）
-                //  2. 滚动位置残留（LazyListState 是全新创建的，位置为 0）
-                key(currentTab) {
-                    val lazyPagingItems = feedPagingData.collectAsLazyPagingItems()
-                    val listState = remember { LazyListState() }
+                else -> {
+                    // key(currentTab): Tab 切换时销毁整个子树（LazyPagingItems + LazyListState），
+                    // 新子树从 Loading 态开始，避免：
+                    //  1. 旧 Tab 数据闪现（LazyPagingItems 是全新创建的，初始 0 条）
+                    //  2. 滚动位置残留（LazyListState 是全新创建的，位置为 0）
+                    key(currentTab) {
+                        val lazyPagingItems = feedPagingData.collectAsLazyPagingItems()
+                        val listState = remember { LazyListState() }
 
-                    // Tab 切换时 key 变化，LazyListState 是全新的，但 Paging3 的
-                    // differ 过程可能在数据到达前就把列表滚离顶部。这里显式保证回顶。
-                    LaunchedEffect(Unit) {
-                        listState.scrollToItem(0)
+                        // Tab 切换时 key 变化，LazyListState 是全新的，但 Paging3 的
+                        // differ 过程可能在数据到达前就把列表滚离顶部。这里显式保证回顶。
+                        LaunchedEffect(Unit) {
+                            listState.scrollToItem(0)
+                        }
+
+                        PagingFeedList(
+                            listState = listState,
+                            lazyPagingItems = lazyPagingItems,
+                            onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
-
-                    PagingFeedList(
-                        listState = listState,
-                        lazyPagingItems = lazyPagingItems,
-                        onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
-                        modifier = Modifier.padding(innerPadding),
-                    )
                 }
             }
         }
@@ -214,7 +214,7 @@ private fun PagingFeedList(
                 modifier = modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(color = Color(0xFFD81E06))
+                CircularProgressIndicator(color = RedMain)
             }
         }
         isError -> {
@@ -247,7 +247,7 @@ private fun PagingFeedList(
             ) {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    contentPadding = PaddingValues(top = 0.dp, bottom = 8.dp),
                 ) {
                     items(
                         count = lazyPagingItems.itemCount,
@@ -255,13 +255,10 @@ private fun PagingFeedList(
                     ) { index ->
                         val card = lazyPagingItems[index]
                         if (card != null) {
-                            Box(modifier = Modifier.clickable { onCardClick(card.id) }) {
-                                when (card) {
-                                    is FeedCard.TextTop -> TextTopCard(card)
-                                    is FeedCard.LeftTextRightImage -> LeftTextRightImageCard(card)
-                                    is FeedCard.LargeImage -> LargeImageCard(card)
-                                }
-                            }
+                            FeedCardItem(
+                                card = card,
+                                onClick = { onCardClick(card.id) },
+                            )
                         }
                     }
 
@@ -291,16 +288,13 @@ private fun SearchResultList(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 8.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 8.dp),
     ) {
         items(results, key = { it.id }) { card ->
-            Box(modifier = Modifier.clickable { onCardClick(card.id) }) {
-                when (card) {
-                    is FeedCard.TextTop -> TextTopCard(card)
-                    is FeedCard.LeftTextRightImage -> LeftTextRightImageCard(card)
-                    is FeedCard.LargeImage -> LargeImageCard(card)
-                }
-            }
+            FeedCardItem(
+                card = card,
+                onClick = { onCardClick(card.id) },
+            )
         }
     }
 }
@@ -310,7 +304,6 @@ private fun HomeTopBar(
     uiState: HomeUiState,
     currentTab: String,
     searchQuery: String,
-    onToggleDebug: () -> Unit,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
     val tabs = listOf(
@@ -326,11 +319,12 @@ private fun HomeTopBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFD81E06))
+            .shadow(4.dp)
+            .background(RedMain)
             .statusBarsPadding(),
     ) {
         if (!isSearching) {
-            WeatherHeader(onToggleDebug = onToggleDebug)
+            WeatherHeader()
         }
 
         if (isSearching) {
@@ -344,56 +338,38 @@ private fun HomeTopBar(
             SearchPlaceholderBar(onClick = { onEvent(HomeUiEvent.OnSearchClicked) })
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0)
-            ScrollableTabRow(
-                selectedTabIndex = selectedTabIndex,
-                modifier = Modifier.weight(1f),
-                containerColor = Color(0xFFD81E06),
-                contentColor = Color.White,
-                edgePadding = 0.dp,
-                divider = {},
-                indicator = { tabPositions ->
-                    if (selectedTabIndex < tabPositions.size) {
-                        SecondaryIndicator(
-                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                            height = 2.5.dp,
-                            color = Color.White,
-                        )
-                    }
-                },
-            ) {
-                tabs.forEach { (key, label) ->
-                    val selected = key == currentTab
-                    Tab(
-                        selected = selected,
-                        onClick = { onEvent(HomeUiEvent.OnTabSelected(key)) },
-                        text = {
-                            Text(
-                                text = label,
-                                fontSize = if (selected) 17.sp else 15.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) Color.White else Color.White.copy(alpha = 0.75f),
-                            )
-                        },
+        val selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0)
+        ScrollableTabRow(
+            selectedTabIndex = selectedTabIndex,
+            containerColor = RedMain,
+            contentColor = Color.White,
+            edgePadding = 16.dp,
+            divider = {},
+            indicator = { tabPositions ->
+                if (selectedTabIndex < tabPositions.size) {
+                    SecondaryIndicator(
+                        modifier = Modifier
+                            .tabIndicatorOffset(tabPositions[selectedTabIndex])
+                            .padding(horizontal = 8.dp),
+                        height = 3.dp,
+                        color = Color.White,
                     )
                 }
-            }
-
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 12.dp)
-                    .clickable { onEvent(HomeUiEvent.OnMoreChannelsClicked) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "≡",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
+            },
+        ) {
+            tabs.forEach { (key, label) ->
+                val selected = key == currentTab
+                Tab(
+                    selected = selected,
+                    onClick = { onEvent(HomeUiEvent.OnTabSelected(key)) },
+                    text = {
+                        Text(
+                            text = label,
+                            fontSize = if (selected) 18.sp else 15.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                        )
+                    },
                 )
             }
         }
@@ -401,59 +377,36 @@ private fun HomeTopBar(
 }
 
 @Composable
-private fun WeatherHeader(onToggleDebug: () -> Unit) {
+private fun WeatherHeader() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
             Icon(
                 imageVector = Icons.Filled.WbSunny,
                 contentDescription = "天气",
-                tint = Color.Yellow,
-                modifier = Modifier.size(20.dp),
+                tint = Color(0xFFFFD700),
+                modifier = Modifier.size(24.dp),
             )
-            Spacer(Modifier.width(4.dp))
-            Text("14°", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(6.dp))
+            Text("14°", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
             Column {
-                Text("北京 多云", color = Color.White, fontSize = 12.sp)
-                Text("空气质量良", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                Text("北京 多云", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text("空气质量良", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.2f))
-                    .clickable { }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                Text("AI回答", color = Color.White, fontSize = 12.sp)
-            }
-            Spacer(Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.25f))
-                    .clickable { },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("+", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onToggleDebug, modifier = Modifier.size(28.dp)) {
-                Icon(
-                    imageVector = Icons.Filled.Build,
-                    contentDescription = "调试",
-                    tint = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.size(14.dp),
-                )
-            }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.25f))
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+        ) {
+            Text("AI回答", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -463,9 +416,9 @@ private fun SearchPlaceholderBar(onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .height(36.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .height(40.dp)
+            .clip(RoundedCornerShape(20.dp))
             .background(Color.White)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.CenterStart,
@@ -474,31 +427,19 @@ private fun SearchPlaceholderBar(onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 16.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = Color(0xFFD81E06),
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "今天发生了什么",
-                    color = Color.Gray,
-                    fontSize = 14.sp,
-                )
-            }
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = null,
+                tint = Color(0xFFCCCCCC),
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
             Text(
-                text = "搜索",
-                color = Color(0xFFD81E06),
+                text = "今天发生了什么",
+                color = Color(0xFFCCCCCC),
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable(onClick = onClick),
             )
         }
     }
@@ -536,7 +477,7 @@ private fun SearchInputBar(
                 .background(Color.White)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             singleLine = true,
-            cursorBrush = SolidColor(Color(0xFFD81E06)),
+            cursorBrush = SolidColor(RedMain),
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.Black),
             decorationBox = { innerTextField ->
                 if (query.isEmpty()) {
@@ -671,8 +612,6 @@ private fun HomeScreenSuccessPreview() {
                 searchQuery = "",
                 searchResults = emptyList(),
                 feedPagingData = flow,
-                showDebugDialog = false,
-                onToggleDebug = {},
                 onEvent = {},
             )
         }
@@ -687,7 +626,7 @@ private fun HomeScreenLoadingPreview() {
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator(color = Color(0xFFD81E06))
+            CircularProgressIndicator(color = RedMain)
         }
     }
 }

@@ -3,6 +3,7 @@ package com.example.toutiao.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
+import androidx.paging.cachedIn
 
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.domain.repository.NewsRepository
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import timber.log.Timber
@@ -69,11 +71,16 @@ class HomeViewModel @Inject constructor(
     // 这是整个数据流的核心管道：
     // Tab 变化 → 新 Pager → 新 PagingData → UI
     // flatMapLatest: 新 Tab 触发时自动取消旧 Tab 的流
+    // cachedIn: 在 viewModelScope 中缓存 PagingData，避免配置变更（如旋转屏幕）
+    // 时重新创建 Pager，同时防止快速 Tab 切换导致多个 Pager 实例泄漏。
+    // 注意：cachedIn 会缓存最后一个 PagingData，UI 层通过 key(currentTab) 确保
+    // 新 Tab 不会收到旧 Tab 的缓存数据。
     val feedPagingData: Flow<PagingData<FeedCard>> = _currentTab
         .flatMapLatest { tab ->
             Timber.d("feedPagingData — switching to tab=$tab")
             newsRepository.getFeedPagingData(tab)
         }
+        .cachedIn(viewModelScope)
 
     init {
         Timber.d("HomeViewModel init")
@@ -128,6 +135,8 @@ class HomeViewModel @Inject constructor(
                 val results = newsRepository.searchNews(query)
                 _searchResults.value = results
                 _uiState.update { (it as? HomeUiState.Success)?.copy(searchError = null) ?: it }
+            } catch (e: CancellationException) {
+                throw e // 协程取消时不应视为错误，重新抛出
             } catch (e: Exception) {
                 Timber.e(e, "performSearch failed")
                 _searchResults.value = emptyList()

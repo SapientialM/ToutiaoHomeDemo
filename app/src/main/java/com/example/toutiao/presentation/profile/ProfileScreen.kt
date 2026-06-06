@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.toutiao.ui.theme.RedMain
 
 // =============================================================================
 // ProfileScreen — "我的"未登录页
@@ -70,7 +71,7 @@ private fun ProfileTopBar() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFD81E06))
+            .background(RedMain)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.CenterStart,
@@ -115,7 +116,7 @@ private fun ProfileHeaderCard() {
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFFD81E06))
+                .background(RedMain)
                 .clickable { /* TODO: 跳转登录页 */ }
                 .padding(horizontal = 24.dp, vertical = 8.dp),
         ) {
