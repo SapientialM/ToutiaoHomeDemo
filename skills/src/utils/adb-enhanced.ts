@@ -57,43 +57,26 @@ export async function listDevices(): Promise<DeviceInfo[]> {
       });
     }
     
-    // Get detailed info for each device
-    for (const device of devices) {
+    // Get detailed info for each device — 4 个独立查询并行执行
+    await Promise.all(devices.map(async (device) => {
       try {
-        // Get Android version
-        const { stdout: version } = await execAsyncWithTimeout(
-          `adb -s ${device.serial} shell getprop ro.build.version.release`,
-          { timeout: 5000 }
-        );
-        device.androidVersion = version.trim();
-        
-        // Get SDK version
-        const { stdout: sdk } = await execAsyncWithTimeout(
-          `adb -s ${device.serial} shell getprop ro.build.version.sdk`,
-          { timeout: 5000 }
-        );
-        device.sdkVersion = sdk.trim();
-        
-        // Get screen resolution
-        const { stdout: resolution } = await execAsyncWithTimeout(
-          `adb -s ${device.serial} shell wm size`,
-          { timeout: 5000 }
-        );
-        const resMatch = resolution.match(/(\d+x\d+)/);
+        const [version, sdk, resolution, density] = await Promise.all([
+          execAsyncWithTimeout(`adb -s ${device.serial} shell getprop ro.build.version.release`, { timeout: 5000 }),
+          execAsyncWithTimeout(`adb -s ${device.serial} shell getprop ro.build.version.sdk`, { timeout: 5000 }),
+          execAsyncWithTimeout(`adb -s ${device.serial} shell wm size`, { timeout: 5000 }),
+          execAsyncWithTimeout(`adb -s ${device.serial} shell wm density`, { timeout: 5000 }),
+        ]);
+        device.androidVersion = version.stdout.trim();
+        device.sdkVersion = sdk.stdout.trim();
+        const resMatch = resolution.stdout.match(/(\d+x\d+)/);
         device.screenResolution = resMatch ? resMatch[1] : undefined;
-        
-        // Get density
-        const { stdout: density } = await execAsyncWithTimeout(
-          `adb -s ${device.serial} shell wm density`,
-          { timeout: 5000 }
-        );
-        const densityMatch = density.match(/(\d+)dpi/);
+        const densityMatch = density.stdout.match(/(\d+)dpi/);
         device.density = densityMatch ? densityMatch[1] : undefined;
       } catch (e) {
         error(`Failed to get device info for ${device.serial}:`, e);
       }
-    }
-    
+    }));
+
     return devices;
   } catch (e) {
     error("Failed to list devices:", e);
@@ -295,41 +278,50 @@ export async function listInstalledApps(
       const match = line.match(/package:(.+)/);
       if (match) {
         const packageName = match[1].trim();
-        
-        try {
-          // Get app info
-          const { stdout: info } = await execAsyncWithTimeout(
-            serial
-              ? `adb -s ${serial} shell dumpsys package ${packageName} | grep -E "versionName|versionCode|firstInstallTime|lastUpdateTime|dataDir"`
-              : `adb shell dumpsys package ${packageName} | grep -E "versionName|versionCode|firstInstallTime|lastUpdateTime|dataDir"`,
-            { timeout: 5000 }
-          );
-          
-          const versionNameMatch = info.match(/versionName=([^\s]+)/);
-          const versionCodeMatch = info.match(/versionCode=(\d+)/);
-          const firstInstallMatch = info.match(/firstInstallTime=([^\s]+)/);
-          const lastUpdateMatch = info.match(/lastUpdateTime=([^\s]+)/);
-          const dataDirMatch = info.match(/dataDir=([^\s]+)/);
-          
-          apps.push({
-            packageName,
-            versionName: versionNameMatch ? versionNameMatch[1] : "unknown",
-            versionCode: versionCodeMatch ? versionCodeMatch[1] : "unknown",
-            firstInstallTime: firstInstallMatch ? firstInstallMatch[1] : "unknown",
-            lastUpdateTime: lastUpdateMatch ? lastUpdateMatch[1] : "unknown",
-            dataDir: dataDirMatch ? dataDirMatch[1] : "unknown",
-          });
-        } catch {
-          // Skip apps that fail info retrieval
-          apps.push({
-            packageName,
-            versionName: "unknown",
-            versionCode: "unknown",
-            firstInstallTime: "unknown",
-            lastUpdateTime: "unknown",
-            dataDir: "unknown",
-          });
+        apps.push({
+          packageName,
+          versionName: "unknown",
+          versionCode: "unknown",
+          firstInstallTime: "unknown",
+          lastUpdateTime: "unknown",
+          dataDir: "unknown",
+        });
+      }
+    }
+
+    // 用单次 dumpsys 拉取所有包信息（带分桶 grep），消除 N+1
+    if (apps.length > 0) {
+      try {
+        const serialFlag = serial ? `-s ${serial} ` : "";
+        const { stdout: bulk } = await execAsyncWithTimeout(
+          `adb ${serialFlag}shell dumpsys package`,
+          { timeout: 30000 }
+        );
+
+        // 为每个包构建一个快速定位的 map
+        const packageSet = new Set(apps.map((a) => a.packageName));
+        const blocks = bulk.split(/(?=^Package\s\[[^\]]+\]\s)/m);
+
+        for (const block of blocks) {
+          const headerMatch = block.match(/^Package\s\[[^\]]+\]\s([\w.]+)/);
+          if (!headerMatch) continue;
+          const pkg = headerMatch[1];
+          if (!packageSet.has(pkg)) continue;
+
+          const target = apps.find((a) => a.packageName === pkg)!;
+          const versionNameMatch = block.match(/versionName=([^\s]+)/);
+          const versionCodeMatch = block.match(/versionCode=(\d+)/);
+          const firstInstallMatch = block.match(/firstInstallTime=([^\s]+)/);
+          const lastUpdateMatch = block.match(/lastUpdateTime=([^\s]+)/);
+          const dataDirMatch = block.match(/dataDir=([^\s]+)/);
+          if (versionNameMatch) target.versionName = versionNameMatch[1];
+          if (versionCodeMatch) target.versionCode = versionCodeMatch[1];
+          if (firstInstallMatch) target.firstInstallTime = firstInstallMatch[1];
+          if (lastUpdateMatch) target.lastUpdateTime = lastUpdateMatch[1];
+          if (dataDirMatch) target.dataDir = dataDirMatch[1];
         }
+      } catch (e) {
+        error("Bulk dumpsys package failed, returning basic list:", e);
       }
     }
     
@@ -407,9 +399,9 @@ export async function shellCommand(
     const cmd = serial
       ? `adb -s ${serial} shell ${command}`
       : `adb shell ${command}`;
-    
+
     const { stdout, stderr } = await execAsyncWithTimeout(cmd, { timeout: 30000 });
-    
+
     return {
       success: true,
       output: stdout + (stderr ? `\nstderr: ${stderr}` : ""),
@@ -424,6 +416,24 @@ export async function shellCommand(
 }
 
 /**
+ * 获取当前 Activity（按包名过滤）。null 表示应用未运行或 Activity 不可读。
+ * 修复：旧版贪婪正则 `\.(\w+Activity)` 会匹配出 "ActivityActivity"
+ */
+export async function getCurrentActivity(packageName?: string): Promise<string | null> {
+  try {
+    const filter = packageName ? ` | grep "${packageName}"` : "";
+    const { stdout } = await execAsyncWithTimeout(
+      `adb shell dumpsys activity activities | grep "mResumedActivity"${filter}`,
+      { timeout: 5000 }
+    );
+    const match = stdout.match(/\.([A-Za-z][\w$]*)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 获取网络状态
  */
 export async function getNetworkState(serial?: string): Promise<{
@@ -432,27 +442,17 @@ export async function getNetworkState(serial?: string): Promise<{
   airplaneMode: boolean;
 }> {
   try {
-    const cmd = serial ? `adb -s ${serial} shell` : "adb shell";
-    
-    const { stdout: wifi } = await execAsyncWithTimeout(
-      `${cmd} "settings get global wifi_on"`,
+    const serialFlag = serial ? `-s ${serial} ` : "";
+    // 一次 shell 调用同时查三项，避免 3 次 ADB 往返
+    const { stdout } = await execAsyncWithTimeout(
+      `adb ${serialFlag}shell "settings get global wifi_on; settings get global mobile_data; settings get global airplane_mode_on"`,
       { timeout: 5000 }
     );
-    
-    const { stdout: mobile } = await execAsyncWithTimeout(
-      `${cmd} "settings get global mobile_data"`,
-      { timeout: 5000 }
-    );
-    
-    const { stdout: airplane } = await execAsyncWithTimeout(
-      `${cmd} "settings get global airplane_mode_on"`,
-      { timeout: 5000 }
-    );
-    
+    const [w, m, a] = stdout.trim().split(/\s+/);
     return {
-      wifi: wifi.trim() === "1",
-      mobile: mobile.trim() === "1",
-      airplaneMode: airplane.trim() === "1",
+      wifi: w === "1",
+      mobile: m === "1",
+      airplaneMode: a === "1",
     };
   } catch (e) {
     error("Failed to get network state:", e);

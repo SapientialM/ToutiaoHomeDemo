@@ -24,3 +24,5 @@ skills/node_modules/
 skills/screenshots/
 skills/*.txt
 skills/*.sh
+skills/.env
+skills/dist/

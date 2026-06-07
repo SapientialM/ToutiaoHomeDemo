@@ -1,4 +1,5 @@
-import { tap, swipe, inputText, pressKey, installApk, launchApp } from "../utils/adb.js";
+import { tap, swipe, inputText, pressKey, launchApp } from "../utils/adb.js";
+import { installApk as installApkEnhanced } from "../utils/adb-enhanced.js";
 import { log } from "../utils/logger.js";
 import { spawnCommand } from "../utils/exec.js";
 
@@ -96,7 +97,7 @@ export async function handleInstallAndLaunch(args: Record<string, unknown>) {
   };
 
   if (apkPath) {
-    await installApk(apkPath);
+    await installApkEnhanced(apkPath);
   }
   await launchApp(packageName, activity);
 

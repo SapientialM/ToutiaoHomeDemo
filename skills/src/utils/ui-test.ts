@@ -41,53 +41,70 @@ export async function getCurrentActivity(): Promise<string> {
 
 /**
  * 获取UI层级结构（使用uiautomator）
+ * 修复：旧版正则 `<node[^>]*\/>` 只匹配自闭合节点，导致带子节点的元素被漏掉
  */
 export async function getUIHierarchy(): Promise<UIElement[]> {
   try {
-    await execAsyncWithTimeout(
-      'adb shell "uiautomator dump /sdcard/window_dump.xml"',
-      { timeout: 10000 }
-    );
-    
+    // 一次命令 dump + 输出到 stdout，避免 2 次 ADB 往返
     const { stdout } = await execAsyncWithTimeout(
-      'adb shell "cat /sdcard/window_dump.xml"',
-      { timeout: 10000 }
+      'adb exec-out "uiautomator dump /dev/tty"',
+      { timeout: 15000 }
     );
-    
-    // Parse XML to extract elements
-    const elements: UIElement[] = [];
-    const nodeRegex = /<node[^>]*\/>/g;
-    let match;
-    
-    while ((match = nodeRegex.exec(stdout)) !== null) {
-      const node = match[0];
-      const boundsMatch = node.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
-      const textMatch = node.match(/text="([^"]*)"/);
-      const classMatch = node.match(/class="([^"]*)"/);
-      const clickableMatch = node.match(/clickable="([^"]*)"/);
-      const resourceMatch = node.match(/resource-id="([^"]*)"/);
-      
-      if (boundsMatch) {
-        elements.push({
-          type: classMatch ? classMatch[1].split(".").pop() || "unknown" : "unknown",
-          text: textMatch ? textMatch[1] : undefined,
-          bounds: {
-            x: parseInt(boundsMatch[1]),
-            y: parseInt(boundsMatch[2]),
-            width: parseInt(boundsMatch[3]) - parseInt(boundsMatch[1]),
-            height: parseInt(boundsMatch[4]) - parseInt(boundsMatch[2]),
-          },
-          clickable: clickableMatch ? clickableMatch[1] === "true" : false,
-          resourceId: resourceMatch ? resourceMatch[1] : undefined,
-        });
-      }
-    }
-    
-    return elements;
+
+    return parseHierarchyXml(stdout);
   } catch (e) {
-    error("Failed to get UI hierarchy:", e);
-    return [];
+    // 退化方案：先 dump 到 /sdcard 再 cat（部分设备不支持 exec-out + uiautomator）
+    try {
+      await execAsyncWithTimeout(
+        'adb shell "uiautomator dump /sdcard/window_dump.xml"',
+        { timeout: 15000 }
+      );
+      const { stdout } = await execAsyncWithTimeout(
+        'adb shell "cat /sdcard/window_dump.xml"',
+        { timeout: 10000 }
+      );
+      return parseHierarchyXml(stdout);
+    } catch (e2) {
+      error("Failed to get UI hierarchy:", e2);
+      return [];
+    }
   }
+}
+
+/**
+ * 解析 uiautomator dump 出的 XML —— 同时兼容自闭合与开闭配对节点
+ */
+export function parseHierarchyXml(xml: string): UIElement[] {
+  const elements: UIElement[] = [];
+  // 匹配所有 <node ... /> 或 <node ...>，无论自闭合还是带子节点
+  const nodeRegex = /<node\b([^>]*?)\/?>/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = nodeRegex.exec(xml)) !== null) {
+    const attrs = m[1];
+    const boundsMatch = attrs.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+    const textMatch = attrs.match(/text="([^"]*)"/);
+    const classMatch = attrs.match(/class="([^"]*)"/);
+    const clickableMatch = attrs.match(/clickable="([^"]*)"/);
+    const resourceMatch = attrs.match(/resource-id="([^"]*)"/);
+
+    if (boundsMatch) {
+      elements.push({
+        type: classMatch ? classMatch[1].split(".").pop() || "unknown" : "unknown",
+        text: textMatch ? textMatch[1] : undefined,
+        bounds: {
+          x: parseInt(boundsMatch[1]),
+          y: parseInt(boundsMatch[2]),
+          width: parseInt(boundsMatch[3]) - parseInt(boundsMatch[1]),
+          height: parseInt(boundsMatch[4]) - parseInt(boundsMatch[2]),
+        },
+        clickable: clickableMatch ? clickableMatch[1] === "true" : false,
+        resourceId: resourceMatch ? resourceMatch[1] : undefined,
+      });
+    }
+  }
+
+  return elements;
 }
 
 /**

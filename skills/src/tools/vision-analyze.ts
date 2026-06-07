@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import { statSync } from "node:fs";
 import { log, error } from "../utils/logger.js";
 import { execAsyncWithTimeout } from "../utils/exec.js";
 
@@ -20,18 +21,30 @@ function getClient(): OpenAI {
   return client;
 }
 
+// 80KB 是经验阈值：超过此大小 base64 + 网络传输开销显著
+const SKIP_RESIZE_THRESHOLD_BYTES = 80 * 1024;
+const MAX_DIMENSION_FOR_API = 320;
+
 /**
  * Resize image for API upload with proper cleanup.
+ * 智能跳过：如果文件已经 < 80KB 或最长边 ≤ 320px，直接用原图。
  */
 async function resizeForApiAsync(imagePath: string): Promise<string> {
+  try {
+    const size = statSync(imagePath).size;
+    if (size < SKIP_RESIZE_THRESHOLD_BYTES) return imagePath;
+  } catch {
+    return imagePath;
+  }
+
   const resizedPath = imagePath.replace(/\.(png|jpg|jpeg)$/, "_resized.$1");
   try {
     const cmd = `python3 -c "
 from PIL import Image
 img = Image.open('${imagePath}')
 w, h = img.size
-if max(w, h) > 320:
-    ratio = 320 / max(w, h)
+if max(w, h) > ${MAX_DIMENSION_FOR_API}:
+    ratio = ${MAX_DIMENSION_FOR_API} / max(w, h)
     img = img.resize((int(w*ratio), int(h*ratio)), Image.LANCZOS)
     img.save('${resizedPath}')
 "`;
@@ -42,17 +55,17 @@ if max(w, h) > 320:
   }
 }
 
-/**
- * Clean up a temporary resized file.
- */
 function cleanupResizedFile(resizedPath: string, originalPath: string): void {
   if (resizedPath !== originalPath) {
-    try {
-      fs.unlinkSync(resizedPath);
-    } catch {
-      // Ignore cleanup errors
-    }
+    try { fs.unlinkSync(resizedPath); } catch { /* ignore */ }
   }
+}
+
+function encodeAsDataUrl(p: string): string {
+  const buf = fs.readFileSync(p);
+  const ext = path.extname(p).slice(1) || "png";
+  const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+  return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
 export async function analyzeWithVision(
@@ -64,18 +77,9 @@ export async function analyzeWithVision(
     throw new Error(`File not found: ${imagePath}`);
   }
 
-  // Resize to max 320px on the longest side for faster API response
   const resizedPath = await resizeForApiAsync(imagePath);
-
-  let readPath: string;
   try {
-    readPath = fs.existsSync(resizedPath) ? resizedPath : imagePath;
-    const imageBuffer = fs.readFileSync(readPath);
-    const base64Image = imageBuffer.toString("base64");
-    const ext = path.extname(readPath).slice(1) || "png";
-    const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
-    const imageUrl = `data:${mimeType};base64,${base64Image}`;
-
+    const imageUrl = encodeAsDataUrl(resizedPath);
     const defaultPrompt = `You are an Android UI expert. Analyze this screenshot and report:
 
 ## Layout
@@ -83,7 +87,7 @@ export async function analyzeWithVision(
 - Are there alignment/spacing issues? Be specific about which element and by how much.
 - Is the content density appropriate?
 
-## Components  
+## Components
 - How many cards/items are visible? List each one.
 - Are images loading correctly?
 - Is text readable (font size, contrast, truncation)?
@@ -124,35 +128,26 @@ Be very specific and quantitative. Measure approximate padding/margins using the
       { timeout: 120000 }
     );
 
-    const msg = response.choices[0]?.message;
-    const content = msg?.content;
-    if (!content) {
-      throw new Error("Vision model returned empty response");
-    }
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error("Vision model returned empty response");
     return content;
   } finally {
-    // Always clean up resized temp file
     cleanupResizedFile(resizedPath, imagePath);
   }
 }
 
 export async function compareWithVision(baselinePath: string, currentPath: string, prompt?: string): Promise<string> {
-  if (!fs.existsSync(baselinePath)) {
-    throw new Error(`Baseline not found: ${baselinePath}`);
-  }
-  if (!fs.existsSync(currentPath)) {
-    throw new Error(`Current not found: ${currentPath}`);
-  }
+  if (!fs.existsSync(baselinePath)) throw new Error(`Baseline not found: ${baselinePath}`);
+  if (!fs.existsSync(currentPath)) throw new Error(`Current not found: ${currentPath}`);
 
-  const encode = (p: string) => {
-    const readPath = fs.existsSync(p) ? p : p;
-    const buf = fs.readFileSync(readPath);
-    const ext = path.extname(readPath).slice(1) || "png";
-    const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
-    return `data:${mime};base64,${buf.toString("base64")}`;
-  };
+  // 两张图都按需 resize，但跳过 < 80KB 的图
+  const [bResized, cResized] = await Promise.all([
+    resizeForApiAsync(baselinePath),
+    resizeForApiAsync(currentPath),
+  ]);
 
-  const defaultPrompt = `Compare these two Android screenshots. The first is the design/baseline, the second is the current implementation.
+  try {
+    const defaultPrompt = `Compare these two Android screenshots. The first is the design/baseline, the second is the current implementation.
 
 Focus on:
 1. Layout differences (position, spacing, sizing)
@@ -162,31 +157,34 @@ Focus on:
 
 For each difference, state whether it's acceptable or needs fixing, and suggest exact Compose code changes.`;
 
-  const response = await getClient().chat.completions.create(
-    {
-      model: "kimi-k2.6",
-      messages: [
-        {
-          role: "system",
-          content: "You are an Android UI testing expert. Compare screenshots precisely and give actionable feedback.",
-        },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Here is the baseline/design screenshot:" },
-            { type: "image_url", image_url: { url: encode(baselinePath) } },
-            { type: "text", text: "Here is the current implementation screenshot:" },
-            { type: "image_url", image_url: { url: encode(currentPath) } },
-            { type: "text", text: prompt || defaultPrompt },
-          ],
-        },
-      ],
-      max_tokens: 4096,
-      temperature: 1.0,
-    },
-    { timeout: 120000 }
-  );
+    const response = await getClient().chat.completions.create(
+      {
+        model: "kimi-k2.6",
+        messages: [
+          {
+            role: "system",
+            content: "You are an Android UI testing expert. Compare screenshots precisely and give actionable feedback.",
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Here is the baseline/design screenshot:" },
+              { type: "image_url", image_url: { url: encodeAsDataUrl(bResized) } },
+              { type: "text", text: "Here is the current implementation screenshot:" },
+              { type: "image_url", image_url: { url: encodeAsDataUrl(cResized) } },
+              { type: "text", text: prompt || defaultPrompt },
+            ],
+          },
+        ],
+        max_tokens: 4096,
+        temperature: 1.0,
+      },
+      { timeout: 120000 }
+    );
 
-  const msg = response.choices[0]?.message;
-  return msg?.content || "Comparison failed";
+    return response.choices[0]?.message?.content || "Comparison failed";
+  } finally {
+    cleanupResizedFile(bResized, baselinePath);
+    cleanupResizedFile(cResized, currentPath);
+  }
 }

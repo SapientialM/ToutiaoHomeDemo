@@ -1,6 +1,8 @@
 import { execAsyncWithTimeout } from "./exec.js";
 import { log, error } from "./logger.js";
 
+export { getCurrentActivity } from "./adb-enhanced.js";
+
 /**
  * 应用启动速度测量工具
  * 支持冷启动、热启动、页面跳转耗时测量
@@ -40,19 +42,6 @@ export interface LaunchMeasurementResult {
 /**
  * 获取应用当前运行的 Activity
  */
-export async function getCurrentActivity(packageName: string): Promise<string | null> {
-  try {
-    const { stdout } = await execAsyncWithTimeout(
-      `adb shell dumpsys activity activities | grep "mResumedActivity" | grep "${packageName}"`,
-      { timeout: 5000 }
-    );
-    const match = stdout.match(/\.(\w+Activity)/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * 强制停止应用
  */
@@ -125,9 +114,9 @@ export async function getDisplayedTimeFromLogcat(
   // 轮询日志，查找 Displayed 信息
   while (Date.now() - startTime < timeoutMs) {
     try {
-      // 使用更宽泛的匹配，因为不同 Android 版本的日志标签可能不同
+      // 使用 tag 级别过滤 + 大小写不敏感 grep，避免 dump 完整 buffer
       const { stdout } = await execAsyncWithTimeout(
-        `adb logcat -d | grep -i "displayed.*${packageName}"`,
+        `adb logcat -d -s ActivityTaskManager:I -t 50 | grep -i "displayed.*${packageName}"`,
         { timeout: 5000 }
       );
 
@@ -181,6 +170,9 @@ export async function measureSingleLaunch(
 ): Promise<LaunchMetrics> {
   log(`Measuring ${launchType} iteration ${iteration} for ${packageName}`);
   
+  // 必须在最前面清除日志，避免 force-stop/clear-data 期间的日志污染
+  await execAsyncWithTimeout("adb logcat -c", { timeout: 5000 });
+
   if (launchType === "cold_start") {
     // 冷启动：强制停止 + 清除缓存
     await forceStopApp(packageName);
@@ -190,9 +182,6 @@ export async function measureSingleLaunch(
     await execAsyncWithTimeout("adb shell input keyevent 3", { timeout: 5000 }); // HOME key
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  
-  // 先清除日志，确保只捕获本次启动的日志
-  await execAsyncWithTimeout("adb logcat -c", { timeout: 5000 });
 
   // 使用 am start -W 测量
   const amStartResult = await measureWithAmStart(packageName, activityName);
@@ -229,10 +218,13 @@ export function calculateStatistics(values: number[]): LaunchStatistics {
   const min = sorted[0];
   const max = sorted[sorted.length - 1];
   const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length);
-  
-  // P95
-  const p95Index = Math.ceil(sorted.length * 0.95) - 1;
-  const p95 = sorted[Math.max(0, p95Index)];
+
+  // P95：用 linear interpolation，索引钳制到 [0, len-1]
+  const rank = sorted.length * 0.95;
+  const lower = Math.floor(rank);
+  const upper = Math.min(sorted.length - 1, lower + 1);
+  const fraction = rank - lower;
+  const p95 = Math.round(sorted[lower] * (1 - fraction) + sorted[upper] * fraction);
   
   return { min, max, avg, p95 };
 }

@@ -1,8 +1,11 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { log } from "../utils/logger.js";
+import sharp from "sharp";
+import pixelmatch from "pixelmatch";
+import { PNG } from "pngjs";
 
 function ensureDir(dir: string) {
-  mkdirSync(dir, { recursive: true });
+  try { mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
 }
 
 export async function handleVerifyUI(args: Record<string, unknown>) {
@@ -58,10 +61,6 @@ export async function handleVerifyUI(args: Record<string, unknown>) {
 
 async function handleCompare(baselinePath: string, currentPath: string) {
   try {
-    const sharp = (await import("sharp")).default;
-    const pixelmatch = (await import("pixelmatch")).default;
-    const { PNG } = await import("pngjs");
-
     const baselineBuf = readFileSync(baselinePath);
     const currentBuf = readFileSync(currentPath);
 
@@ -111,7 +110,6 @@ async function handleColorCheck(
   expectedHex: string,
 ) {
   try {
-    const sharp = (await import("sharp")).default;
     const buffer = await sharp(screenshotPath)
       .extract({ left: Math.round(x), top: Math.round(y), width: 1, height: 1 })
       .raw()
