@@ -15,11 +15,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.example.toutiao.presentation.common.AppBottomNav
+import com.example.toutiao.presentation.earn.EarnScreen
 import com.example.toutiao.presentation.home.HomeScreen
 import com.example.toutiao.presentation.home.HomeViewModel
+import com.example.toutiao.presentation.mall.MallScreen
 import com.example.toutiao.presentation.profile.ProfileScreen
-import com.example.toutiao.presentation.search.SearchScreen
-import com.example.toutiao.presentation.task.TaskScreen
 import com.example.toutiao.presentation.video.VideoScreen
 import com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -49,8 +49,8 @@ class MainActivity : ComponentActivity() {
                         when (selectedBottomNav) {
                             0 -> HomeScreen(viewModel = viewModel)
                             1 -> VideoScreen()
-                            2 -> SearchScreen()
-                            3 -> TaskScreen()
+                            2 -> EarnScreen()
+                            3 -> MallScreen()
                             4 -> ProfileScreen()
                         }
                     }
@@ -59,7 +59,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-
-
-

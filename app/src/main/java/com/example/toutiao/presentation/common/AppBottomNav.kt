@@ -1,16 +1,20 @@
 package com.example.toutiao.presentation.common
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.AccessTime
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MonetizationOn
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -20,14 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.size
 import com.example.toutiao.ui.theme.NavSelected
 import com.example.toutiao.ui.theme.NavUnselected
 
@@ -42,8 +42,8 @@ fun AppBottomNav(selectedIndex: Int, onSelected: (Int) -> Unit) {
     val items = listOf(
         NavItem("首页", Icons.Filled.Home, Icons.Outlined.Home),
         NavItem("视频", Icons.Filled.PlayArrow, Icons.Outlined.PlayArrow),
-        NavItem("搜索", Icons.Filled.Search, Icons.Outlined.Search),
-        NavItem("任务", Icons.Filled.AccessTime, Icons.Outlined.AccessTime),
+        NavItem("赚钱", Icons.Filled.MonetizationOn, Icons.Outlined.MonetizationOn),
+        NavItem("商城", Icons.Filled.ShoppingCart, Icons.Outlined.ShoppingCart),
         NavItem("我的", Icons.Filled.Person, Icons.Outlined.Person),
     )
 

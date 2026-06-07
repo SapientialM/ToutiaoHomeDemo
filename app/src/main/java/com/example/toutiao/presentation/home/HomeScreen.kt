@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -249,6 +250,27 @@ private fun PagingFeedList(
                     state = listState,
                     contentPadding = PaddingValues(top = 0.dp, bottom = 8.dp),
                 ) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White)
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "上次看到这里，以下为新内容",
+                                color = Color(0xFF999999),
+                                fontSize = 12.sp,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(Color(0xFFEEEEEE)),
+                        )
+                    }
                     items(
                         count = lazyPagingItems.itemCount,
                         key = lazyPagingItems.itemKey { it.id },
@@ -309,10 +331,11 @@ private fun HomeTopBar(
     val tabs = listOf(
         "follow" to "关注",
         "recommend" to "推荐",
-        "hot" to "热榜",
-        "newera" to "新时代",
+        "gaokao" to "高考首日",
+        "shenzhen" to "深圳",
         "novel" to "小说",
-        "video" to "视频",
+        "discover" to "发现",
+        "audio" to "畅听",
     )
     val isSearching = (uiState as? HomeUiState.Success)?.isSearching ?: false
 
@@ -324,7 +347,7 @@ private fun HomeTopBar(
             .statusBarsPadding(),
     ) {
         if (!isSearching) {
-            WeatherHeader()
+            BrandTopRow()
         }
 
         if (isSearching) {
@@ -334,8 +357,6 @@ private fun HomeTopBar(
                 onSubmit = { onEvent(HomeUiEvent.OnSearchSubmit) },
                 onDismiss = { onEvent(HomeUiEvent.OnSearchDismiss) },
             )
-        } else {
-            SearchPlaceholderBar(onClick = { onEvent(HomeUiEvent.OnSearchClicked) })
         }
 
         val selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0)
@@ -378,35 +399,60 @@ private fun HomeTopBar(
 
 @Composable
 private fun WeatherHeader() {
+    BrandTopRow()
+}
+
+@Composable
+private fun BrandTopRow() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Icon(
-                imageVector = Icons.Filled.WbSunny,
-                contentDescription = "天气",
-                tint = Color(0xFFFFD700),
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text("14°", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text("北京 多云", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Text("空气质量良", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
-            }
-        }
-
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White.copy(alpha = 0.25f))
-                .padding(horizontal = 12.dp, vertical = 5.dp),
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White),
+            contentAlignment = Alignment.Center,
         ) {
-            Text("AI回答", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("头", color = RedMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(10.dp))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(36.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White)
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text(
+                text = "艺考名师当着女友面侵犯学生 | 2026...",
+                color = Color(0xFF999999),
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.clickable { /* TODO: 豆包 AI */ },
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFFB6C1)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("🤖", fontSize = 18.sp)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text("豆包 AI", color = Color.White, fontSize = 10.sp)
         }
     }
 }
