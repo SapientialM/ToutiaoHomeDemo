@@ -78,7 +78,15 @@ private fun MallTopBar() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(RedMain)
+            .background(
+                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFFF6B6B),
+                        Color(0xFFFF8E8E),
+                        Color(0xFFFFB1B1),
+                    ),
+                ),
+            )
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -171,6 +179,7 @@ private fun QuickEntriesRow() {
         QuickEntry("签到领钱", Icons.Filled.CardGiftcard, RedMain, badge = "1")
         QuickEntry("券与红包", Icons.Filled.LocalOffer, RedMain)
         QuickEntry("关注店铺", Icons.Filled.Store, RedMain, badge = "3")
+        QuickEntry("购物消息", Icons.Filled.Notifications, RedMain, badge = "3")
     }
 }
 

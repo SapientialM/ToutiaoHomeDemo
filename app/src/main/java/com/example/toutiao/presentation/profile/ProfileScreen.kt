@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -126,10 +127,33 @@ private fun TopActionBar() {
 
         Spacer(Modifier.weight(1f))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             TopIconButton(Icons.Filled.PersonAdd, "添加好友")
-            TopIconButton(Icons.Filled.PlaylistPlay, "通讯录")
-            TopIconButton(Icons.Filled.NotificationsNone, "消息")
+            Box(modifier = Modifier.size(22.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.NotificationsNone,
+                    contentDescription = "消息",
+                    tint = Color(0xFF333333),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clickable { /* TODO: 消息 */ },
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFF4D4F))
+                        .border(1.dp, Color.White, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("1", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            TopIconButton(Icons.Filled.Share, "分享")
             TopIconButton(Icons.Filled.Settings, "设置")
         }
     }

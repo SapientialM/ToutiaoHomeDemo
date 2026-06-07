@@ -27,10 +27,15 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,6 +66,7 @@ fun VideoScreen(
     var isLoading by remember { mutableStateOf(true) }
     var hasMore by remember { mutableStateOf(true) }
     var currentPage by remember { mutableStateOf(0) }
+    var currentTab by remember { mutableIntStateOf(3) }
 
     LaunchedEffect(Unit) {
         loadVideos(viewModel, 0) { newVideos, more ->
@@ -71,7 +77,7 @@ fun VideoScreen(
     }
 
     Scaffold(
-        topBar = { VideoTopBar() },
+        topBar = { VideoTopBar(currentTab = currentTab, onTabSelected = { currentTab = it }) },
         containerColor = Color(0xFFF5F5F5),
     ) { innerPadding ->
         LazyColumn(
@@ -138,45 +144,87 @@ private fun loadVideos(
 }
 
 @Composable
-private fun VideoTopBar() {
-    Row(
+private fun VideoTopBar(currentTab: Int = 3, onTabSelected: (Int) -> Unit = {}) {
+    val tabs = listOf("推荐", "说", "发现", "视频", "体育", "畅听", "短剧", "三")
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(RedMain)
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .statusBarsPadding(),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Filled.Videocam,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "视频",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Videocam,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "视频",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.2f))
+                    .clickable { }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = "搜索",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
 
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White.copy(alpha = 0.2f))
-                .clickable { }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ScrollableTabRow(
+            selectedTabIndex = currentTab,
+            containerColor = RedMain,
+            contentColor = Color.White,
+            edgePadding = 16.dp,
+            divider = {},
+            indicator = { tabPositions ->
+                if (currentTab < tabPositions.size) {
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier
+                            .tabIndicatorOffset(tabPositions[currentTab])
+                            .padding(horizontal = 8.dp),
+                        height = 3.dp,
+                        color = Color.White,
+                    )
+                }
+            },
         ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = "搜索",
-                tint = Color.White,
-                modifier = Modifier.size(18.dp),
-            )
+            tabs.forEachIndexed { index, label ->
+                val selected = index == currentTab
+                Tab(
+                    selected = selected,
+                    onClick = { onTabSelected(index) },
+                    text = {
+                        Text(
+                            text = label,
+                            fontSize = if (selected) 17.sp else 14.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
+                        )
+                    },
+                )
+            }
         }
     }
 }

@@ -446,13 +446,13 @@ private fun BrandTopRow() {
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFFFB6C1)),
+                    .background(Color(0xFFFFCDB2)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("🤖", fontSize = 18.sp)
+                Text("👧", fontSize = 18.sp)
             }
             Spacer(Modifier.height(2.dp))
-            Text("豆包 AI", color = Color.White, fontSize = 10.sp)
+            Text("豆包 AI", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
