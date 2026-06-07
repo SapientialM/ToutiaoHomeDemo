@@ -26,3 +26,7 @@ skills/*.txt
 skills/*.sh
 skills/.env
 skills/dist/
+
+# Mock 数据 (抓取自头条/苏宁, 详见 app/src/main/java/com/example/toutiao/data/NEWS_DATA_README.md)
+app/src/main/assets/news_data.json
+app/src/main/assets/mall_products.json
