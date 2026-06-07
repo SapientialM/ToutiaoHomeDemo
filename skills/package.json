@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:ui": "vitest --ui",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:vision-bench": "vitest run src/test/vision-benchmark.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",

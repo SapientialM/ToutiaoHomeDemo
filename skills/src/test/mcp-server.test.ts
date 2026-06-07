@@ -51,6 +51,13 @@ describe("Android Dev Assist MCP Server", () => {
   let testImagePath: string | null = null;
   let deviceAvailable = false;
 
+  // Kimi 模式下所有 vision 测试都跑得很慢（100-150s/调用），默认跳过
+  // 改用：设置 MINIMAX_API_KEY / VISION_PROVIDER=minimax 即可全速跑
+  // 或：设置 RUN_KIMI_VISION_TESTS=1 强制启用
+  const isKimiMode = (process.env.VISION_PROVIDER || "").toLowerCase() === "kimi" || !!process.env.MOONSHOT_API_KEY && !process.env.MINIMAX_API_KEY;
+  const runKimiVision = process.env.RUN_KIMI_VISION_TESTS === "1";
+  const skipKimiVision = isKimiMode && !runKimiVision;
+
   beforeAll(async () => {
     // Find test image
     testImagePath = await findTestScreenshot();
@@ -264,6 +271,10 @@ describe("Android Dev Assist MCP Server", () => {
     }, UNIT_TIMEOUT);
 
     it("should analyze test screenshot with PIL (Stage 1)", async () => {
+      if (skipKimiVision) {
+        console.log("⏭️ Skipping: Kimi vision mode disabled (set RUN_KIMI_VISION_TESTS=1 to enable)");
+        return;
+      }
       if (!testImagePath) {
         console.log("⏭️ Skipping: No test image available");
         return;
@@ -285,6 +296,10 @@ describe("Android Dev Assist MCP Server", () => {
     }, TEST_TIMEOUT);
 
     it("should analyze test screenshot with custom prompt", async () => {
+      if (skipKimiVision) {
+        console.log("⏭️ Skipping: Kimi vision mode disabled (set RUN_KIMI_VISION_TESTS=1 to enable)");
+        return;
+      }
       if (!testImagePath) {
         console.log("⏭️ Skipping: No test image available");
         return;
@@ -314,6 +329,10 @@ describe("Android Dev Assist MCP Server", () => {
     }, UNIT_TIMEOUT);
 
     it("should compare two test screenshots", async () => {
+      if (skipKimiVision) {
+        console.log("⏭️ Skipping: Kimi vision mode disabled (set RUN_KIMI_VISION_TESTS=1 to enable)");
+        return;
+      }
       if (!testImagePath || !TEST_SCREENSHOT_2) {
         console.log("⏭️ Skipping: Not enough test images");
         return;
@@ -325,9 +344,9 @@ describe("Android Dev Assist MCP Server", () => {
         return;
       }
 
-      // Skip if no API key (Vision API requires it)
-      if (!process.env.MOONSHOT_API_KEY) {
-        console.log("⏭️ Skipping: MOONSHOT_API_KEY not set");
+      // Skip if no API key at all (Kimi or Minimax)
+      if (!process.env.MOONSHOT_API_KEY && !process.env.MINIMAX_API_KEY) {
+        console.log("⏭️ Skipping: no vision API key (MOONSHOT_API_KEY / MINIMAX_API_KEY) set");
         return;
       }
 
@@ -394,6 +413,10 @@ describe("Android Dev Assist MCP Server", () => {
   // ═══════════════════════════════════════════════════════════
   describe("Integration: Full workflow", () => {
     it("should handle complete screenshot → analyze pipeline", async () => {
+      if (skipKimiVision) {
+        console.log("⏭️ Skipping: Kimi vision mode disabled (set RUN_KIMI_VISION_TESTS=1 to enable)");
+        return;
+      }
       if (!testImagePath) {
         console.log("⏭️ Skipping: No test image available");
         return;
