@@ -64,6 +64,9 @@ import com.example.toutiao.ui.theme.RedMain
 @Composable
 fun MallScreen(
     viewModel: MallViewModel = hiltViewModel(),
+    onOrderClick: () -> Unit = {},
+    onCouponsClick: () -> Unit = {},
+    onFollowedShopsClick: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     Scaffold(
@@ -80,7 +83,11 @@ fun MallScreen(
             ) {
                 item { MallTopBar() }
                 item { SearchRow() }
-                item { QuickEntriesRow() }
+                item { QuickEntriesRow(
+                    onOrderClick = onOrderClick,
+                    onCouponsClick = onCouponsClick,
+                    onFollowedShopsClick = onFollowedShopsClick,
+                ) }
                 item { Spacer(Modifier.height(8.dp)) }
                 item { NewbieCard() }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -203,7 +210,11 @@ private fun SearchRow() {
 }
 
 @Composable
-private fun QuickEntriesRow() {
+private fun QuickEntriesRow(
+    onOrderClick: () -> Unit,
+    onCouponsClick: () -> Unit,
+    onFollowedShopsClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -211,11 +222,11 @@ private fun QuickEntriesRow() {
             .padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        QuickEntry("我的订单", Icons.Filled.Receipt, RedMain, badge = "7.0元")
-        QuickEntry("签到领钱", Icons.Filled.CardGiftcard, RedMain, badge = "1")
-        QuickEntry("券与红包", Icons.Filled.LocalOffer, RedMain)
-        QuickEntry("关注店铺", Icons.Filled.Store, RedMain, badge = "3")
-        QuickEntry("购物消息", Icons.Filled.Notifications, RedMain, badge = "3")
+        QuickEntry("我的订单", Icons.Filled.Receipt, RedMain, badge = "7.0元", onClick = onOrderClick)
+        QuickEntry("签到领钱", Icons.Filled.CardGiftcard, RedMain, badge = "1", onClick = { /* TODO: 签到弹窗 */ })
+        QuickEntry("券与红包", Icons.Filled.LocalOffer, RedMain, onClick = onCouponsClick)
+        QuickEntry("关注店铺", Icons.Filled.Store, RedMain, badge = "3", onClick = onFollowedShopsClick)
+        QuickEntry("购物消息", Icons.Filled.Notifications, RedMain, badge = "3", onClick = { /* TODO: 商城通知 */ })
     }
 }
 
@@ -225,10 +236,11 @@ private fun QuickEntry(
     icon: ImageVector,
     tint: Color,
     badge: String? = null,
+    onClick: () -> Unit = {},
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { /* TODO: 跳转 */ },
+        modifier = Modifier.clickable { onClick() },
     ) {
         Box {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))

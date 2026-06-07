@@ -30,9 +30,13 @@ import com.example.toutiao.presentation.earn.EarnScreen
 import com.example.toutiao.presentation.home.HomeScreen
 import com.example.toutiao.presentation.home.HomeViewModel
 import com.example.toutiao.presentation.mall.MallScreen
+import com.example.toutiao.presentation.mall.sub.CouponsScreen
+import com.example.toutiao.presentation.mall.sub.FollowedShopsScreen
+import com.example.toutiao.presentation.mall.sub.OrderListScreen
 import com.example.toutiao.presentation.notification.NotificationScreen
 import com.example.toutiao.presentation.profile.ProfileScreen
 import com.example.toutiao.presentation.video.VideoScreen
+import com.example.toutiao.presentation.wallet.WalletScreen
 import com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme
 import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
@@ -108,9 +112,14 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                     )
                     1 -> VideoScreen()
                     2 -> EarnScreen()
-                    3 -> MallScreen()
+                    3 -> MallScreen(
+                        onOrderClick = { subPage = SubPage.OrderList },
+                        onCouponsClick = { subPage = SubPage.Coupons },
+                        onFollowedShopsClick = { subPage = SubPage.FollowedShops },
+                    )
                     4 -> ProfileScreen(
                         onNotificationsClick = { subPage = SubPage.Notifications },
+                        onWalletClick = { subPage = SubPage.Wallet },
                     )
                 }
             }
@@ -128,6 +137,18 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
             subPage?.let { page ->
                 when (page) {
                     SubPage.Notifications -> NotificationScreen(
+                        onBack = { subPage = null },
+                    )
+                    SubPage.Wallet -> WalletScreen(
+                        onBack = { subPage = null },
+                    )
+                    SubPage.OrderList -> OrderListScreen(
+                        onBack = { subPage = null },
+                    )
+                    SubPage.Coupons -> CouponsScreen(
+                        onBack = { subPage = null },
+                    )
+                    SubPage.FollowedShops -> FollowedShopsScreen(
                         onBack = { subPage = null },
                     )
                 }
@@ -157,9 +178,13 @@ data class DetailTarget(
     }
 }
 
-/** 子页面类型: 当前只有 Notifications, 后续可扩展 */
+/** 子页面类型: 当前 5 个, 后续可扩展 */
 enum class SubPage {
     Notifications,
+    Wallet,
+    OrderList,
+    Coupons,
+    FollowedShops,
     ;
 
     companion object {

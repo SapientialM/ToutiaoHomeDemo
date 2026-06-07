@@ -311,3 +311,71 @@ val HotAuthors: List<HotAuthor> = listOf(
     HotAuthor("a6", "湾区楼市", "🏢", 0xFFFF9A9A, 624_000, 186, false,
         "深莞惠通勤圈实地踩盘", "https://picsum.photos/seed/aut6/640/360"),
 )
+
+// =============================================================================
+// 商城订单 / 关注店铺 / 优惠券 (商城 5 入口用)
+// =============================================================================
+
+data class MallOrder(
+    val orderId: String,
+    val productName: String,
+    val productImage: String,
+    val price: Int,
+    val status: OrderStatus,
+    val orderTime: String,
+    val quantity: Int,
+)
+
+enum class OrderStatus(val label: String) {
+    PendingPay("待付款"),
+    PendingShip("待发货"),
+    Shipped("已发货"),
+    Completed("已完成"),
+    Refunding("退款中"),
+}
+
+val SampleOrders: List<MallOrder> = listOf(
+    MallOrder("o20260607001", "Apple 128GB 手机 Plus", "https://picsum.photos/seed/ord1/400/400", 6951, OrderStatus.Shipped, "今天 09:23", 1),
+    MallOrder("o20260606002", "三只松鼠 混合装 食品 250g", "https://picsum.photos/seed/ord2/400/400", 128, OrderStatus.Completed, "昨天 21:15", 2),
+    MallOrder("o20260605003", "优衣库 M 服饰 联名款", "https://picsum.photos/seed/ord3/400/400", 432, OrderStatus.PendingShip, "6月5日 14:08", 1),
+    MallOrder("o20260604004", "耐克 43 运动 篮球鞋", "https://picsum.photos/seed/ord4/400/400", 1080, OrderStatus.PendingPay, "6月4日 18:42", 1),
+    MallOrder("o20260602005", "爱他美 800g 母婴 三段", "https://picsum.photos/seed/ord5/400/400", 811, OrderStatus.Refunding, "6月2日 11:30", 3),
+)
+
+/** 关注店铺 (商城 5 入口"关注店铺"用) */
+data class FollowedShop(
+    val shopId: String,
+    val shopName: String,
+    val shopLogo: String,
+    val latestProductName: String,
+    val latestProductPrice: Int,
+    val newArrivalCount: Int,
+)
+
+val SampleFollowedShops: List<FollowedShop> = listOf(
+    FollowedShop("s1", "Apple 官方旗舰店", "https://picsum.photos/seed/shop1/120/120", "iPhone 18 Pro Max", 9999, 5),
+    FollowedShop("s2", "小米官方", "https://picsum.photos/seed/shop2/120/120", "小米 15 Ultra", 5999, 12),
+    FollowedShop("s3", "三只松鼠旗舰店", "https://picsum.photos/seed/shop3/120/120", "618 坚果大礼包", 199, 3),
+    FollowedShop("s4", "耐克官方旗舰店", "https://picsum.photos/seed/shop4/120/120", "Air Max 2026 新款", 1299, 8),
+    FollowedShop("s5", "优衣库官方", "https://picsum.photos/seed/shop5/120/120", "夏季 UT 新品", 99, 20),
+)
+
+/** 优惠券 (商城 5 入口"券与红包"用) */
+data class MallCoupon(
+    val couponId: String,
+    val title: String,
+    val amount: Int, // 优惠金额 (元)
+    val minSpend: Int, // 满减门槛
+    val status: String, // "未使用" / "已使用" / "已过期"
+    val expiresAt: String,
+)
+
+val SampleCoupons: List<MallCoupon> = listOf(
+    MallCoupon("c1", "618 通用红包", 50, 200, "未使用", "2026-06-18 到期"),
+    MallCoupon("c2", "数码 3C 品类券", 100, 500, "未使用", "2026-06-15 到期"),
+    MallCoupon("c3", "新人首单立减", 20, 0, "未使用", "2026-07-01 到期"),
+    MallCoupon("c4", "618 主会场券", 200, 1000, "未使用", "2026-06-18 到期"),
+    MallCoupon("c5", "手机品类专享", 30, 100, "已使用", "2026-05-30 已用"),
+    MallCoupon("c6", "夏季清仓", 10, 50, "已过期", "2026-05-01 已过期"),
+)
+
