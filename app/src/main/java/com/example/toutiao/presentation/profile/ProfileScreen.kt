@@ -76,6 +76,12 @@ import com.example.toutiao.ui.theme.TextHint
 fun ProfileScreen(
     onNotificationsClick: () -> Unit = {},
     onWalletClick: () -> Unit = {},
+    onOrderClick: () -> Unit = {},
+    onCreatorClick: () -> Unit = {},
+    onTasksClick: () -> Unit = {},
+    onHistoryClick: () -> Unit = {},
+    onBookshelfClick: () -> Unit = {},
+    onAllFunctionsClick: () -> Unit = {},
 ) {
     Scaffold(
         containerColor = Background,
@@ -89,9 +95,21 @@ fun ProfileScreen(
             item { TopActionBar(onNotificationsClick = onNotificationsClick) }
             item { UserHeaderSection() }
             item { Spacer(Modifier.height(8.dp)) }
-            item { GridFunctions2x2() }
+            item {
+                GridFunctions2x2(
+                    onOrderClick = onOrderClick,
+                    onCreatorClick = onCreatorClick,
+                    onTasksClick = onTasksClick,
+                )
+            }
             item { Spacer(Modifier.height(8.dp)) }
-            item { QuickIconRow() }
+            item {
+                QuickIconRow(
+                    onHistoryClick = onHistoryClick,
+                    onBookshelfClick = onBookshelfClick,
+                    onAllFunctionsClick = onAllFunctionsClick,
+                )
+            }
             item { Spacer(Modifier.height(8.dp)) }
             item { WalletSection(onClick = onWalletClick) }
             item { Spacer(Modifier.height(8.dp)) }
@@ -330,7 +348,12 @@ private fun WalletItemCell(item: WalletItem, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun GridFunctions2x2() {
+private fun GridFunctions2x2(
+    onOrderClick: () -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
+    onCreatorClick: () -> Unit = {},
+    onTasksClick: () -> Unit = {},
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -343,6 +366,7 @@ private fun GridFunctions2x2() {
                 FunctionCard(
                     title = "购物/订单",
                     subtitle = "查看低价好物",
+                    onClick = onOrderClick,
                     modifier = Modifier.weight(1f),
                 )
                 Box(
@@ -355,6 +379,7 @@ private fun GridFunctions2x2() {
                     title = "消息私信",
                     subtitle = "查看我的消息",
                     badge = "3",
+                    onClick = onNotificationsClick,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -368,6 +393,7 @@ private fun GridFunctions2x2() {
                 FunctionCard(
                     title = "创作中心",
                     subtitle = "查看我的创作中心",
+                    onClick = onCreatorClick,
                     modifier = Modifier.weight(1f),
                 )
                 Box(
@@ -379,6 +405,7 @@ private fun GridFunctions2x2() {
                 FunctionCard(
                     title = "任务",
                     subtitle = "签到开宝箱赚金币",
+                    onClick = onTasksClick,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -391,11 +418,12 @@ private fun FunctionCard(
     title: String,
     subtitle: String,
     badge: String? = null,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
-            .clickable { /* TODO: 跳转 */ }
+            .clickable { onClick() }
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -420,7 +448,11 @@ private fun FunctionCard(
 }
 
 @Composable
-private fun QuickIconRow() {
+private fun QuickIconRow(
+    onHistoryClick: () -> Unit = {},
+    onBookshelfClick: () -> Unit = {},
+    onAllFunctionsClick: () -> Unit = {},
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -433,19 +465,19 @@ private fun QuickIconRow() {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            QuickIcon(Icons.Filled.History, "浏览历史")
-            QuickIcon(Icons.Filled.Book, "书架")
-            QuickIcon(Icons.Filled.PlaylistPlay, "在看短剧")
-            QuickIcon(Icons.Filled.MoreHoriz, "全部功能")
+            QuickIcon(Icons.Filled.History, "浏览历史", onClick = onHistoryClick)
+            QuickIcon(Icons.Filled.Book, "书架", onClick = onBookshelfClick)
+            QuickIcon(Icons.Filled.PlaylistPlay, "在看短剧", onClick = { /* TODO: 看短剧 */ })
+            QuickIcon(Icons.Filled.MoreHoriz, "全部功能", onClick = onAllFunctionsClick)
         }
     }
 }
 
 @Composable
-private fun QuickIcon(icon: ImageVector, label: String) {
+private fun QuickIcon(icon: ImageVector, label: String, onClick: () -> Unit = {}) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { /* TODO: 跳转 */ },
+        modifier = Modifier.clickable { onClick() },
     ) {
         Icon(icon, contentDescription = label, tint = Color(0xFF333333), modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(6.dp))

@@ -35,6 +35,11 @@ import com.example.toutiao.presentation.mall.sub.FollowedShopsScreen
 import com.example.toutiao.presentation.mall.sub.OrderListScreen
 import com.example.toutiao.presentation.notification.NotificationScreen
 import com.example.toutiao.presentation.profile.ProfileScreen
+import com.example.toutiao.presentation.task.TaskScreen
+import com.example.toutiao.presentation.tools.AllFunctionsScreen
+import com.example.toutiao.presentation.tools.BookshelfScreen
+import com.example.toutiao.presentation.tools.CreatorCenterScreen
+import com.example.toutiao.presentation.tools.HistoryScreen
 import com.example.toutiao.presentation.video.VideoScreen
 import com.example.toutiao.presentation.wallet.WalletScreen
 import com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme
@@ -120,6 +125,12 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                     4 -> ProfileScreen(
                         onNotificationsClick = { subPage = SubPage.Notifications },
                         onWalletClick = { subPage = SubPage.Wallet },
+                        onOrderClick = { subPage = SubPage.OrderList },
+                        onCreatorClick = { subPage = SubPage.CreatorCenter },
+                        onTasksClick = { subPage = SubPage.Tasks },
+                        onHistoryClick = { subPage = SubPage.History },
+                        onBookshelfClick = { subPage = SubPage.Bookshelf },
+                        onAllFunctionsClick = { subPage = SubPage.AllFunctions },
                     )
                 }
             }
@@ -151,6 +162,19 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                     SubPage.FollowedShops -> FollowedShopsScreen(
                         onBack = { subPage = null },
                     )
+                    SubPage.CreatorCenter -> CreatorCenterScreen(
+                        onBack = { subPage = null },
+                    )
+                    SubPage.Tasks -> TaskScreen()
+                    SubPage.History -> HistoryScreen(
+                        onBack = { subPage = null },
+                    )
+                    SubPage.Bookshelf -> BookshelfScreen(
+                        onBack = { subPage = null },
+                    )
+                    SubPage.AllFunctions -> AllFunctionsScreen(
+                        onBack = { subPage = null },
+                    )
                 }
             }
         }
@@ -178,13 +202,18 @@ data class DetailTarget(
     }
 }
 
-/** 子页面类型: 当前 5 个, 后续可扩展 */
+/** 子页面类型 */
 enum class SubPage {
     Notifications,
     Wallet,
     OrderList,
     Coupons,
     FollowedShops,
+    CreatorCenter,
+    Tasks,
+    History,
+    Bookshelf,
+    AllFunctions,
     ;
 
     companion object {
