@@ -23,7 +23,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassEmpty
@@ -70,7 +73,10 @@ import com.example.toutiao.ui.theme.TextHint
 //   7. Tab 区（作品/收藏/赞过/短剧/草稿/推荐 + 全部/相册/转发 + 搜索/耳机）
 // =============================================================================
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(
+    onNotificationsClick: () -> Unit = {},
+    onWalletClick: () -> Unit = {},
+) {
     Scaffold(
         containerColor = Background,
     ) { innerPadding ->
@@ -80,12 +86,14 @@ fun ProfileScreen() {
                 .padding(innerPadding),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
-            item { TopActionBar() }
+            item { TopActionBar(onNotificationsClick = onNotificationsClick) }
             item { UserHeaderSection() }
             item { Spacer(Modifier.height(8.dp)) }
             item { GridFunctions2x2() }
             item { Spacer(Modifier.height(8.dp)) }
             item { QuickIconRow() }
+            item { Spacer(Modifier.height(8.dp)) }
+            item { WalletSection(onClick = onWalletClick) }
             item { Spacer(Modifier.height(8.dp)) }
             item { LuckySignCard() }
             item { Spacer(Modifier.height(8.dp)) }
@@ -97,7 +105,7 @@ fun ProfileScreen() {
 }
 
 @Composable
-private fun TopActionBar() {
+private fun TopActionBar(onNotificationsClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -139,7 +147,7 @@ private fun TopActionBar() {
                     tint = Color(0xFF333333),
                     modifier = Modifier
                         .size(22.dp)
-                        .clickable { /* TODO: 消息 */ },
+                        .clickable { onNotificationsClick() },
                 )
                 Box(
                     modifier = Modifier
@@ -183,10 +191,11 @@ private fun UserHeaderSection() {
             Column(modifier = Modifier.weight(1f)) {
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 设计稿 pageTitle 17sp Bold
                     Text(
-                        "用户4770313",
+                        DemoUser.nickname,
                         color = Color(0xFF1A1A1A),
-                        fontSize = 22.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(Modifier.width(4.dp))
@@ -197,20 +206,27 @@ private fun UserHeaderSection() {
                         modifier = Modifier.size(16.dp),
                     )
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    DemoUser.bio,
+                    color = Color(0xFF888888),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatItem(count = "0", label = "关注")
+                    StatItem(count = formatCount(DemoUser.following), label = "关注")
                     Spacer(Modifier.width(20.dp))
-                    StatItem(count = "0", label = "粉丝")
+                    StatItem(count = formatCount(DemoUser.follower), label = "粉丝")
                     Spacer(Modifier.width(20.dp))
-                    StatItem(count = "0", label = "获赞")
+                    StatItem(count = formatCount(DemoUser.likeCount), label = "获赞")
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable { /* TODO: 申请认证 */ },
                 ) {
-                    Text("申请认证", color = Color(0xFF666666), fontSize = 13.sp)
+                    Text(DemoUser.verifiedLabel, color = Color(0xFF666666), fontSize = 13.sp)
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
@@ -224,13 +240,21 @@ private fun UserHeaderSection() {
                 modifier = Modifier
                     .size(80.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF4FB69C)),
+                    .background(Color(DemoUser.avatarBgColor)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("👹", fontSize = 48.sp)
+                Text(DemoUser.avatarEmoji, fontSize = 40.sp)
             }
         }
     }
+}
+
+/** 1234 → "1,234", 12345 → "1.2万" */
+private fun formatCount(n: Int): String = when {
+    n < 1_000 -> n.toString()
+    n < 10_000 -> "%,d".format(n)
+    n < 100_000 -> "%.1f万".format(n / 10_000.0)
+    else -> "%.0f万".format(n / 10_000.0)
 }
 
 @Composable
@@ -239,6 +263,69 @@ private fun StatItem(count: String, label: String) {
         Text(count, color = Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.width(3.dp))
         Text(label, color = Color(0xFF666666), fontSize = 13.sp, modifier = Modifier.padding(bottom = 1.dp))
+    }
+}
+
+@Composable
+private fun WalletSection(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
+            .clickable { onClick() },
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("我的钱包", color = Color(0xFF1A1A1A), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text("查看全部", color = Color(0xFF999999), fontSize = 12.sp)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Color(0xFF999999),
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            // 3x2 钱包格
+            Column {
+                WalletItems.chunked(3).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        rowItems.forEach { w ->
+                            WalletItemCell(w, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    if (rowItems != WalletItems.chunked(3).last()) {
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WalletItemCell(item: WalletItem, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(item.icon, fontSize = 16.sp)
+            Spacer(Modifier.width(4.dp))
+            Text(item.label, color = Color(0xFF666666), fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(item.value, color = Color(0xFF1A1A1A), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        if (item.badge != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(item.badge, color = RedMain, fontSize = 10.sp, maxLines = 1)
+        }
     }
 }
 
@@ -312,7 +399,8 @@ private fun FunctionCard(
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = Color(0xFF1A1A1A), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            // 设计稿 menuTitle 14sp Medium
+            Text(title, color = Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium)
             if (badge != null) {
                 Spacer(Modifier.width(6.dp))
                 Box(
@@ -326,7 +414,8 @@ private fun FunctionCard(
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text(subtitle, color = Color(0xFF999999), fontSize = 12.sp)
+        // 设计稿 menuDesc 11sp
+        Text(subtitle, color = Color(0xFF999999), fontSize = 11.sp)
     }
 }
 
@@ -372,7 +461,11 @@ private fun LuckySignCard() {
             .padding(horizontal = 12.dp)
             .height(80.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFFD9F0D2)),
+            .background(
+                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    colors = listOf(Color(0xFFD9F0D2), Color(0xFFE8F5DD), Color(0xFFF1F7E5)),
+                ),
+            ),
     ) {
         Row(
             modifier = Modifier
@@ -382,12 +475,14 @@ private fun LuckySignCard() {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("6月幸运签", color = Color(0xFF4FB69C), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    // 设计稿 bannerTitle 15sp Bold
+                    Text("6月幸运签", color = Color(0xFF4FB69C), fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(4.dp))
                     Text("· 全新签文来袭", color = Color(0xFF1A1A1A), fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(4.dp))
-                Text("每日抽签分15000元", color = Color(0xFF666666), fontSize = 12.sp)
+                // 设计稿 bannerDesc 11sp
+                Text("每日抽签分15000元", color = Color(0xFF666666), fontSize = 11.sp)
             }
             Box(
                 modifier = Modifier
@@ -415,7 +510,8 @@ private fun ChallengeCard() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("完成挑战得奖励", color = Color(0xFF1A1A1A), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    // 设计稿 sectionTitle 15sp Medium
+                    Text("完成挑战得奖励", color = Color(0xFF1A1A1A), fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
@@ -449,8 +545,8 @@ private fun ChallengeCard() {
 private fun WorksTabSection() {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var selectedSubTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("作品", "收藏", "赞过", "短剧", "草稿", "推荐")
-    val subTabs = listOf("全部", "相册", "转发")
+    val tabs = remember { listOf("作品", "收藏", "赞过", "短剧", "草稿", "推荐") }
+    val subTabs = remember { listOf("全部", "相册", "转发") }
 
     Column(
         modifier = Modifier
@@ -536,27 +632,252 @@ private fun WorksTabSection() {
             )
         }
 
+        // Tab 内容
+        WorksTabContent(
+            selectedTab = tabs[selectedTabIndex],
+            selectedSubTab = subTabs[selectedSubTabIndex],
+        )
+    }
+}
+
+/**
+ * 作品 Tab 内容区: 根据选中 Tab 渲染 sample data
+ *
+ * 6 个 tab 全部填上合成 sample data (不再是空状态占位):
+ * - 作品 / 草稿 → SamplePosts / SampleDrafts
+ * - 收藏 / 赞过 → SampleFavorites / SampleLiked
+ * - 短剧 → SampleDramas
+ * - 推荐 → 系统推荐 (复用 SamplePosts 渲染)
+ */
+@Composable
+private fun WorksTabContent(
+    selectedTab: String,
+    selectedSubTab: String,
+) {
+    when (selectedTab) {
+        "作品" -> PostsList(SamplePosts)
+        "收藏" -> FavoritesList(SampleFavorites)
+        "赞过" -> FavoritesList(SampleLiked)
+        "短剧" -> DramasList(SampleDramas)
+        "草稿" -> PostsList(SampleDrafts, isDraft = true)
+        else -> PostsList(SamplePosts.take(2), recommendedHint = true)
+    }
+}
+
+@Composable
+private fun PostsList(posts: List<UserPost>, isDraft: Boolean = false, recommendedHint: Boolean = false) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (recommendedHint) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Explore, contentDescription = null, tint = RedMain, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("根据你的兴趣推荐", color = Color(0xFF666666), fontSize = 12.sp)
+            }
+        }
+        posts.forEachIndexed { idx, post ->
+            PostItem(post, isDraft)
+            if (idx < posts.size - 1) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .height(0.5.dp)
+                        .background(Color(0xFFEEEEEE)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostItem(post: UserPost, isDraft: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(DemoUser.avatarBgColor)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(DemoUser.avatarEmoji, fontSize = 20.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(DemoUser.nickname, color = Color(0xFF1A1A1A), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(post.timeText, color = Color(0xFF999999), fontSize = 11.sp)
+            }
+            if (isDraft) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFFFF1E6))
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text("草稿", color = Color(0xFFFF8C42), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = if (post.title.isNotBlank() && post.title != "(无标题)") post.title else post.content,
+            color = Color(0xFF1A1A1A),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            maxLines = 4,
+        )
+        if (post.title.isNotBlank() && post.title != "(无标题)" && post.content.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(post.content, color = Color(0xFF666666), fontSize = 13.sp, maxLines = 2, lineHeight = 18.sp)
+        }
+        if (post.imageUrl != null) {
+            Spacer(Modifier.height(8.dp))
+            coil.compose.AsyncImage(
+                model = post.imageUrl,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Favorite, contentDescription = null, tint = Color(0xFF999999), modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("${post.likeCount}", color = Color(0xFF999999), fontSize = 11.sp)
+            Spacer(Modifier.width(16.dp))
+            Icon(Icons.Filled.Bookmark, contentDescription = null, tint = Color(0xFF999999), modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("${post.commentCount}", color = Color(0xFF999999), fontSize = 11.sp)
+            Spacer(Modifier.width(16.dp))
+            Icon(Icons.Filled.Share, contentDescription = null, tint = Color(0xFF999999), modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("${post.shareCount}", color = Color(0xFF999999), fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun FavoritesList(favs: List<UserFavorite>) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        favs.forEachIndexed { idx, fav ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { /* TODO: 跳转详情 */ }
+                    .padding(12.dp),
+            ) {
+                coil.compose.AsyncImage(
+                    model = fav.newsCover,
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(fav.newsTitle, color = Color(0xFF1A1A1A), fontSize = 14.sp, maxLines = 2, lineHeight = 20.sp)
+                    Spacer(Modifier.weight(1f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(fav.newsSource, color = Color(0xFF999999), fontSize = 11.sp)
+                        Spacer(Modifier.weight(1f))
+                        Text(fav.savedAt, color = Color(0xFF999999), fontSize = 11.sp)
+                    }
+                }
+            }
+            if (idx < favs.size - 1) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .height(0.5.dp)
+                        .background(Color(0xFFEEEEEE)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DramasList(dramas: List<UserDrama>) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        dramas.chunked(2).forEach { rowDramas ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                rowDramas.forEach { d ->
+                    DramaCard(d, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DramaCard(d: UserDrama, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF1A1A1A)),
+    ) {
+        coil.compose.AsyncImage(
+            model = d.cover,
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp),
+        )
+        // 进度条
+        val progress = d.latestEpisode.toFloat() / d.totalEpisodes
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp),
-            contentAlignment = Alignment.Center,
+                .align(Alignment.BottomCenter)
+                .padding(6.dp),
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column {
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFFF5F5F5))
-                        .border(1.dp, Color(0xFFEEEEEE), RoundedCornerShape(4.dp)),
-                    contentAlignment = Alignment.Center,
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .background(Color(0x66FFFFFF))
+                        .clip(RoundedCornerShape(1.dp)),
                 ) {
-                    Icon(
-                        Icons.Filled.HourglassEmpty,
-                        contentDescription = null,
-                        tint = Color(0xFFCCCCCC),
-                        modifier = Modifier.size(28.dp),
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .height(2.dp)
+                            .background(RedMain),
                     )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    d.title,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+                Row {
+                    Text("更新至第 ${d.latestEpisode} 集", color = Color(0xCCFFFFFF), fontSize = 10.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(d.durationLabel, color = if (d.durationLabel.startsWith("剩")) RedMain else Color(0xFFFFC83A), fontSize = 10.sp)
                 }
             }
         }

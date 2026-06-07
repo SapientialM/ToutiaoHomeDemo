@@ -45,11 +45,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,25 +75,76 @@ import androidx.paging.compose.itemKey
 import com.example.toutiao.data.remote.datasource.DebugControls
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.common.FeedCardItem
+import com.example.toutiao.presentation.home.components.AudioCategoryChips
+import com.example.toutiao.presentation.home.components.AudioHotCard
+import com.example.toutiao.presentation.home.components.AudioRecommendItem
+import com.example.toutiao.presentation.home.components.HotAuthorsRow
+import com.example.toutiao.presentation.home.components.AudioSectionHeader
+import com.example.toutiao.presentation.home.components.AudioSubTabs
+import com.example.toutiao.presentation.home.components.FinanceRiskNotice
+import com.example.toutiao.presentation.home.components.FinanceStockIndexCard
+import com.example.toutiao.presentation.home.components.FloatingHintCardWithState
+import com.example.toutiao.presentation.home.components.HotListView
+import com.example.toutiao.presentation.home.components.LastSeenHint
+import com.example.toutiao.presentation.home.components.MilitaryRankDivider
+import com.example.toutiao.presentation.home.components.MilitaryRankHeader
+import com.example.toutiao.presentation.home.components.MilitaryRankItem
+import com.example.toutiao.presentation.home.components.NovelBook
+import com.example.toutiao.presentation.home.components.NovelBookshelfRow
+import com.example.toutiao.presentation.home.components.NovelRankItem
+import com.example.toutiao.presentation.home.components.NovelRankingTabs
+import com.example.toutiao.presentation.home.components.NovelRecommendBook
+import com.example.toutiao.presentation.home.components.NovelRecommendItem
+import com.example.toutiao.presentation.home.components.NovelSectionHeader
+import com.example.toutiao.presentation.home.components.ShenzhenLocalHotBanner
+import com.example.toutiao.presentation.home.components.ShenzhenWeatherStrip
+import com.example.toutiao.presentation.home.components.SportsBanner
+import com.example.toutiao.presentation.home.components.SportsCategoryChips
+import com.example.toutiao.presentation.home.components.SportsMatch
+import com.example.toutiao.presentation.home.components.SportsMatchRow
+import com.example.toutiao.presentation.home.components.StockIndex
 import com.example.toutiao.ui.theme.RedMain
+import timber.log.Timber
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 // =============================================================================
 // HomeScreen — MVI 入口 + Tab 切换数据隔离
 //
-// 关键设计：用 key(currentTab) 包裹 Paging3 数据收集和列表渲染，
-// Tab 切换时 Compose 丢弃旧 key 内的所有状态（包括 LazyPagingItems 和
-// LazyListState），新 key 内从 Loading 态全新开始，消除旧数据闪现。
+// 关键设计：
+//  1. key(currentTab) 包裹 Paging3 数据收集和列表渲染，
+//     Tab 切换时 Compose 丢弃旧 key 内的所有状态（包括 LazyPagingItems 和
+//     LazyListState），新 key 内从 Loading 态全新开始，消除旧数据闪现。
+//  2. snapshotFlow + derivedStateOf 监听 firstVisibleItemIndex / firstVisibleItemScrollOffset，
+//     首条可见项变化时上报 HomeUiEvent.OnFirstVisibleCardChanged，
+//     触发 HomeViewModel 把该 card id 持久化到当前 tab。
+//  3. 「上次看到这里」提示展示条件：
+//     - UiState.lastSeenCardId != null
+//     - 当前 LazyPagingItems 中能定位到该 id（lastSeenIndex >= 0）
+//     - 用户尚未滚过该位置（firstVisibleItemIndex <= lastSeenIndex）
+//     满足以上 3 条时，在 lastSeenIndex 之前插入一个 LastSeenHint item；
+//     用户点击 hint → scrollToItem(lastSeenIndex) 跳转到原位置。
 // =============================================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: HomeViewModel) {
+fun HomeScreen(
+    viewModel: HomeViewModel,
+    onCardClick: (FeedCard) -> Unit = {},
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     var showDebugDialog by remember { mutableStateOf(false) }
+
+    // 包装 onCardClick 加 Timber 日志，方便排查跳转不生效的 bug
+    val onCardClickLogged: (FeedCard) -> Unit = { card ->
+        Timber.d("HomeScreen onCardClick — id=${card.id}, sourceUrl=${card.sourceUrl}")
+        onCardClick(card)
+    }
 
     HomeScreenContent(
         uiState = uiState,
@@ -98,6 +153,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
         searchResults = searchResults,
         feedPagingData = viewModel.feedPagingData,
         onEvent = viewModel::onEvent,
+        onCardClick = onCardClickLogged,
     )
 }
 
@@ -110,6 +166,7 @@ private fun HomeScreenContent(
     searchResults: List<FeedCard>,
     feedPagingData: Flow<PagingData<FeedCard>>,
     onEvent: (HomeUiEvent) -> Unit,
+    onCardClick: (FeedCard) -> Unit,
 ) {
     val successState = uiState as? HomeUiState.Success
     val isSearching = successState?.isSearching ?: false
@@ -134,7 +191,7 @@ private fun HomeScreenContent(
                 isSearching && searchQuery.isNotEmpty() && searchResults.isNotEmpty() -> {
                     SearchResultList(
                         results = searchResults,
-                        onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                        onCardClick = { card -> onCardClick(card) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -155,28 +212,56 @@ private fun HomeScreenContent(
                     }
                 }
                 else -> {
-                    // key(currentTab): Tab 切换时销毁整个子树（LazyPagingItems + LazyListState），
-                    // 新子树从 Loading 态开始，避免：
-                    //  1. 旧 Tab 数据闪现（LazyPagingItems 是全新创建的，初始 0 条）
-                    //  2. 滚动位置残留（LazyListState 是全新创建的，位置为 0）
-                    key(currentTab) {
-                        val lazyPagingItems = feedPagingData.collectAsLazyPagingItems()
-                        val listState = remember { LazyListState() }
-
-                        // Tab 切换时 key 变化，LazyListState 是全新的，但 Paging3 的
-                        // differ 过程可能在数据到达前就把列表滚离顶部。这里显式保证回顶。
-                        LaunchedEffect(Unit) {
-                            listState.scrollToItem(0)
-                        }
-
-                        PagingFeedList(
-                            listState = listState,
-                            lazyPagingItems = lazyPagingItems,
-                            onCardClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                    // 频道差异化：热榜频道使用专门的 HotListView（带快捷入口+带徽标列表）
+                    if (currentTab == "hot" && successState != null) {
+                        HotListView(
+                            items = successState.hotListItems,
+                            quickActions = successState.hotQuickActions,
+                            onItemClick = { onEvent(HomeUiEvent.OnCardClick(it.id)) },
                             modifier = Modifier.fillMaxSize(),
                         )
+                    } else {
+                        // key(currentTab): Tab 切换时销毁整个子树（LazyPagingItems + LazyListState），
+                        // 新子树从 Loading 态开始，避免：
+                        //  1. 旧 Tab 数据闪现（LazyPagingItems 是全新创建的，初始 0 条）
+                        //  2. 滚动位置残留（LazyListState 是全新创建的，位置为 0）
+                        key(currentTab) {
+                            val lazyPagingItems = feedPagingData.collectAsLazyPagingItems()
+                            val listState = remember { LazyListState() }
+
+                            // Tab 切换时 key 变化，LazyListState 是全新的，但 Paging3 的
+                            // differ 过程可能在数据到达前就把列表滚离顶部。这里显式保证回顶。
+                            LaunchedEffect(Unit) {
+                                listState.scrollToItem(0)
+                            }
+
+                            PagingFeedList(
+                                listState = listState,
+                                lazyPagingItems = lazyPagingItems,
+                                lastSeenCardId = successState?.lastSeenCardId,
+                                lastSeenAt = successState?.lastSeenAt ?: 0L,
+                                onEvent = onEvent,
+                                onCardClick = onCardClick,
+                                channelKey = currentTab,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
+            }
+
+            // 悬浮提示卡（设计稿：右下角浮于内容之上）— 仅在「推荐/热榜」频道显示
+            if (currentTab == "recommend" || currentTab == "hot") {
+                FloatingHintCardWithState(
+                    title = "高考作文题来了",
+                    subtitle = "去热榜看详情  ›",
+                    onClick = {
+                        onEvent(HomeUiEvent.OnTabSelected("hot"))
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 16.dp),
+                )
             }
         }
     }
@@ -188,7 +273,11 @@ private fun HomeScreenContent(
 private fun PagingFeedList(
     listState: LazyListState,
     lazyPagingItems: LazyPagingItems<FeedCard>,
-    onCardClick: (String) -> Unit,
+    lastSeenCardId: String?,
+    lastSeenAt: Long,
+    onEvent: (HomeUiEvent) -> Unit,
+    onCardClick: (FeedCard) -> Unit,
+    channelKey: String,
     modifier: Modifier = Modifier,
 ) {
     val refreshLoadState = lazyPagingItems.loadState.refresh
@@ -198,15 +287,61 @@ private fun PagingFeedList(
     val isError = refreshLoadState is LoadState.Error && lazyPagingItems.itemCount == 0
     val errorMessage = (refreshLoadState as? LoadState.Error)?.error?.message ?: "加载失败"
 
-    // Tab 切换：key(currentTab) 重建整个子树，LazyListState 初始位置为 0，
-    // 天然回到顶部。下拉刷新：LaunchedEffect 监听 loadState.refresh 变化，
-    // 当 LoadState 变为 NotLoading 且有数据时，scrollToItem(0) 回顶。
+    val coroutineScope = rememberCoroutineScope()
+
+    // 解析 lastSeenCardId 在当前 LazyPagingItems 中的 index（-1 表示未找到或不需要展示）
+    val lastSeenIndex by remember(lazyPagingItems, lastSeenCardId) {
+        derivedStateOf {
+            if (lastSeenCardId.isNullOrBlank() || lazyPagingItems.itemCount == 0) {
+                -1
+            } else {
+                // 在 itemSnapshotList 中查找 id 匹配的 index
+                val snapshot = lazyPagingItems.itemSnapshotList
+                snapshot.items.indexOfFirst { it.id == lastSeenCardId }
+            }
+        }
+    }
+
+    // 当前 firstVisibleItemIndex
+    val firstVisibleIndex by remember {
+        derivedStateOf { listState.firstVisibleItemIndex }
+    }
+
+    // 当 firstVisibleIndex > 0 且首条 card 变化时，触发持久化。
+    // 注意：0 不持久化（避免刚进入 tab 立即把顶部条目当成"上次位置"覆盖）。
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .map { idx ->
+                val card = lazyPagingItems.itemSnapshotList.getOrNull(idx)
+                idx to card?.id
+            }
+            .distinctUntilChanged { (oldIdx, _), (newIdx, _) -> oldIdx == newIdx }
+            .collect { (idx, id) ->
+                if (idx > 0 && id != null && id != lastSeenCardId) {
+                    onEvent(HomeUiEvent.OnFirstVisibleCardChanged(id))
+                }
+            }
+    }
+
+    // Tab 切换 / 下拉刷新：key(currentTab) 重建整个子树，LazyListState 初始位置为 0，
+    // 天然回到顶部。
     LaunchedEffect(lazyPagingItems.loadState.refresh) {
         if (lazyPagingItems.loadState.refresh is LoadState.NotLoading
             && lazyPagingItems.itemCount > 0
         ) {
             listState.scrollToItem(0)
         }
+    }
+
+    // 决定 hint 是否展示：仅当 lastSeenIndex > 0 且用户尚未滚过该位置时
+    val showLastSeenHint by remember {
+        derivedStateOf {
+            lastSeenIndex > 0 && firstVisibleIndex <= lastSeenIndex
+        }
+    }
+
+    val relativeMinutes: Long = remember(lastSeenAt) {
+        if (lastSeenAt <= 0L) 0L else (System.currentTimeMillis() - lastSeenAt) / 60_000L
     }
 
     when {
@@ -250,43 +385,384 @@ private fun PagingFeedList(
                     state = listState,
                     contentPadding = PaddingValues(top = 0.dp, bottom = 8.dp),
                 ) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White)
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "上次看到这里，以下为新内容",
-                                color = Color(0xFF999999),
-                                fontSize = 12.sp,
+                    // ── 频道专属 Header ──
+                    if (channelKey == "shenzhen") {
+                        item(key = "shenzhen_weather") {
+                            ShenzhenWeatherStrip()
+                        }
+                        item(key = "shenzhen_local_hot") {
+                            ShenzhenLocalHotBanner(title = "一起家庭悲剧背后的三重追问")
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFEDEDED)),
                             )
                         }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(Color(0xFFEEEEEE)),
-                        )
                     }
+                    if (channelKey == "finance") {
+                        item(key = "finance_risk") {
+                            FinanceRiskNotice()
+                        }
+                        item(key = "finance_stock_card") {
+                            FinanceStockIndexCard(
+                                indices = listOf(
+                                    StockIndex("上证指数", "4027.74", "-30.04", "-0.74%"),
+                                    StockIndex("深证成指", "15314.70", "-346.87", "-2.21%"),
+                                    StockIndex("创业板指", "3957.94", "-130.95", "-3.20%"),
+                                ),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .background(Color(0xFFF5F5F5)),
+                            )
+                        }
+                    }
+                    if (channelKey == "military") {
+                        item(key = "military_header") {
+                            MilitaryRankHeader()
+                        }
+                        val militaryRanks = listOf(
+                            "普京喊话俄将士兵：兄弟们继续战斗吧" to false,
+                            "有理儿有面：日本不只想改南京大屠杀" to false,
+                            "乌方证实袭击俄境内军火库及油库" to true,
+                        )
+                        items(
+                            count = militaryRanks.size,
+                            key = { idx -> "military_rank_$idx" },
+                        ) { idx ->
+                            val (title, isNew) = militaryRanks[idx]
+                            MilitaryRankItem(
+                                title = title,
+                                isNew = isNew,
+                                onClick = { onEvent(HomeUiEvent.OnCardClick("military_$idx")) },
+                            )
+                            if (idx < militaryRanks.size - 1) {
+                                MilitaryRankDivider()
+                            }
+                        }
+                        item(key = "military_divider") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .background(Color(0xFFF5F5F5)),
+                            )
+                        }
+                    }
+                    if (channelKey == "audio") {
+                        item(key = "audio_sub_tabs") {
+                            var selectedSubTab by remember { mutableIntStateOf(1) }
+                            AudioSubTabs(
+                                tabs = listOf("听头条", "听书", "听音乐"),
+                                selectedIndex = selectedSubTab,
+                                onTabSelected = { selectedSubTab = it },
+                            )
+                        }
+                        item(key = "audio_hot_header") {
+                            AudioSectionHeader(
+                                title = "热门榜",
+                                rightTabs = listOf("完结榜", "高分榜"),
+                            )
+                        }
+                        // 双列热门榜（6 项，按设计稿 2 列 × 3 行）
+                        val hotItems = listOf(
+                            AudioHot(1, "9.4", "《万历十五年》精读", "名著解读", "14.2万人在听"),
+                            AudioHot(2, "8.7", "曾仕强讲易经", "励志成长", "1.8万人在听"),
+                            AudioHot(3, "7.5", "内在清醒：人际关系的简化", "情感故事", "975人在听"),
+                            AudioHot(4, "9.1", "回到明朝当王爷", "历史古装", "5.2万人在听"),
+                            AudioHot(5, "8.7", "被退婚后，我诗仙的身份瞒不住了", "情节流脑", "3.6万人在听"),
+                            AudioHot(6, "8.8", "人性的弱点", "励志成长", "2.1万人在听"),
+                        )
+                        items(
+                            count = (hotItems.size + 1) / 2,
+                            key = { idx -> "audio_hot_row_$idx" },
+                        ) { rowIdx ->
+                            val left = hotItems[rowIdx * 2]
+                            val right = hotItems.getOrNull(rowIdx * 2 + 1)
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                AudioHotCard(
+                                    rank = left.rank,
+                                    coverUrl = "",
+                                    rating = left.rating,
+                                    title = left.title,
+                                    tag = left.tag,
+                                    listeners = left.listeners,
+                                    onClick = { onEvent(HomeUiEvent.OnCardClick("audio_hot_${left.rank}")) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (right != null) {
+                                    AudioHotCard(
+                                        rank = right.rank,
+                                        coverUrl = "",
+                                        rating = right.rating,
+                                        title = right.title,
+                                        tag = right.tag,
+                                        listeners = right.listeners,
+                                        onClick = { onEvent(HomeUiEvent.OnCardClick("audio_hot_${right.rank}")) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                } else {
+                                    Spacer(Modifier.weight(1f))
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFF0F0F0)),
+                            )
+                        }
+                        item(key = "audio_recommend_header") {
+                            AudioSectionHeader(title = "相关推荐")
+                        }
+                        item(key = "audio_categories") {
+                            var selectedCat by remember { mutableIntStateOf(0) }
+                            AudioCategoryChips(
+                                categories = listOf("全部", "总裁", "玄幻", "神医", "评书", "战神赘婿"),
+                                selectedIndex = selectedCat,
+                                onCategorySelected = { selectedCat = it },
+                            )
+                        }
+                        val recommendItems = listOf(
+                            AudioRecommend("坠机前夜的林彪", "1971年9月8日，林彪下达反革命武装政变手令...", "名人传  |  连载中  |  11.6万人在听", "8.7"),
+                            AudioRecommend("抗美援朝解密全史", "1945年8月8日，根据雅尔塔协定，苏联对日宣战...", "战争史  |  已完结  |  3.8万人在听", "9.0"),
+                            AudioRecommend("对越自卫还击战", "1979年2月17日，《人民日报》发表声明...", "军事历史  |  完结  |  2.1万人在听", "8.6"),
+                        )
+                        items(
+                            count = recommendItems.size,
+                            key = { idx -> "audio_rec_$idx" },
+                        ) { idx ->
+                            val item = recommendItems[idx]
+                            AudioRecommendItem(
+                                title = item.title,
+                                description = item.description,
+                                tag = item.tag,
+                                rating = item.rating,
+                                onClick = { onEvent(HomeUiEvent.OnCardClick("audio_rec_$idx")) },
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFF0F0F0)),
+                            )
+                        }
+                    }
+                    if (channelKey == "novel") {
+                        item(key = "novel_bookshelf") {
+                            NovelBookshelfRow(
+                                books = listOf(
+                                    NovelBook("n1", "靠着模拟器,我把宗门带飞了", "为你推荐"),
+                                    NovelBook("n2", "家族修仙,我是老祖", "为你推荐"),
+                                    NovelBook("n3", "全属性武道", "为你推荐"),
+                                ),
+                                onBookClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFEDEDED)),
+                            )
+                        }
+                        item(key = "novel_rank_header") {
+                            NovelSectionHeader(title = "排行榜", rightText = "更多")
+                        }
+                        item(key = "novel_rank_tabs") {
+                            var selectedRankTab by remember { mutableIntStateOf(0) }
+                            NovelRankingTabs(
+                                tabs = listOf("推荐榜", "完结榜", "阅读榜", "高分榜", "热搜榜"),
+                                selectedIndex = selectedRankTab,
+                                onTabSelected = { selectedRankTab = it },
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFEDEDED)),
+                            )
+                        }
+                        val rankItems = listOf(
+                            NovelBook("r1", "都在等起义,我杀穿河工营先反了", "历史脑洞 · 2273万热度", "2273万热度"),
+                            NovelBook("r2", "开局无限分身,我一人包围全...", "玄幻脑洞 · 1813万热度", "1813万热度"),
+                            NovelBook("r3", "名义:家父赵德汉,我冒充成...", "男频衍生 · 1659万热度", "1659万热度"),
+                            NovelBook("r4", "开局召唤策...灾,横推修...", "玄幻脑洞 · 12...", "12万热度"),
+                            NovelBook("r5", "万倍返还...圣母,逆袭...", "玄幻脑洞 · 11...", "11万热度"),
+                            NovelBook("r6", "苟到成仙,报把修仙界...", "玄幻脑洞 · 11...", "11万热度"),
+                        )
+                        items(
+                            count = rankItems.size,
+                            key = { idx -> "novel_rank_$idx" },
+                        ) { idx ->
+                            val book = rankItems[idx]
+                            NovelRankItem(
+                                rank = idx + 1,
+                                book = book,
+                                onClick = { onEvent(HomeUiEvent.OnCardClick("novel_rank_$idx")) },
+                            )
+                            if (idx < rankItems.size - 1) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .background(Color(0xFFF0F0F0)),
+                                )
+                            }
+                        }
+                        item(key = "novel_recommend_header") {
+                            NovelSectionHeader(title = "猜你喜欢", rightText = "分类")
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFEDEDED)),
+                            )
+                        }
+                        val recommendBooks = listOf(
+                            NovelRecommendBook(
+                                "港综:古惑仔天天做善事这正经吗",
+                                "有人说他是香港教父 有人说他是第一慈善家",
+                                "男频衍生", "完结", "5.4万人在读", "7.6",
+                            ),
+                            NovelRecommendBook(
+                                "都在等起义,我杀穿河工营先反了",
+                                "(评分早就出了,后面不一定会涨的,狗头保命) 胡族入主中原二十年...",
+                                "历史脑洞", "完读", "6万+", "6.3",
+                            ),
+                        )
+                        items(
+                            count = recommendBooks.size,
+                            key = { idx -> "novel_rec_$idx" },
+                        ) { idx ->
+                            val book = recommendBooks[idx]
+                            NovelRecommendItem(
+                                book = book,
+                                onClick = { onEvent(HomeUiEvent.OnCardClick("novel_rec_$idx")) },
+                            )
+                            if (idx < recommendBooks.size - 1) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .background(Color(0xFFF0F0F0)),
+                                )
+                            }
+                        }
+                    }
+                    if (channelKey == "sports") {
+                        item(key = "sports_banner") {
+                            SportsBanner()
+                        }
+                        item(key = "sports_categories") {
+                            var selectedCat by remember { mutableIntStateOf(0) }
+                            SportsCategoryChips(
+                                categories = listOf("直播", "NBA", "CBA", "世界杯"),
+                                selectedIndex = selectedCat,
+                                onCategorySelected = { selectedCat = it },
+                            )
+                        }
+                        item(key = "sports_match_row_1") {
+                            SportsMatchRow(
+                                matches = listOf(
+                                    SportsMatch(
+                                        time = "今日 08:00",
+                                        status = "已结束",
+                                        league = "国际友谊赛",
+                                        homeTeam = "阿根廷",
+                                        homeScore = 2,
+                                        awayTeam = "洪都拉斯",
+                                        awayScore = 0,
+                                        homeColor = Color(0xFF74ACDF),
+                                        awayColor = Color(0xFF0073CF),
+                                    ),
+                                    SportsMatch(
+                                        time = "今日 06:00",
+                                        status = "已结束",
+                                        league = "国际友谊赛",
+                                        homeTeam = "巴西",
+                                        homeScore = 2,
+                                        awayTeam = "埃及",
+                                        awayScore = 1,
+                                        homeColor = Color(0xFFFFC83D),
+                                        awayColor = Color(0xFFCE1126),
+                                    ),
+                                ),
+                                onItemClick = { onEvent(HomeUiEvent.OnCardClick("sports_match_$it")) },
+                            )
+                        }
+                    }
+                    // 热门作者横向轮播: 仅推荐 tab
+                    if (channelKey == "recommend") {
+                        item(key = "hot_authors") {
+                            HotAuthorsRow()
+                        }
+                    }
+                    // 顶部 header 区域：根据是否展示 lastSeen hint 切换内容
+                    item(key = "header_separator") {
+                        if (showLastSeenHint && lastSeenIndex > 0) {
+                            // 当前 firstVisibleIndex <= lastSeenIndex，
+                            // 提示条直接置顶（顶部不再展示「以下为新内容」分隔线）
+                            LastSeenHint(
+                                relativeMinutes = relativeMinutes,
+                                onClick = {
+                                    onEvent(HomeUiEvent.OnLastSeenHintClicked)
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(lastSeenIndex)
+                                    }
+                                },
+                            )
+                        } else {
+                            // 用户已滚过 / 没有持久化记录：展示原始分隔线
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color.White)
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "以下为新内容",
+                                    color = Color(0xFF999999),
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                    }
+
                     items(
                         count = lazyPagingItems.itemCount,
                         key = lazyPagingItems.itemKey { it.id },
                     ) { index ->
-                        val card = lazyPagingItems[index]
-                        if (card != null) {
-                            FeedCardItem(
-                                card = card,
-                                onClick = { onCardClick(card.id) },
-                            )
+                        Column {
+                            // 当 index == lastSeenIndex 时，在该卡片前再插一个 hint
+                            // （覆盖 firstVisibleIndex = 0 但 lastSeenCardId 已加载的情况）
+                            if (index == lastSeenIndex && showLastSeenHint && firstVisibleIndex == 0) {
+                                LastSeenHint(
+                                    relativeMinutes = relativeMinutes,
+                                    onClick = {
+                                        onEvent(HomeUiEvent.OnLastSeenHintClicked)
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(lastSeenIndex)
+                                        }
+                                    },
+                                )
+                            }
+                            val card = lazyPagingItems[index]
+                            if (card != null) {
+                                FeedCardItem(
+                                    card = card,
+                                    onClick = remember(card.id) { { onCardClick(card) } },
+                                )
+                            }
                         }
                     }
 
                     lazyPagingItems.apply {
                         if (loadState.append is LoadState.Loading) {
-                            item {
+                            item(key = "footer_loading") {
                                 Box(
                                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                                     contentAlignment = Alignment.Center,
@@ -305,7 +781,7 @@ private fun PagingFeedList(
 @Composable
 private fun SearchResultList(
     results: List<FeedCard>,
-    onCardClick: (String) -> Unit,
+    onCardClick: (FeedCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -315,7 +791,7 @@ private fun SearchResultList(
         items(results, key = { it.id }) { card ->
             FeedCardItem(
                 card = card,
-                onClick = { onCardClick(card.id) },
+                onClick = { onCardClick(card) },
             )
         }
     }
@@ -328,70 +804,85 @@ private fun HomeTopBar(
     searchQuery: String,
     onEvent: (HomeUiEvent) -> Unit,
 ) {
-    val tabs = listOf(
-        "follow" to "关注",
-        "recommend" to "推荐",
-        "gaokao" to "高考首日",
-        "shenzhen" to "深圳",
-        "novel" to "小说",
-        "discover" to "发现",
-        "audio" to "畅听",
-    )
+    val tabs = remember {
+        listOf(
+            "follow" to "关注",
+            "recommend" to "推荐",
+            "hot" to "热榜",
+            "shenzhen" to "深圳",
+            "novel" to "小说",
+            "discover" to "发现",
+            "video" to "视频",
+        )
+    }
     val isSearching = (uiState as? HomeUiState.Success)?.isSearching ?: false
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(4.dp)
-            .background(RedMain)
             .statusBarsPadding(),
     ) {
-        if (!isSearching) {
-            BrandTopRow()
+        // 顶部红色品牌栏（Logo + 搜索 + AI 入口）
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(RedMain),
+        ) {
+            if (!isSearching) {
+                BrandTopRow()
+            } else {
+                SearchInputBar(
+                    query = searchQuery,
+                    onQueryChange = { onEvent(HomeUiEvent.OnSearchQueryChanged(it)) },
+                    onSubmit = { onEvent(HomeUiEvent.OnSearchSubmit) },
+                    onDismiss = { onEvent(HomeUiEvent.OnSearchDismiss) },
+                )
+            }
         }
 
-        if (isSearching) {
-            SearchInputBar(
-                query = searchQuery,
-                onQueryChange = { onEvent(HomeUiEvent.OnSearchQueryChanged(it)) },
-                onSubmit = { onEvent(HomeUiEvent.OnSearchSubmit) },
-                onDismiss = { onEvent(HomeUiEvent.OnSearchDismiss) },
-            )
-        }
-
+        // 白色 Tab 行：选中=红字+红色下划线，未选中=黑字
         val selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0)
-        ScrollableTabRow(
-            selectedTabIndex = selectedTabIndex,
-            containerColor = RedMain,
-            contentColor = Color.White,
-            edgePadding = 16.dp,
-            divider = {},
-            indicator = { tabPositions ->
-                if (selectedTabIndex < tabPositions.size) {
-                    SecondaryIndicator(
-                        modifier = Modifier
-                            .tabIndicatorOffset(tabPositions[selectedTabIndex])
-                            .padding(horizontal = 8.dp),
-                        height = 3.dp,
-                        color = Color.White,
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .shadow(2.dp),
+        ) {
+            ScrollableTabRow(
+                selectedTabIndex = selectedTabIndex,
+                containerColor = Color.White,
+                contentColor = Color(0xFF1A1A1A),
+                // 设计稿：Tab 行边缘几乎贴边，从 16dp 缩到 12dp
+                edgePadding = 12.dp,
+                divider = {},
+                indicator = { tabPositions ->
+                    if (selectedTabIndex < tabPositions.size) {
+                        SecondaryIndicator(
+                            modifier = Modifier
+                                .tabIndicatorOffset(tabPositions[selectedTabIndex])
+                                .padding(horizontal = 6.dp),
+                            height = 3.dp,
+                            color = RedMain,
+                        )
+                    }
+                },
+            ) {
+                tabs.forEach { (key, label) ->
+                    val selected = key == currentTab
+                    Tab(
+                        selected = selected,
+                        onClick = { onEvent(HomeUiEvent.OnTabSelected(key)) },
+                        text = {
+                            // 设计稿：选中 16sp Bold / 未选中 15sp Regular
+                            Text(
+                                text = label,
+                                fontSize = if (selected) 16.sp else 15.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) RedMain else Color(0xFF1A1A1A),
+                            )
+                        },
                     )
                 }
-            },
-        ) {
-            tabs.forEach { (key, label) ->
-                val selected = key == currentTab
-                Tab(
-                    selected = selected,
-                    onClick = { onEvent(HomeUiEvent.OnTabSelected(key)) },
-                    text = {
-                        Text(
-                            text = label,
-                            fontSize = if (selected) 18.sp else 15.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) Color.White else Color.White.copy(alpha = 0.7f),
-                        )
-                    },
-                )
             }
         }
     }
@@ -417,7 +908,8 @@ private fun BrandTopRow() {
                 .background(Color.White),
             contentAlignment = Alignment.Center,
         ) {
-            Text("头", color = RedMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            // 设计稿：Logo 文字 17sp Medium
+            Text("头", color = RedMain, fontSize = 17.sp, fontWeight = FontWeight.Medium)
         }
         Spacer(Modifier.width(10.dp))
         Box(
@@ -426,16 +918,27 @@ private fun BrandTopRow() {
                 .height(36.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Color.White)
-                .padding(horizontal = 14.dp),
+                .clickable { /* TODO: 触发搜索 */ }
+                .padding(horizontal = 12.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
-            Text(
-                text = "艺考名师当着女友面侵犯学生 | 2026...",
-                color = Color(0xFF999999),
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = Color(0xFFCCCCCC),
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                // 设计稿：searchHint 13sp Regular
+                Text(
+                    text = "直击2026年高考  热  第一位走出考场",
+                    color = Color(0xFF999999),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.width(10.dp))
         Column(
@@ -449,10 +952,12 @@ private fun BrandTopRow() {
                     .background(Color(0xFFFFCDB2)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("👧", fontSize = 18.sp)
+                // 设计稿：AI 文字 13sp Medium
+                Text("AI", color = Color(0xFFD81E06), fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(2.dp))
-            Text("豆包 AI", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+            // 设计稿：豆包 AI 标签 10sp Medium（之前 9sp 略小）
+            Text("豆包 AI", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -543,7 +1048,21 @@ private fun SearchInputBar(
     }
 }
 
-// ── 调试面板 ─────────────────────────────────────────────────────────────────
+// ── 频道内辅助数据类 ──────────────────────────────────────────────────────────
+private data class AudioHot(
+    val rank: Int,
+    val rating: String,
+    val title: String,
+    val tag: String,
+    val listeners: String,
+)
+
+private data class AudioRecommend(
+    val title: String,
+    val description: String,
+    val tag: String,
+    val rating: String,
+)
 @Composable
 private fun DebugDialog(showDialog: Boolean, onDismiss: () -> Unit) {
     if (!showDialog) return
@@ -659,6 +1178,7 @@ private fun HomeScreenSuccessPreview() {
                 searchResults = emptyList(),
                 feedPagingData = flow,
                 onEvent = {},
+                onCardClick = {},
             )
         }
     }
