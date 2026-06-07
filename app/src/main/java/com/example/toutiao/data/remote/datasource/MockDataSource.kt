@@ -5,6 +5,8 @@ import com.example.toutiao.data.remote.dto.NewsFeedData
 import com.example.toutiao.data.remote.dto.NewsFeedResponse
 import com.example.toutiao.data.remote.dto.NewsItemDto
 import com.example.toutiao.data.remote.dto.RawNewsItem
+import com.example.toutiao.data.remote.dto.ToutiaoMockItem
+import com.example.toutiao.data.remote.dto.ToutiaoMockWrapper
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import timber.log.Timber
@@ -17,15 +19,16 @@ import java.time.temporal.ChronoUnit
 // =============================================================================
 // MockDataSource — 数据链路的起点
 //
-// 角色：实现 RemoteDataSource 接口，从 assets/news_data.json 加载真实新闻数据，
-//       按频道过滤 + 时间排序 + 分页，返回 NewsFeedResponse（DTO）。
+// 角色：实现 RemoteDataSource 接口，从 assets/news_data.json 加载数据。
+//       新数据源（data/toutiao_mock_data.json）已 copy 到 assets，
+//       采用更简洁的 schema：{ 源URL, 封面URL, 标题, 类别 }。
 //
 // 调用链中的位置：
-//   assets/news_data.json  ← 这是唯一的数据来源（1421 条真实新闻）
+//   assets/news_data.json  ← 唯一数据来源（~17000 条）
 //          ↓ loadFromAssets()
-//   List<RawNewsItem>      ← 全部原始数据缓存在内存中（by lazy，首次调用时加载）
+//   List<RawNewsItem>      ← 内部归一化结构（兼容旧字段：source/datetime/content）
 //          ↓ filterByChannel()
-//          ↓ sortedByDescending (时间倒序)
+//          ↓ sortedByDescending (按 generatedDate 倒序)
 //          ↓ drop(offset).take(size)  ← 基于 page 的分页截取
 //   List<NewsItemDto>      ← mapToDto() 完成 RawNewsItem → NewsItemDto 转换
 //          ↓
@@ -43,8 +46,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
     // 从全部新闻中提取所有真实图片 URL，并将 HTTP 升级为 HTTPS，供无图新闻循环复用
     private val imageUrlPool: List<String> by lazy {
-        allItems.mapNotNull { it.imageUrl }
-            .filter { it.isNotBlank() }
+        allItems.mapNotNull { it.imageUrl.takeIf { url -> url.isNotBlank() } }
             .map { it.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://") }
             .distinct()
             .also { Timber.d("MockDataSource — imageUrlPool size = ${it.size}") }
@@ -121,31 +123,80 @@ class MockDataSource(context: Context) : RemoteDataSource {
     }
 
     // ── JSON 加载 ──────────────────────────────────────────────────────────────
+    /**
+     * 加载并归一化为 RawNewsItem。
+     *
+     * 优先尝试新数据源 schema（{新闻: [{源URL, 封面URL, 标题, 类别}]}），
+     * 失败则回退到旧 schema（[{标题, 分类, 时间日期, 新闻来源, 封面URL, 新闻链接, 文本内容}]）。
+     */
     private fun loadFromAssets(context: Context): List<RawNewsItem> {
         return try {
             val jsonStr = context.assets.open("news_data.json")
                 .bufferedReader().use { it.readText() }
-            val items = Json { ignoreUnknownKeys = true; isLenient = true }
-                .decodeFromString<List<RawNewsItem>>(jsonStr)
-            Timber.d("MockDataSource — loaded ${items.size} items from assets/news_data.json")
-            items
+            val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+            // 尝试新数据源 schema
+            val newSchema = runCatching { json.decodeFromString<ToutiaoMockWrapper>(jsonStr) }.getOrNull()
+            if (newSchema != null && newSchema.items.isNotEmpty()) {
+                val normalized = newSchema.items.mapIndexed { idx, it -> normalizeNewSchema(it, idx) }
+                Timber.d("MockDataSource — loaded ${normalized.size} items (新 schema) from assets/news_data.json")
+                return normalized
+            }
+
+            // 回退旧 schema
+            val oldSchema = runCatching { json.decodeFromString<List<RawNewsItem>>(jsonStr) }.getOrNull()
+            if (oldSchema != null && oldSchema.isNotEmpty()) {
+                Timber.d("MockDataSource — loaded ${oldSchema.size} items (旧 schema) from assets/news_data.json")
+                return oldSchema
+            }
+
+            Timber.w("MockDataSource — neither schema matched, returning empty list")
+            emptyList()
         } catch (e: Exception) {
             Timber.e(e, "MockDataSource — failed to load news_data.json, falling back to empty")
             emptyList()
         }
     }
 
+    /**
+     * 新 schema → RawNewsItem 归一化：
+     *  - 时间字段为空，按 index 倒推（idx=0 视为最新，依次递减 1 小时）
+     *  - 来源字段为空，按 category 推断（如 "时尚" → "时尚资讯"）
+     *  - 文本内容留空，由详情页 HTTP 访问源 URL 后解析
+     */
+    private fun normalizeNewSchema(item: ToutiaoMockItem, index: Int): RawNewsItem {
+        val now = LocalDateTime.now()
+        // 倒推 1 小时间隔，让首条数据保持"最新"语义
+        val generatedDatetime = now.minusHours(index.toLong()).format(datetimeFormatter)
+        val inferredSource = if (item.category.isNotBlank()) "${item.category}资讯" else "未知来源"
+        return RawNewsItem(
+            title = item.title,
+            category = item.category,
+            content = "", // 留空，详情页会通过 sourceUrl 拉取并解析
+            datetime = generatedDatetime,
+            source = inferredSource,
+            imageUrl = item.imageUrl,
+            sourceUrl = item.sourceUrl,
+        )
+    }
+
     // ── 频道分类映射 ──────────────────────────────────────────────────────────
     private fun filterByChannel(items: List<RawNewsItem>, channel: String): List<RawNewsItem> {
-        val categories = when (channel) {
+        // 兼容旧 + 新数据源的混合类别。新数据源类别：时尚/宠物/游戏/军事/娱乐/旅游/教育/科技/数码/深圳/美食/健康/文化/氢能
+        val categories: Set<String>? = when (channel) {
             "recommend" -> null // 全量
             "follow" -> setOf("关注") // 关注频道暂无独立数据源，返回空列表
-            "hot" -> setOf("社会", "财经", "科技", "娱乐", "体育", "国际", "国内", "军事", "NBA", "中超", "英超")
-            "video" -> setOf("视频")
+            "hot" -> setOf("社会", "财经", "科技", "娱乐", "体育", "国际", "国内", "军事", "美食", "健康", "数码")
+            "video" -> setOf("视频", "娱乐", "游戏")
             "society" -> setOf("社会", "法治", "法律", "时政", "国内", "中国", "地方", "教育", "健康", "环境", "环保")
-            "tech" -> setOf("科技", "互联网", "数码", "AI", "人工智能")
+            "tech" -> setOf("科技", "互联网", "数码", "AI", "人工智能", "氢能")
             "newera" -> setOf("时政", "国内", "中国", "新时代", "党建", "政策")
             "novel" -> setOf("小说", "文学", "文化", "读书", "故事")
+            // 新数据源专用频道
+            "shenzhen" -> setOf("深圳", "推荐") // 兜底: web 版无深圳频道, 拉推荐当本地
+            "discover" -> setOf("科技", "数码", "娱乐", "美食", "旅游", "时尚")
+            "video_channel" -> setOf("视频", "娱乐", "游戏")
+            "changting" -> setOf("科技", "娱乐", "财经", "视频") // 畅听 web 无独立, 代理
             else -> null
         }
         return if (categories == null) items else items.filter { it.category in categories }
@@ -171,17 +222,26 @@ class MockDataSource(context: Context) : RemoteDataSource {
         val relativeTime = formatRelativeTime(raw.datetime)
         val commentCount = generateCommentCount(raw.category, index)
 
+        // 优先使用数据源自带的 imageUrl（新数据源字段 "封面URL"），
+        // 兜底用 picsum.photos 生成确定性图片（保证同一新闻总是显示同一张图）
         val resolvedImageUrl = when {
             type == "text_top" -> null
-            // 使用 picsum.photos 生成基于新闻标题的确定性图片，确保同一新闻总是显示同一张图片，
-            // 不同新闻显示不同图片。使用 800x450 尺寸适配大图卡片，Coil 会自动裁剪适配左文右图卡片。
-            else -> {
-                val seed = raw.title.hashCode().absoluteValue
-                val url = "https://picsum.photos/seed/$seed/800/450"
-                println("MockDataSource — image URL for '${raw.title.take(20)}...': $url")
+            raw.imageUrl.isNotBlank() -> {
+                // 新数据源的封面 URL 已经是 picsum.photos
+                val url = raw.imageUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
                 url
             }
+            else -> {
+                val seed = raw.title.hashCode().absoluteValue
+                "https://picsum.photos/seed/$seed/800/450"
+            }
         }
+
+        val videoUrl = if (type == "video") "https://example.com/video/$index" else null
+        val duration = if (type == "video") {
+            val secs = (raw.title.hashCode().absoluteValue) % 600
+            "${secs / 60}:${String.format("%02d", secs % 60)}"
+        } else null
 
         return NewsItemDto(
             id = "${channel}_${index}_${raw.datetime.hashCode()}",
@@ -190,21 +250,32 @@ class MockDataSource(context: Context) : RemoteDataSource {
             source = raw.source,
             commentCount = commentCount,
             imageUrl = resolvedImageUrl,
-            videoUrl = null,
-            duration = null,
+            videoUrl = videoUrl,
+            duration = duration,
             publishTime = relativeTime,
             isTop = pinned,
             createdAt = parseDatetimeToMillis(raw.datetime),
+            sourceUrl = raw.sourceUrl.ifBlank { null }, // 详情页会用到此 URL
         )
     }
 
+    /**
+     * 卡片类型轮转（5 个一组）：
+     * 0 → text_top（仅当首条且为权威来源）
+     * 1 → large_image（大图）
+     * 2 → left_text_right_image（左文右图）
+     * 3 → video（视频缩略图 + 播放按钮 + 时长）
+     * 4 → left_text_right_image（左文右图）
+     * 循环 → 模拟真实头条「图文+视频+图文」混合流
+     */
     private fun determineType(imageUrl: String?, index: Int, isPinned: Boolean): String {
-        // 纯文本置顶仅保留在首页首条且为权威来源时，极大减少纯文本卡片占比
         if (isPinned && index == 0) return "text_top"
-
-        // 无论是否有封面图，均按 1:1 分配大图和左文右图，提升图文卡片整体比例
-        return when (index % 2) {
+        // 娱乐/体育/社会类内容多设为视频
+        return when (index % 5) {
             0 -> "large_image"
+            1 -> "left_text_right_image"
+            2 -> "video"
+            3 -> "left_text_right_image"
             else -> "left_text_right_image"
         }
     }
@@ -271,18 +342,27 @@ class MockDataSource(context: Context) : RemoteDataSource {
     // =========================================================================
     // 视频频道数据 - 从视频分类中筛选
     // =========================================================================
-    override suspend fun getVideoFeed(page: Int, size: Int): NewsFeedResponse {
+    override suspend fun getVideoFeed(tab: String, page: Int, size: Int): NewsFeedResponse {
         val delayMs = DebugControls.networkDelayMs
         if (delayMs > 0) delay(delayMs)
         if (DebugControls.shouldSimulateError) throw IOException(DebugControls.DEFAULT_ERROR_MESSAGE)
 
+        // 按 tab 过滤 categories。空 / "all" / "推荐" 不过滤
+        val filtered = if (tab.isBlank() || tab == "all" || tab == "推荐") {
+            videoItems
+        } else {
+            val targetCategories = tabToCategories(tab)
+            videoItems.filter { it.category in targetCategories }
+                .ifEmpty { videoItems } // 该 tab 无数据时 fallback 全部
+        }
+
         val offset = page * size
-        val pageItems = if (offset >= videoItems.size) {
+        val pageItems = if (offset >= filtered.size) {
             emptyList()
         } else {
-            videoItems.drop(offset).take(size)
+            filtered.drop(offset).take(size)
         }
-        val hasMore = (offset + size) < videoItems.size
+        val hasMore = (offset + size) < filtered.size
 
         val dtoList = pageItems.mapIndexed { index, raw ->
             mapToVideoDto(raw, offset + index)
@@ -294,20 +374,37 @@ class MockDataSource(context: Context) : RemoteDataSource {
         )
     }
 
+    private fun tabToCategories(tab: String): Set<String> = when (tab) {
+        "说" -> setOf("娱乐", "科技")
+        "发现" -> setOf("科技", "财经", "社会")
+        "视频" -> setOf("视频", "娱乐")
+        "体育" -> setOf("体育")
+        "畅听" -> setOf("娱乐", "科技")
+        "短剧" -> setOf("娱乐")
+        else -> setOf(tab) // 兜底按字面量匹配
+    }
+
     private fun mapToVideoDto(raw: RawNewsItem, index: Int): NewsItemDto {
         val seed = raw.title.hashCode().absoluteValue
+        // 同样优先用数据源封面 URL
+        val cover = if (raw.imageUrl.isNotBlank()) {
+            raw.imageUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
+        } else {
+            "https://picsum.photos/seed/$seed/800/450"
+        }
         return NewsItemDto(
             id = "video_${index}_${raw.datetime.hashCode()}",
             type = "video",
             title = raw.title,
             source = raw.source,
             commentCount = generateCommentCount(raw.category, index),
-            imageUrl = "https://picsum.photos/seed/$seed/800/450",
+            imageUrl = cover,
             videoUrl = "https://example.com/video/$seed",
             duration = "${(seed % 300) / 60}:${String.format("%02d", (seed % 300) % 60)}",
             publishTime = formatRelativeTime(raw.datetime),
             isTop = false,
             createdAt = parseDatetimeToMillis(raw.datetime),
+            sourceUrl = raw.sourceUrl.ifBlank { null },
         )
     }
 
