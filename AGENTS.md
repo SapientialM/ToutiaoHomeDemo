@@ -46,8 +46,11 @@
   - ✅ 搜索功能双入口（首页顶部搜索栏 + 底部导航独立搜索页，均展示 Mock 搜索结果）
   - ✅ Video 视频列表页（独立页面，展示视频封面、播放按钮、时长、作者、播放量）
   - ✅ 性能优化基础（FeedCard @Immutable、Room channel 索引、Coil ImageLoader 内存缓存配置）
-  - ✅ MCP Skill 增强：新增 `measure_app_launch` 启动速度测量工具（冷启动/热启动/页面跳转，TTID/TTFD/TotalTime/WaitTime 多指标，多次采样统计，智能评分 A/B/C/D）
-  - ✅ MCP Skill 优化：全部 31 个工具 description 质量提升（补充返回值说明、消除参数歧义、解释专业术语、增加使用提示）
+  - ✅ MCP Skill 增强：新增 `measure_app_launch` 启动速度测量工具（冷启动/热启动/页面跳转，TTID/TTFD/TotalTime/WaitTime 多指标，多次采样统计，智能评分 A/B/C_D）
+  - ✅ MCP Skill 优化：全部 44 个工具 description 质量提升（统一 6 要素模板：功能 / 何时用 / 何时不用 / 返回结构 / 耗时 / 示例）
+  - ✅ MCP Skill 扩展：新增 `dump_hierarchy` / `find_element` / `wait_for_element`（uiautomator 元素查找）；`logcat_search` / `parse_crash`（崩溃归因）；`screenshot_region`（区域截图）；`apk_metadata`（aapt 自省）；`set_orientation` / `set_gps` / `animation_scale`（环境模拟）
+  - ✅ MCP Skill 设计稿能力：新增 `list_design_files` / `extract_design_spec` / `extract_design_tokens` / `extract_design_components` / `design_to_compose`，把 design/ 下的 14 张设计稿转换为 Agent 可读的结构化规范
+  - ✅ MCP Skill 多 LLM 支持：从 Kimi k2.6 切换到 Minimax（M3 / M2.7 / M2.7-highspeed），耗时 3-25x 提速，JSON 解析 0/3 → 3/3
 - **当前未开始**：
   - ⬜ 新闻详情页（点击卡片仅打印日志，无页面跳转）
   - ⬜ 视频实际播放能力（VideoCard 仅封面 + 播放按钮 UI）
@@ -91,43 +94,55 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 ### MCP Skill：android-dev-assist
 
-`skills/` 目录包含一个 MCP Server（`android-dev-assist`），提供以下能力：
+`skills/` 目录包含一个 MCP Server（`android-dev-assist`），v3.1.0 共 **44 个工具 / 15 个模块**：
 
-| 工具 | 功能 |
-|------|------|
-| `screenshot` | ADB 截图，返回 JSON `{path, timestamp, sizeBytes}` |
-| `tap / swipe / input_text / press_key` | ADB 基础交互，返回 JSON |
-| `vision_action` | **视觉驱动交互**：截图 → Kimi k2.6 识别元素 → 返回坐标 JSON → ADB 执行 → 截图确认。支持 `prompt` (单步) 和 `prompts` (多步串联)。所有响应为 JSON 结构化格式 |
-| `analyze_screenshot` | 3 阶段分析（PIL 像素测量 + Kimi 视觉 AI + 卡片精确验证），输出 JSON |
-| `compare_screenshots` | Kimi 视觉对比两张截图，输出 JSON |
-| `verify_ui` | UI 验证（像素对比 / 颜色检查），输出 JSON |
-| `get_logs` | ADB logcat 日志，输出 JSON `{logs[], appRunning, pid}` |
-| `build / build_deploy` | Gradle 构建 + 部署 |
-| `device_info / list_devices / shell_command` | 设备管理 |
-| `list_apps / app_info / uninstall_app / clear_app_data / stop_app` | 应用管理 |
-| `performance_metrics` | 性能监控（CPU/内存/FPS/电池/温度） |
-| `measure_app_launch` | **启动速度测量**：冷启动/热启动/页面跳转，输出 TTID/TTFD/TotalTime/WaitTime，多次采样统计，智能评分 A/B/C/D |
-| `record_screen` | 录屏 |
-| `code_quality / run_tests` | 代码质量 |
-| `ui_test / regression_test` | UI 自动化测试 |
-| `project_report` | 项目综合报告 |
-| `push_file / pull_file` | 文件传输 |
-| `network_state / set_network` | 网络调试 |
+| 模块 | 工具 | 数量 |
+|------|------|------|
+| 基础交互 | `screenshot` / `screenshot_region` / `tap` / `swipe` / `input_text` / `press_key` | 6 |
+| UI 层级 | `dump_hierarchy` / `find_element` / `wait_for_element` | 3 |
+| 构建部署 | `build` / `install_and_launch` / `build_deploy` | 3 |
+| UI 验证 | `verify_ui` / `analyze_screenshot` / `compare_screenshots` / `vision_action` | 4 |
+| 日志调试 | `get_logs` / `logcat_search` / `parse_crash` / `clear_logs` | 4 |
+| 设备管理 | `list_devices` / `device_info` / `shell_command` | 3 |
+| 应用管理 | `list_apps` / `app_info` / `uninstall_app` / `clear_app_data` / `stop_app` | 5 |
+| 性能监控 | `performance_metrics` / `measure_app_launch` / `record_screen` | 3 |
+| 设备控制 | `set_orientation` / `set_gps` / `animation_scale` | 3 |
+| 代码质量 | `code_quality` / `run_tests` | 2 |
+| UI 测试 | `ui_test` / `regression_test` | 2 |
+| 项目报告 | `project_report` | 1 |
+| 文件操作 | `push_file` / `pull_file` | 2 |
+| 网络调试 | `network_state` / `set_network` | 2 |
+| APK 元数据 | `apk_metadata` | 1 |
+| **设计稿** | `list_design_files` / `extract_design_spec` / `extract_design_tokens` / `extract_design_components` / `design_to_compose` | **5** |
 
-**所有工具输出均为标准 JSON 结构**，`isError` 字段表示错误状态。
+**所有工具输出均为标准 JSON 结构**，`isError` 字段表示错误状态。每个工具的 description 遵循 6 要素模板：功能 / 何时用 / 何时不用 / 返回结构 / 耗时 / 示例。
+
+**核心亮点工具**：
+- `vision_action`（**视觉驱动交互**）：截图 → 视觉 LLM 识别元素 → 返回坐标 → ADB 执行 → 截图确认。支持 `prompt` (单步) 和 `prompts` (多步串联)
+- `analyze_screenshot`：3 阶段分析（PIL 像素测量 + 视觉 AI + 卡片精确验证）
+- `measure_app_launch`（**启动速度测量**）：冷启动/热启动/页面跳转，TTID/TTFD/TotalTime/WaitTime，多次采样统计，智能评分 A/B/C/D
+- `extract_design_spec`（**设计稿转规范**）：把 design/ 下的截图转换为 Agent 可读的 JSON 规范（colorTokens / typography / components / layout / interactions）
+- `design_to_compose`：设计稿直接生成 Jetpack Compose Screen.kt 骨架
+- `parse_crash`：从 logcat 提取并按事件归类 Java 崩溃 / ANR / Native crash
 
 **运行要求**：
-- `MOONSHOT_API_KEY` 环境变量（Kimi 视觉 API）
+- `MINIMAX_API_KEY` 环境变量（Minimax 视觉 API，默认提供商）
 - ADB 可用 + Android 设备/模拟器连接
-- `pip install pillow`（PIL 像素分析）
+- `pip install pillow`（PIL 像素分析，analyze_screenshot 用）
+
+**可选配置**：
+- `VISION_PROVIDER=minimax|kimi`：切换 LLM 提供商（默认 minimax）
+- `MINIMAX_INSECURE_TLS=1` / `MOONSHOT_INSECURE_TLS=1`：公司代理/MITM 自签名证书时启用
+- `DESIGN_DIR=./design`：design_spec 工具的设计稿目录（默认 ./design）
 
 **构建与测试**：
 ```bash
 cd skills && npm run build     # 构建
-cd skills && npm test          # 26 个单元测试
+cd skills && npm test          # 27 个测试（Minimax 模式下 ~30s；Kimi 模式下自动 skip vision 测试）
+cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认跳过 Kimi）
 ```
 
-**注意**：`vision_action` 内部使用的 system prompt 已将 JSON 输出格式固化到 Kimi 模型层，Agent 调用时只需传入自然语言指令。
+**注意**：`vision_action` 内部使用的 system prompt 已将 JSON 输出格式固化到模型层，Agent 调用时只需传入自然语言指令。Minimax-M3 支持 `thinking:disabled` 加速 5-10x。
 
 ---
 

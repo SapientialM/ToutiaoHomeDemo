@@ -3,7 +3,9 @@
 > 目标：借助 MCP Skill（android-dev-assist）从还原度、细节、流畅性、技术工程化、代码规范化五个维度，系统性提升 APP 质量，为字节跳动客户端工程训练营答辩做准备。
 > 
 > 时间：2026-06-05 ~ 2026-06-10（6天）
-> 工具：MCP Skill 31个工具（截图分析、性能测量、代码质量、UI测试等）
+> 工具：MCP Skill v3.1.0 **44 个工具 / 15 个模块**（截图分析、性能测量、代码质量、UI 测试、**设计稿转规范**等）
+> 
+> **v3.1.0 更新（2026-06-07）**：从 31 工具扩展到 44 工具，新增 UI 元素查找、崩溃归因、APK 元数据、设备控制、设计稿转结构化规范 5 大能力；视觉 LLM 从 Kimi k2.6 切换到 Minimax（3-25x 提速，JSON 解析 0/3 → 3/3）。详见 [Vision Benchmark 报告](llm-api/vision-benchmark.md)。
 
 ---
 
@@ -302,6 +304,57 @@ Day 1 (6/5)  Day 2 (6/6)  Day 3 (6/7)  Day 4 (6/8)  Day 5 (6/9)  Day 6 (6/10)
 
 ---
 
-*文档版本：v2.0*
+## 十、v3.1.0 已交付（2026-06-07）
+
+### Phase 1：性能优化 + bug 修复
+- `get_logs` 改用 logcat 原生 `-s` tag 过滤，消除 dump 完整 buffer + grep（**让 2 个超时测试通过**）
+- `launch-speed.ts` 修复 4 个 bug：logcat 时序竞态、p95 越界、Activity 贪婪正则、`displayed.*pkg` 大小写敏感
+- `listDevices` 4 个属性查询 → `Promise.all` 并行（4x 提速）
+- `listInstalledApps` N+1 dumpsys → 单次 dumpsys + 解析
+- `getNetworkState` 3 次串行 shell → 1 次合并调用
+- `screenshot()` 2 次 ADB 往返 → 1 次（`exec-out screencap -p`）
+- `verify.ts` 动态 `import('sharp')` → 模块顶层静态 import
+- `vision-analyze.ts` 智能跳过 < 80KB resize；设计稿用 768px 长边 + JPEG quality=85
+- 修复 `getUIHierarchy` XML 正则只匹配 self-closing 的 bug
+- 抽离 `getCurrentActivity` 到 `adb-enhanced.ts` 统一复用
+
+### Phase 2：UI 元素查找与崩溃分析（+13 工具）
+- **UI 层级**（3）：`dump_hierarchy`（uiautomator dump 解析为 JSON）、`find_element`（按 text/id/class 查找）、`wait_for_element`（轮询等出现/消失）
+- **日志/崩溃**（+2）：`logcat_search`（正则 + tag + 严重度）、`parse_crash`（Java/ANR/Native 堆栈归因）
+- **区域截图**：`screenshot_region`（crop 后保存）
+- **APK 元数据**：`apk_metadata`（aapt2/aapt/apkanalyzer 自省，权限/版本/签名）
+- **设备控制**（3）：`set_orientation`（横/竖/自动）、`set_gps`（emulator 模拟）、`animation_scale`（0 关闭动画）
+
+### Phase 3：设计稿 → 结构化规范（5 工具 + 多 LLM）
+- `list_design_files`（发现 design/ 下 14 张设计稿）
+- `extract_design_spec`（**核心**：设计稿 → JSON 规范：colorTokens / typography / components / layout / interactions）
+- `extract_design_tokens`（只抽颜色）
+- `extract_design_components`（只抽组件列表 + 坐标）
+- `design_to_compose`（设计稿 → Jetpack Compose Screen.kt 骨架）
+- **多 LLM 提供商**：从 Kimi k2.6 切到 Minimax（M3 / M2.7 / M2.7-highspeed），M3 可关 thinking 加速 5-10x
+- **公司代理支持**：`MINIMAX_INSECURE_TLS=1` / `MOONSHOT_INSECURE_TLS=1` 绕过 MITM 自签名证书
+
+### 工具总数演进
+- v1.0.0：10 工具（基础 ADB）
+- v2.0.0：31 工具 / 11 模块
+- v3.0.0：41 工具 / 13 模块（性能 + 新工具）
+- v3.1.0：**44 工具 / 15 模块**（+ 设计稿 + Minimax）
+
+### 测试结果
+- 27/27 测试通过（22 常规 + 4 vision-Kimi-skip + 1 vision-bench）
+- 视觉基准：Minimax 3 模型 × 3 工具 = 9 调用，全部 3/3 JSON 解析成功
+- 速度：M2.7-highspeed 23.7s avg / M2.7 31.7s avg / M3 39.6s avg（Kimi baseline 100-150s）
+
+### 已知后续优化（v3.2+）
+- [ ] 流式输出（Minimax 支持 SSE，可感知进度）
+- [ ] 14 张设计稿并发批处理
+- [ ] 同图同 pageHint 缓存
+- [ ] `response_format: json_object` 显式 JSON mode
+- [ ] prompt 示例注入（每个工具 system prompt 加 1 个完整 JSON 示例）
+- [ ] 调查 M3 的 `thinking:disabled` 为何未生效
+
+---
+
+*文档版本：v2.0（2026-06-07 增补 v3.1.0 章节）*
 *最后更新：2026-06-05*
 *作者：AndroidDev-Assist Team*

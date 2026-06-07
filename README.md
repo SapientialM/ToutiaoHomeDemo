@@ -113,11 +113,27 @@ adb logcat -s Timber:D MockDataSource:D NewsRemoteMediator:D
 
 | 文档 | 说明 |
 |------|------|
-| [AGENT.md](AGENT.md) | AI Agent 协作协议与项目约束 |
+| [AGENTS.md](AGENTS.md) | AI Agent 协作协议与项目约束 |
 | [需求分析](docs/01_需求分析文档.md) | 功能需求、非功能需求、需求边界 |
 | [技术设计](docs/02_技术设计文档.md) | 架构设计、状态管理、数据库、分页策略 |
 | [开发文档](docs/03_开发文档.md) | 项目结构、API 接口、构建发布、调试指南 |
 | [项目进度](docs/04_项目进度文档.md) | 里程碑、周报、日报 |
+| [MCP Skill 技术文档](skills/MCP_TECHNICAL_DOCUMENT.md) | `android-dev-assist` MCP Server 44 个工具说明 |
+| [Vision Benchmark 报告](docs/llm-api/vision-benchmark.md) | 视觉 LLM 多模型对比结果 |
+
+## MCP Skill 配套工具
+
+`skills/` 目录下有 **android-dev-assist** MCP Server（v3.1.0），为 Agent 提供 44 个工具覆盖：
+
+- **基础交互**（6）：screenshot、screenshot_region、tap、swipe、input_text、press_key
+- **UI 层级**（3）：dump_hierarchy、find_element、wait_for_element
+- **视觉驱动**（4）：vision_action、analyze_screenshot、compare_screenshots、verify_ui
+- **日志/崩溃**（4）：get_logs、logcat_search、parse_crash、clear_logs
+- **性能/启动**（3）：performance_metrics、measure_app_launch、record_screen
+- **设计稿**（5）：list_design_files、extract_design_spec、extract_design_tokens、extract_design_components、design_to_compose
+- 其它：构建/部署、设备/应用管理、设备控制、APK 元数据、UI 自动化、代码质量、项目报告、文件操作、网络调试
+
+`design/` 下的 14 张图片（首页 8 频道 + 视频 + 商城 + 赚钱 + 我的 + 详情页）通过视觉 LLM（Minimax M3 / M2.7 / M2.7-highspeed）转换为 Agent 可读的结构化规范。详见 [Vision Benchmark 报告](docs/llm-api/vision-benchmark.md)。
 
 ## License
 
