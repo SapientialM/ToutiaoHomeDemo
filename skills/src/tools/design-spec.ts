@@ -12,7 +12,7 @@ const DESIGN_DIR = process.env.DESIGN_DIR || "./design";
 
 /**
  * 工具 1：抽取设计稿为结构化规范（JSON / Markdown / 二者）
- * 使用 Kimi 视觉 LLM 把设计截图解析为 Agent 可读的规范文档
+ * 使用 Minimax 视觉 LLM 把设计截图解析为 Agent 可读的规范文档
  */
 export async function handleExtractDesignSpec(args: Record<string, unknown>) {
   try {

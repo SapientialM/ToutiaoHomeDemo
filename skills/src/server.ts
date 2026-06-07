@@ -212,7 +212,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ════════════════════════════════════════════════════════════
       {
         name: "verify_ui",
-        description: "UI 像素级验证：'compare' 对比两张截图差异；'color' 取 (x,y) 像素颜色并与预期比对；'ocr' 占位（需安装 tesseract.js）。使用时机：回归测试 / 验证某个像素颜色是否符合设计稿。改用 analyze_screenshot：若要 Kimi 视觉理解整个布局。返回 JSON：compare 返回 {diffPixels, diffPercentage, isMatch, diffImagePath}；color 返回 {match, expected, actual, x, y}。耗时 compare fast (~500ms)，color fast (~100ms)。示例：verify_ui({ type: 'color', currentPath: './home.png', x: 100, y: 50, checkColor: '#FF5757' })",
+        description: "UI 像素级验证：'compare' 对比两张截图差异；'color' 取 (x,y) 像素颜色并与预期比对；'ocr' 占位（需安装 tesseract.js）。使用时机：回归测试 / 验证某个像素颜色是否符合设计稿。改用 analyze_screenshot：若要 Minimax 视觉理解整个布局。返回 JSON：compare 返回 {diffPixels, diffPercentage, isMatch, diffImagePath}；color 返回 {match, expected, actual, x, y}。耗时 compare fast (~500ms)，color fast (~100ms)。示例：verify_ui({ type: 'color', currentPath: './home.png', x: 100, y: 50, checkColor: '#FF5757' })",
         inputSchema: {
           type: "object",
           properties: {
@@ -229,7 +229,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "analyze_screenshot",
-        description: "三阶段截图分析：(1) PIL 像素测量布局 (2) Kimi k2.6 视觉 AI 语义理解 (3) 卡片级精确验证。需要 Python3 + PIL 环境；视觉阶段需要 MOONSHOT_API_KEY。使用时机：用户说「帮我看看这个页面」「有什么问题」时的一站式 UI 审查。改用 verify_ui：若只需像素级检查。返回 JSON: {file, pil: {...}, vision: '...', cards: [...], checklist: [...]}。耗时 slow (10-30s，vision 阶段占大头)。示例：analyze_screenshot({ filePath: './home.png', prompt: '检查卡片间距' })",
+        description: "三阶段截图分析：(1) PIL 像素测量布局 (2) Minimax 视觉 AI 语义理解 (3) 卡片级精确验证。需要 Python3 + PIL 环境；视觉阶段需要 MINIMAX_API_KEY。使用时机：用户说「帮我看看这个页面」「有什么问题」时的一站式 UI 审查。改用 verify_ui：若只需像素级检查。返回 JSON: {file, pil: {...}, vision: '...', cards: [...], checklist: [...]}。耗时 slow (10-30s，vision 阶段占大头)。示例：analyze_screenshot({ filePath: './home.png', prompt: '检查卡片间距' })",
         inputSchema: {
           type: "object",
           properties: {
@@ -241,7 +241,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "compare_screenshots",
-        description: "用 Kimi 视觉 AI 对比两张截图（设计稿 vs 实现）。比 verify_ui 的 compare 慢但更智能（能识别语义差异）。需要 MOONSHOT_APIKEY。返回 JSON: {success, baseline, current, analysis: '...'}。耗时 slow (5-20s)。示例：compare_screenshots({ baselinePath: './design.png', currentPath: './home.png' })",
+        description: "用 Minimax 视觉 AI 对比两张截图（设计稿 vs 实现）。比 verify_ui 的 compare 慢但更智能（能识别语义差异）。需要 MINIMAX_API_KEY。返回 JSON: {success, baseline, current, analysis: '...'}。耗时 slow (5-20s)。示例：compare_screenshots({ baselinePath: './design.png', currentPath: './home.png' })",
         inputSchema: {
           type: "object",
           properties: {
@@ -254,7 +254,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "vision_action",
-        description: "用 Kimi 视觉 AI 按自然语言描述定位元素并执行点击/滑动/输入。适合：(1) Agent 不知道目标坐标 (2) UI 元素位置/文案会动态变化 (3) 不想写规则。代价：每步 3-8s，且需 MOONSHOT_APIKEY。改用 find_element + tap：若元素有稳定 text/resource-id（更快）。返回 JSON: {success, steps: [{action, x, y, text, confidence, reasoning}], screenshot, durationMs}。耗时 slow (3-8s 每步)。示例：vision_action({ prompt: '点击底部导航的「视频」tab' }) 或 prompts: ['点击搜索', '输入 hello', '按回车']",
+        description: "用 Minimax 视觉 AI 按自然语言描述定位元素并执行点击/滑动/输入。适合：(1) Agent 不知道目标坐标 (2) UI 元素位置/文案会动态变化 (3) 不想写规则。代价：每步 3-8s，且需 MINIMAX_API_KEY。改用 find_element + tap：若元素有稳定 text/resource-id（更快）。返回 JSON: {success, steps: [{action, x, y, text, confidence, reasoning}], screenshot, durationMs}。耗时 slow (3-8s 每步)。示例：vision_action({ prompt: '点击底部导航的「视频」tab' }) 或 prompts: ['点击搜索', '输入 hello', '按回车']",
         inputSchema: {
           type: "object",
           properties: {
@@ -667,56 +667,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "extract_design_spec",
-        description: "【核心工具】用视觉 LLM 把设计稿截图转换为 Agent 可读的结构化规范（JSON 模式）：含 colorTokens（直接喂给 Compose ColorScheme）、typography（字号/字重/颜色）、layout sections（Scaffold 的 topBar/TabRow/BottomNav 划分）、components 列表（每张卡片的 kind/bounds/text/source/hasImage）、bottomNav、textContent、interactions。format=both 同时返回人类可读的 markdown。改用 extract_design_tokens：只关心颜色。改用 extract_design_components：只关心组件坐标。改用 design_to_compose：想要直接可用的代码。返回 JSON（format=json|markdown|both）。耗时 slow (vision API 主导)。可用 provider=minimax|minimax（默认 minimax，需 MINIMAX_API_KEY）；可用 model：minimax-MiniMax-M3（thinking-disabled，最快）、MiniMax-M2.7-highspeed（100 TPS）、MiniMax-M2.7（60 TPS）、kimi-k2.6（仅 legacy 兼容）。示例：extract_design_spec({ imagePath: '首页-推荐.jpg' }) 或 { imagePath: '设计/新版首页.png', format: 'json', model: 'MiniMax-M3' }",
+        description: "【核心工具】用 Minimax 视觉 LLM 把设计稿截图转换为 Agent 可读的结构化规范（JSON 模式）：含 colorTokens（直接喂给 Compose ColorScheme）、typography（字号/字重/颜色）、layout sections（Scaffold 的 topBar/TabRow/BottomNav 划分）、components 列表（每张卡片的 kind/bounds/text/source/hasImage）、bottomNav、textContent、interactions。format=both 同时返回人类可读的 markdown。改用 extract_design_tokens：只关心颜色。改用 extract_design_components：只关心组件坐标。改用 design_to_compose：想要直接可用的代码。返回 JSON（format=json|markdown|both）。耗时 slow (vision API 主导)。需 MINIMAX_API_KEY。model 可选：MiniMax-M3（默认，thinking-disabled，最快）、MiniMax-M2.7-highspeed（100 TPS）、MiniMax-M2.7（60 TPS）。示例：extract_design_spec({ imagePath: '首页-推荐.jpg' }) 或 { imagePath: '设计/新版首页.png', format: 'json', model: 'MiniMax-M3' }",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. 设计稿路径（绝对路径、相对路径、纯文件名均可，文件名时会自动在 ./design/ 下查找）" },
             format: { type: "string", enum: ["json", "markdown", "both"], description: "可选。输出格式：json=结构化数据（喂给代码）、markdown=人类阅读、both=同时返回", default: "both" },
             pageHint: { type: "string", description: "可选。页面名提示（默认从文件名推断），帮助 LLM 更好理解上下文" },
-            model: { type: "string", description: "可选。视觉模型 ID（默认 minimax-MiniMax-M3，thinking-disabled）。其他可选：MiniMax-M2.7、MiniMax-M2.7-highspeed、kimi-k2.6" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "可选。LLM 提供商。优先用 env VISION_PROVIDER；不传时按 minimax→kimi 顺序探测" },
+            model: { type: "string", description: "可选。视觉模型 ID（默认 MiniMax-M3，thinking-disabled）。其他可选：MiniMax-M2.7-highspeed（100 TPS）、MiniMax-M2.7（60 TPS）" },
           },
           required: ["imagePath"],
         },
       },
       {
         name: "extract_design_tokens",
-        description: "只抽取设计稿中的颜色 token（hex + 用途 + 大致占比）。输出可直接生成 Compose ColorScheme：primary/onPrimary/background/surface/onSurface/onSurfaceVariant/outline/accent/error 等 5-10 个最显著颜色。改用 extract_design_spec：若还需要字体/布局/组件。返回 JSON: {success, source, model, tokens: {tokenName: {hex, usage, pixelPct}}}。耗时 slow。可用 model：MiniMax-M3 (推荐)、MiniMax-M2.7-highspeed。示例：extract_design_tokens({ imagePath: '首页-推荐.jpg' })",
+        description: "只抽取设计稿中的颜色 token（hex + 用途 + 大致占比）。输出可直接生成 Compose ColorScheme：primary/onPrimary/background/surface/onSurface/onSurfaceVariant/outline/accent/error 等 5-10 个最显著颜色。改用 extract_design_spec：若还需要字体/布局/组件。返回 JSON: {success, source, model, tokens: {tokenName: {hex, usage, pixelPct}}}。耗时 slow。需 MINIMAX_API_KEY。model 可选：MiniMax-M3（推荐）、MiniMax-M2.7-highspeed。示例：extract_design_tokens({ imagePath: '首页-推荐.jpg' })",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. 设计稿路径" },
-            model: { type: "string", description: "可选。视觉模型 ID" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "可选。LLM 提供商" },
+            model: { type: "string", description: "可选。视觉模型 ID（默认 MiniMax-M3）" },
           },
           required: ["imagePath"],
         },
       },
       {
         name: "extract_design_components",
-        description: "按从上到下顺序抽取设计稿里所有 UI 组件（卡/按钮/图标/标签/Tab/BottomNavItem），含 kind、bounds、title、text、source、time、hasImage。坐标用截图的像素空间。改用 extract_design_spec：若还要颜色字体布局。改用 dump_hierarchy：若想看当前实现的元素（而不是设计稿）。返回 JSON: {success, source, model, components: [{id, kind, bounds, title, text, source, time, hasImage}]}。耗时 slow。示例：extract_design_components({ imagePath: '首页-推荐.jpg' })",
+        description: "按从上到下顺序抽取设计稿里所有 UI 组件（卡/按钮/图标/标签/Tab/BottomNavItem），含 kind、bounds、title、text、source、time、hasImage。坐标用截图的像素空间。改用 extract_design_spec：若还要颜色字体布局。改用 dump_hierarchy：若想看当前实现的元素（而不是设计稿）。返回 JSON: {success, source, model, components: [{id, kind, bounds, title, text, source, time, hasImage}]}。耗时 slow。需 MINIMAX_API_KEY。示例：extract_design_components({ imagePath: '首页-推荐.jpg' })",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. 设计稿路径" },
             pageHint: { type: "string", description: "可选。页面名提示" },
-            model: { type: "string", description: "可选。视觉模型 ID" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "可选。LLM 提供商" },
+            model: { type: "string", description: "可选。视觉模型 ID（默认 MiniMax-M3）" },
           },
           required: ["imagePath"],
         },
       },
       {
         name: "design_to_compose",
-        description: "设计稿直接转 Jetpack Compose Screen.kt 骨架（Scaffold + TopAppBar + TabRow + BottomNavigationBar + LazyColumn + 卡片占位）。文末用「/* === TODO NOTES === */」注释列出未实现部分。Agent 拿到后可直接落到 /app/src/main/java/<package>/presentation/<page>/ 下继续开发。改用 extract_design_spec：若要结构化数据（用于自己写代码）。返回 JSON: {success, source, model, packageName, fileName, kotlin, notes, usage}。耗时 slow。推荐用 MiniMax-M3（代码生成质量高、thinking-disabled 后快）。示例：design_to_compose({ imagePath: '首页-推荐.jpg', packageName: 'com.example.toutiao', model: 'MiniMax-M3' })",
+        description: "设计稿直接转 Jetpack Compose Screen.kt 骨架（Scaffold + TopAppBar + TabRow + BottomNavigationBar + LazyColumn + 卡片占位）。文末用「/* === TODO NOTES === */」注释列出未实现部分。Agent 拿到后可直接落到 /app/src/main/java/<package>/presentation/<page>/ 下继续开发。改用 extract_design_spec：若要结构化数据（用于自己写代码）。返回 JSON: {success, source, model, packageName, fileName, kotlin, notes, usage}。耗时 slow。需 MINIMAX_API_KEY。推荐用 MiniMax-M3（代码生成质量高、thinking-disabled 后快）。示例：design_to_compose({ imagePath: '首页-推荐.jpg', packageName: 'com.example.toutiao', model: 'MiniMax-M3' })",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. 设计稿路径" },
             packageName: { type: "string", description: "可选。包名（用于建议落盘路径），默认 com.example.app" },
             model: { type: "string", description: "可选。视觉模型 ID（默认 MiniMax-M3）" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "可选。LLM 提供商" },
           },
           required: ["imagePath"],
         },

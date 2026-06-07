@@ -170,8 +170,8 @@ import { exec as execCb2 } from "child_process";
 import { promisify as promisify2 } from "util";
 import { existsSync } from "fs";
 var execAsync2 = promisify2(execCb2);
-async function fileExists(path5) {
-  return existsSync(path5);
+async function fileExists(path4) {
+  return existsSync(path4);
 }
 async function execAsyncWithTimeout(command, options = {}) {
   const timeout = options.timeout || 3e4;
@@ -880,26 +880,123 @@ import path2 from "path";
 import { fileURLToPath } from "url";
 
 // src/tools/vision-analyze.ts
+import OpenAI2 from "openai";
+import fs3 from "fs";
+
+// src/utils/design-extractor.ts
 import OpenAI from "openai";
+import https from "https";
+import { URL } from "url";
 import fs2 from "fs";
 import path from "path";
 import { statSync } from "fs";
-var client = null;
-function getClient() {
-  if (!client) {
-    const apiKey = process.env.MOONSHOT_API_KEY;
-    if (!apiKey) {
-      throw new Error("MOONSHOT_API_KEY not set in environment");
-    }
-    client = new OpenAI({
-      apiKey,
-      baseURL: "https://api.moonshot.cn/v1"
-    });
+var PROVIDERS = {
+  minimax: {
+    provider: "minimax",
+    baseURL: "https://api.minimaxi.com/v1",
+    apiKeyEnv: "MINIMAX_API_KEY",
+    defaultModel: "MiniMax-M3",
+    availableModels: [
+      { id: "MiniMax-M3", tps: 60, thinking: true, description: "\u6700\u65B0 M \u7CFB\u5217\uFF0C1M \u4E0A\u4E0B\u6587\uFF0C\u53EF\u5173 thinking \u52A0\u901F" },
+      { id: "MiniMax-M2.7", tps: 60, thinking: true, description: "M2.7\uFF0C\u5F00\u542F self-iteration\uFF0Cthinking \u4E0D\u80FD\u5173" },
+      { id: "MiniMax-M2.7-highspeed", tps: 100, thinking: true, description: "M2.7 \u6781\u901F\u7248\uFF08100 TPS\uFF09\uFF0Cthinking \u4E0D\u80FD\u5173" },
+      { id: "MiniMax-M2.5-highspeed", tps: 100, thinking: true, description: "M2.5 \u6781\u901F\u7248\uFF08100 TPS\uFF09" }
+    ],
+    insecureEnvVar: "MINIMAX_INSECURE_TLS"
   }
+};
+function activeProvider() {
+  const p = process.env.VISION_PROVIDER || "minimax";
+  if (!PROVIDERS[p]) {
+    throw new Error(`Unknown VISION_PROVIDER: ${p}. Available: ${Object.keys(PROVIDERS).join(", ")}`);
+  }
+  return { ...PROVIDERS[p], insecureTLS: process.env[PROVIDERS[p].insecureEnvVar] === "1" };
+}
+function getActiveProvider() {
+  const cfg = activeProvider();
+  return { provider: cfg.provider, baseURL: cfg.baseURL, defaultModel: cfg.defaultModel, apiKeyEnv: cfg.apiKeyEnv };
+}
+function makeInsecureFetch() {
+  return (input, init = {}) => {
+    return new Promise((resolve, reject) => {
+      const url = typeof input === "string" ? new URL(input) : new URL(input.url);
+      const body = init?.body;
+      const headers = {};
+      if (init?.headers) {
+        if (init.headers instanceof Headers) {
+          init.headers.forEach((v, k) => {
+            headers[k] = v;
+          });
+        } else if (Array.isArray(init.headers)) {
+          for (const [k, v] of init.headers) headers[k] = v;
+        } else {
+          Object.assign(headers, init.headers);
+        }
+      }
+      headers["host"] = url.host;
+      if (body && !headers["content-length"] && typeof body === "string") {
+        headers["content-length"] = Buffer.byteLength(body);
+      }
+      const req = https.request(
+        {
+          hostname: url.hostname,
+          port: url.port || 443,
+          path: url.pathname + url.search,
+          method: init?.method || "GET",
+          headers,
+          rejectUnauthorized: false
+        },
+        (res) => {
+          const chunks = [];
+          res.on("data", (c) => chunks.push(c));
+          res.on("end", () => {
+            const respBody = Buffer.concat(chunks);
+            const respHeaders = {};
+            for (const [k, v] of Object.entries(res.headers)) {
+              if (Array.isArray(v)) respHeaders[k] = v.join(", ");
+              else if (v != null) respHeaders[k] = String(v);
+            }
+            resolve(new Response(respBody, {
+              status: res.statusCode || 0,
+              statusText: res.statusMessage || "",
+              headers: respHeaders
+            }));
+          });
+        }
+      );
+      req.on("error", reject);
+      if (body) {
+        if (typeof body === "string" || Buffer.isBuffer(body)) req.write(body);
+        else if (body instanceof Uint8Array) req.write(Buffer.from(body));
+        else if (typeof body.pipe === "function") body.pipe(req);
+        else reject(new Error("Unsupported fetch body type"));
+      }
+      req.end();
+    });
+  };
+}
+var client = null;
+var clientKey = "";
+function getClient() {
+  const cfg = activeProvider();
+  const cacheKey = `${cfg.provider}|${cfg.apiKeyEnv}|${cfg.insecureTLS}`;
+  if (client && clientKey === cacheKey) return client;
+  const apiKey = process.env[cfg.apiKeyEnv];
+  if (!apiKey) {
+    throw new Error(`${cfg.apiKeyEnv} not set. Required for provider '${cfg.provider}' (${cfg.baseURL})`);
+  }
+  if (cfg.insecureTLS) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  client = new OpenAI({
+    apiKey,
+    baseURL: cfg.baseURL,
+    ...cfg.insecureTLS ? { fetch: makeInsecureFetch() } : {}
+  });
+  clientKey = cacheKey;
+  log(`vision client: provider=${cfg.provider} baseURL=${cfg.baseURL} insecureTLS=${cfg.insecureTLS}`);
   return client;
 }
 var SKIP_RESIZE_THRESHOLD_BYTES = 80 * 1024;
-var MAX_DIMENSION_FOR_API = 320;
+var MAX_DIMENSION_FOR_API = 768;
 async function resizeForApiAsync(imagePath) {
   try {
     const size = statSync(imagePath).size;
@@ -916,13 +1013,16 @@ w, h = img.size
 if max(w, h) > ${MAX_DIMENSION_FOR_API}:
     ratio = ${MAX_DIMENSION_FOR_API} / max(w, h)
     img = img.resize((int(w*ratio), int(h*ratio)), Image.LANCZOS)
-    img.save('${resizedPath}')
+    img.save('${resizedPath}', quality=85, optimize=True)
 "`;
     await execAsyncWithTimeout(cmd, { timeout: 1e4 });
     return fs2.existsSync(resizedPath) ? resizedPath : imagePath;
   } catch {
     return imagePath;
   }
+}
+async function smartResizeForVision(imagePath) {
+  return resizeForApiAsync(imagePath);
 }
 function cleanupResizedFile(resizedPath, originalPath) {
   if (resizedPath !== originalPath) {
@@ -938,13 +1038,421 @@ function encodeAsDataUrl(p) {
   const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
-async function analyzeWithVision(imagePath, prompt, systemPrompt) {
+function encodeImageAsDataUrl(p) {
+  return encodeAsDataUrl(p);
+}
+var JSON_SYSTEM_PROMPT = `You are a senior Android UI/UX engineer specializing in Jetpack Compose and Material 3. You analyze mobile app screenshots and produce machine-readable design specifications.
+
+## Output rules
+- Output a single JSON object only. No markdown fences, no commentary, no code blocks.
+- All color values must be exact hex (e.g. "#FF5757"), never "red" / "blue".
+- Coordinates use the screenshot's pixel space. Width and height must reflect the image.
+- All visible text (including Chinese) must be transcribed EXACTLY as shown.
+- Estimate dp values: assume 1080px wide \u2192 360dp (3x density).
+- Identify the page type from the bottom navigation and top bar context.
+- For each card / item, identify the visual type and structure.
+
+## JSON schema
+{
+  "page": {
+    "name": "string (e.g. '\u9996\u9875-\u63A8\u8350')",
+    "type": "home | video | profile | shop | detail | task | earn | other",
+    "dimensions": { "width": number, "height": number },
+    "description": "1-2 sentence summary of what this page is for"
+  },
+  "colorTokens": {
+    "primary": "#hex (\u54C1\u724C\u4E3B\u8272)",
+    "onPrimary": "#hex (\u4E3B\u8272\u4E0A\u7684\u6587\u5B57)",
+    "background": "#hex (\u9875\u9762\u80CC\u666F)",
+    "surface": "#hex (\u5361\u7247/\u8868\u9762)",
+    "onSurface": "#hex (\u4E3B\u6587\u5B57)",
+    "onSurfaceVariant": "#hex (\u6B21\u6587\u5B57)",
+    "outline": "#hex (\u5206\u5272\u7EBF/\u8FB9\u6846)",
+    "error": "#hex",
+    "accent": "#hex (\u9AD8\u4EAE/\u7EA2\u70B9/\u6570\u5B57)"
+  },
+  "typography": {
+    "titleLarge": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
+    "titleMedium": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
+    "bodyLarge": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
+    "bodyMedium": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
+    "labelSmall": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number }
+  },
+  "layout": {
+    "type": "scaffold",
+    "sections": [
+      { "id": "top-bar", "kind": "TopAppBar|StatusBar|TabRow|SearchBar|Banner|List|FAB|BottomNav", "bounds": {"x":0,"y":0,"width":number,"height":number}, "background": "#hex" }
+    ]
+  },
+  "components": [
+    {
+      "id": "card-1",
+      "kind": "TextTopCard|LeftTextRightImageCard|LargeImageCard|VideoCard|ImageOnlyCard|AvatarBlock|ActionRow|StatBlock|PromoBanner|CategoryGrid|Comment",
+      "bounds": { "x": number, "y": number, "width": number, "height": number },
+      "text": { "title": "string", "subtitle": "string?", "source": "string?", "time": "string?", "count": "string?" },
+      "hasImage": boolean,
+      "imagePosition": "top|bottom|right|left|none",
+      "isClickable": true
+    }
+  ],
+  "bottomNav": {
+    "items": [
+      { "label": "string", "iconHint": "home|video|money|shop|profile", "isSelected": boolean, "color": "#hex" }
+    ]
+  },
+  "textContent": {
+    "titles": ["array of visible page/card titles"],
+    "labels": ["array of button/tab labels"],
+    "placeholders": ["array of input placeholders"],
+    "hotKeywords": ["array of search hot words / news keywords if visible"]
+  },
+  "interactions": [
+    "Tap card \u2192 navigate to detail page",
+    "Swipe down \u2192 refresh feed",
+    "Tap tab in top bar \u2192 switch channel"
+  ],
+  "notes": "any anomalies, red badges (with text), live indicators, special states"
+}
+
+Be exhaustive. Capture EVERY card / text / icon you can see. Do not skip elements.`;
+var MARKDOWN_SYSTEM_PROMPT = `\u4F60\u662F\u8D44\u6DF1 Android UI \u5DE5\u7A0B\u5E08\uFF0C\u4E13\u6CE8 Jetpack Compose + Material 3\u3002\u5206\u6790\u79FB\u52A8\u7AEF App \u622A\u56FE\uFF0C\u8F93\u51FA\u4E00\u4EFD Markdown \u683C\u5F0F\u7684\u8BBE\u8BA1\u89C4\u8303\u6587\u6863\uFF0C\u4FBF\u4E8E\u5F00\u53D1\u8005\u636E\u6B64\u5B9E\u73B0 UI\u3002
+
+## \u8F93\u51FA\u7ED3\u6784\uFF08\u4E25\u683C\u6309\u987A\u5E8F\uFF09
+# [\u9875\u9762\u540D]
+> 1-2 \u53E5\u8BDD\u63CF\u8FF0\u8FD9\u4E2A\u9875\u9762\u7684\u529F\u80FD
+
+## \u9875\u9762\u5143\u4FE1\u606F
+- \u7C7B\u578B\uFF1Ahome / video / profile / shop / detail / task / earn / other
+- \u8BBE\u8BA1\u7A3F\u5C3A\u5BF8\uFF1AWxH px\uFF08\u5BF9\u5E94 W/3 \xD7 H/3 dp\uFF09
+- \u6574\u4F53\u914D\u8272\uFF1A\u4E3B\u8272 / \u80CC\u666F / \u5361\u7247 / \u4E3B\u6587\u5B57 / \u6B21\u6587\u5B57
+
+## \u989C\u8272 Token
+| Token | \u989C\u8272 | \u7528\u9014 |
+|-------|------|------|
+| primary | #FF5757 | \u54C1\u724C\u4E3B\u8272\u3001\u6309\u94AE |
+| ... | ... | ... |
+
+## \u5B57\u4F53\u89C4\u8303
+| \u7B49\u7EA7 | size | weight | \u989C\u8272 | \u7528\u9014 |
+|------|------|--------|------|------|
+| titleLarge | 22sp | Bold | #1A1A1A | \u9875\u9762\u6807\u9898 |
+| ... | ... | ... | ... | ... |
+
+## \u5E03\u5C40\u7ED3\u6784
+\u6309\u4ECE\u4E0A\u5230\u4E0B\u987A\u5E8F\u63CF\u8FF0\u6BCF\u4E2A section\uFF1A
+1. **StatusBar**\uFF08\u72B6\u6001\u680F\uFF09\uFF1A\u9AD8\u5EA6 24dp\uFF0C\u80CC\u666F #F5F5F5\uFF0C\u663E\u793A\u65F6\u95F4/\u7535\u91CF
+2. **TopBar**\uFF08\u9876\u90E8\u680F\uFF09\uFF1A\u9AD8\u5EA6 56dp\uFF0C\u7EA2\u5E95\u767D\u5B57
+3. ...
+
+## \u7EC4\u4EF6\u5217\u8868
+\u6309\u51FA\u73B0\u987A\u5E8F\uFF08\u4ECE\u4E0A\u5230\u4E0B\u3001\u4ECE\u5DE6\u5230\u53F3\uFF09\u5217\u51FA\u6BCF\u4E2A\u7EC4\u4EF6\uFF1A
+### \u7EC4\u4EF6 1: LeftTextRightImageCard
+- \u4F4D\u7F6E\uFF1Ax=0, y=800, \u5BBD=1080, \u9AD8=240
+- \u6807\u9898\uFF1A\u300Cxxx\u300D
+- \u526F\u6807\u9898\uFF08\u6765\u6E90\uFF09\uFF1A\u300Cxxx \xB7 2\u5C0F\u65F6\u524D\u300D
+- \u56FE\u7247\uFF1A\u53F3\u4FA7 200x200 \u7F29\u7565\u56FE
+- \u5907\u6CE8\uFF1A8dp \u8FB9\u8DDD\uFF0C\u5706\u89D2 4dp
+
+### \u7EC4\u4EF6 2: ...
+\uFF08\u91CD\u590D\u76F4\u5230\u6240\u6709\u5361\u7247\u5217\u5B8C\uFF09
+
+## \u5E95\u90E8\u5BFC\u822A
+| \u987A\u5E8F | \u6807\u7B7E | \u56FE\u6807 | \u9009\u4E2D\u6001\u989C\u8272 |
+|------|------|------|-----------|
+| 1 | \u9996\u9875 | home | #FF5757 |
+| ... | ... | ... | ... |
+
+## \u6587\u5B57\u5185\u5BB9
+- \u6807\u9898\uFF1Axxx, xxx
+- \u6309\u94AE\uFF1Axxx, xxx
+- \u5360\u4F4D\u7B26\uFF1Axxx
+- \u70ED\u641C\u8BCD\uFF1Axxx, xxx
+
+## \u4EA4\u4E92\u884C\u4E3A
+- \u70B9\u51FB\u5361\u7247 \u2192 \u8DF3\u8F6C\u5230\u8BE6\u60C5\u9875
+- \u4E0B\u62C9 \u2192 \u5237\u65B0\u5217\u8868
+- ...
+
+## \u5907\u6CE8
+- \u7EA2\u8272\u5C0F\u5706\u70B9\u663E\u793A\u5728\u300C\u6211\u7684\u300D\u56FE\u6807\u53F3\u4E0A\u89D2\uFF0C\u6570\u5B57 3
+- \u300C\u76F4\u64AD\u4E2D\u300D\u7EA2\u8272\u5FBD\u6807\u5728\u7B2C\u4E00\u4E2A\u5361\u7247\u5DE6\u4E0A
+
+\u8981\u6C42\uFF1A
+- \u5B8C\u6574\u5217\u51FA\u6240\u6709\u53EF\u89C1\u5143\u7D20\uFF0C\u4E0D\u8981\u7701\u7565
+- \u4E2D\u6587\u6587\u672C\u5FC5\u987B\u539F\u6837\u4FDD\u7559
+- \u989C\u8272\u5FC5\u987B\u7528 hex \u683C\u5F0F
+- \u6807\u6CE8\u6240\u6709\u7279\u6B8A\u72B6\u6001\uFF08\u7EA2\u70B9\u3001\u5FBD\u6807\u3001\u76F4\u64AD\u4E2D\u3001\u7F6E\u9876\u7B49\uFF09`;
+async function extractDesignSpec(imagePath, options) {
   if (!fs2.existsSync(imagePath)) {
-    throw new Error(`File not found: ${imagePath}`);
+    throw new Error(`Image not found: ${imagePath}`);
   }
   const resizedPath = await resizeForApiAsync(imagePath);
+  const imageUrl = encodeAsDataUrl(resizedPath);
+  const prevProvider = process.env.VISION_PROVIDER;
+  if (options.provider) process.env.VISION_PROVIDER = options.provider;
+  let json = void 0;
+  let markdown = void 0;
+  let raw = "";
+  let usedModel = "";
   try {
-    const imageUrl = encodeAsDataUrl(resizedPath);
+    const cfg = activeProvider();
+    const model = options.model || cfg.defaultModel;
+    usedModel = model;
+    if (options.format === "json" || options.format === "both") {
+      const userPrompt = options.pageHint ? `Analyze this Android app screenshot. The page name hint is: "${options.pageHint}". Output a single JSON object per the schema.` : `Analyze this Android app screenshot. Output a single JSON object per the schema.`;
+      const content = await callVision(model, JSON_SYSTEM_PROMPT, userPrompt, imageUrl);
+      raw = content;
+      json = parseJsonFromVision(content);
+    }
+    if (options.format === "markdown" || options.format === "both") {
+      const userPrompt = options.pageHint ? `Analyze this Android app screenshot (page: "${options.pageHint}"). Output a single Markdown document.` : `Analyze this Android app screenshot. Output a single Markdown document.`;
+      const content = await callVision(model, MARKDOWN_SYSTEM_PROMPT, userPrompt, imageUrl);
+      if (!raw) raw = content;
+      markdown = content.trim();
+    }
+    return {
+      success: true,
+      format: options.format,
+      source: imagePath,
+      json,
+      markdown,
+      raw,
+      model: usedModel
+    };
+  } finally {
+    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
+    else process.env.VISION_PROVIDER = prevProvider;
+    client = null;
+    clientKey = "";
+    cleanupResizedFile(resizedPath, imagePath);
+  }
+}
+async function extractColorTokens(imagePath, modelId, provider) {
+  if (!fs2.existsSync(imagePath)) {
+    throw new Error(`Image not found: ${imagePath}`);
+  }
+  const resizedPath = await resizeForApiAsync(imagePath);
+  const imageUrl = encodeAsDataUrl(resizedPath);
+  const prevProvider = process.env.VISION_PROVIDER;
+  if (provider) process.env.VISION_PROVIDER = provider;
+  const systemPrompt = `You are a design system engineer. Analyze this mobile UI screenshot and output a JSON object listing all color tokens used in the design.
+
+Output format (JSON only, no markdown):
+{
+  "tokens": {
+    "primary": { "hex": "#FF5757", "usage": "brand red, used in top bar and selected tab", "pixelPct": 12.5 },
+    "background": { "hex": "#F5F5F5", "usage": "page background", "pixelPct": 45.0 },
+    ...
+  }
+}
+
+Rules:
+- pixelPct: estimated coverage of this color in the screenshot (rough percentage)
+- Focus on the 5-10 most prominent colors only
+- hex values must be exact
+- If unsure, omit the token rather than guess`;
+  try {
+    const content = await callVision(
+      modelId || "",
+      systemPrompt,
+      "Extract the color tokens from this Android UI screenshot. Output JSON only.",
+      imageUrl
+    );
+    const parsed = parseJsonFromVision(content);
+    const cfg = activeProvider();
+    return {
+      success: true,
+      source: imagePath,
+      model: modelId || cfg.defaultModel,
+      tokens: parsed.tokens || {}
+    };
+  } finally {
+    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
+    else process.env.VISION_PROVIDER = prevProvider;
+    client = null;
+    clientKey = "";
+    cleanupResizedFile(resizedPath, imagePath);
+  }
+}
+async function extractComponents(imagePath, pageHint, modelId, provider) {
+  if (!fs2.existsSync(imagePath)) {
+    throw new Error(`Image not found: ${imagePath}`);
+  }
+  const resizedPath = await resizeForApiAsync(imagePath);
+  const imageUrl = encodeAsDataUrl(resizedPath);
+  const prevProvider = process.env.VISION_PROVIDER;
+  if (provider) process.env.VISION_PROVIDER = provider;
+  const systemPrompt = `You are an Android UI engineer. Analyze this screenshot and extract every visible UI component as a list.
+
+Output (JSON only):
+{
+  "components": [
+    {
+      "id": "card-1",
+      "kind": "TextTopCard|LeftTextRightImageCard|LargeImageCard|VideoCard|Avatar|Button|Text|SearchBar|Tab|Icon|BottomNavItem",
+      "bounds": { "x": number, "y": number, "width": number, "height": number },
+      "title": "string?",
+      "text": "string?",
+      "source": "string? (publisher/source name)",
+      "time": "string? (time text)",
+      "hasImage": boolean
+    }
+  ]
+}
+
+Rules:
+- Coordinates in pixel space
+- Be exhaustive: list every component (cards, buttons, text labels, icons, tabs, etc.)
+- Skip invisible/background elements
+- Chinese text must be preserved exactly
+- Order by Y coordinate (top to bottom)`;
+  try {
+    const prompt = pageHint ? `Extract all UI components from this Android screenshot (page: "${pageHint}"). JSON only.` : `Extract all UI components from this Android screenshot. JSON only.`;
+    const content = await callVision(modelId || "", systemPrompt, prompt, imageUrl);
+    const parsed = parseJsonFromVision(content);
+    const cfg = activeProvider();
+    return {
+      success: true,
+      source: imagePath,
+      model: modelId || cfg.defaultModel,
+      components: parsed.components || []
+    };
+  } finally {
+    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
+    else process.env.VISION_PROVIDER = prevProvider;
+    client = null;
+    clientKey = "";
+    cleanupResizedFile(resizedPath, imagePath);
+  }
+}
+async function designToComposeSkeleton(imagePath, packageName, modelId, provider) {
+  if (!fs2.existsSync(imagePath)) {
+    throw new Error(`Image not found: ${imagePath}`);
+  }
+  const resizedPath = await resizeForApiAsync(imagePath);
+  const imageUrl = encodeAsDataUrl(resizedPath);
+  const prevProvider = process.env.VISION_PROVIDER;
+  if (provider) process.env.VISION_PROVIDER = provider;
+  const systemPrompt = `\u4F60\u662F Jetpack Compose \u9AD8\u7EA7\u5DE5\u7A0B\u5E08\u3002\u7ED9\u5B9A\u79FB\u52A8\u7AEF UI \u622A\u56FE\uFF0C\u8F93\u51FA\u4E00\u4EFD\u53EF\u76F4\u63A5\u843D\u5230 /app/src/main/java/<package>/presentation/<page>/<Page>Screen.kt \u7684 Compose \u4EE3\u7801\u9AA8\u67B6\u3002
+
+\u8981\u6C42\uFF1A
+- \u4EC5\u8F93\u51FA\u4EE3\u7801\uFF0C\u4E0D\u8981 markdown \u5305\u88F9\uFF0C\u4E0D\u8981\u89E3\u91CA
+- \u7528 Material3 + Compose
+- \u5305\u542B Scaffold\u3001TopAppBar\u3001BottomNavigationBar\uFF08\u5982\u6709\uFF09\u3001TabRow\uFF08\u5982\u6709\uFF09\u3001LazyColumn\uFF08\u5982\u6709\u5361\u7247\uFF09
+- \u7EC4\u4EF6\u6309\u622A\u56FE\u7ED3\u6784\u4ECE\u4E0A\u5230\u4E0B
+- \u5173\u952E\u6587\u5B57\u5185\u5BB9\u4FDD\u7559\u539F\u6837
+- \u989C\u8272\u7528 Color(0xFF...) \u5F62\u5F0F
+- \u4E0D\u5B9E\u73B0\u5177\u4F53\u4E1A\u52A1\u903B\u8F91\uFF1A\u7528 TODO() \u6807\u6CE8\u9700\u8981\u586B\u5145\u7684\u5730\u65B9
+- \u5B57\u4F53\u5927\u5C0F\u7528 .sp\uFF0C\u8DDD\u79BB\u7528 .dp
+- \u5361\u7247\u7528 Card \u5305\u88F9\uFF0C\u6807\u9898/\u526F\u6807\u9898/\u56FE\u7247/\u6765\u6E90/\u65F6\u95F4\u7528 Column/Row \u6392\u7248
+- \u6587\u672B\u52A0\u6CE8\u91CA "/* === TODO NOTES === */" \u5217\u51FA\u8FD9\u4E2A\u9AA8\u67B6\u672A\u5B9E\u73B0\u7684\u90E8\u5206`;
+  try {
+    const userHint = packageName ? `Package: ${packageName}` : "";
+    const content = await callVision(
+      modelId || "",
+      systemPrompt,
+      `\u751F\u6210\u6B64\u9875\u9762\u7684 Compose \u9AA8\u67B6\u4EE3\u7801\u3002${userHint}`.trim(),
+      imageUrl
+    );
+    const { code, notes } = splitCodeAndNotes(content);
+    const cfg = activeProvider();
+    return {
+      success: true,
+      source: imagePath,
+      model: modelId || cfg.defaultModel,
+      kotlin: code,
+      notes
+    };
+  } finally {
+    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
+    else process.env.VISION_PROVIDER = prevProvider;
+    client = null;
+    clientKey = "";
+    cleanupResizedFile(resizedPath, imagePath);
+  }
+}
+async function callVision(modelId, systemPrompt, userPrompt, imageUrl) {
+  const cfg = activeProvider();
+  const model = modelId || cfg.defaultModel;
+  const t0 = Date.now();
+  log(`vision call: provider=${cfg.provider} model=${model} promptLen=${userPrompt.length}`);
+  const messages = [
+    { role: "system", content: systemPrompt },
+    {
+      role: "user",
+      content: [
+        { type: "image_url", image_url: { url: imageUrl } },
+        { type: "text", text: userPrompt }
+      ]
+    }
+  ];
+  const requestOpts = {
+    model,
+    messages,
+    max_tokens: 4e3,
+    temperature: 1
+  };
+  if (model === "MiniMax-M3") {
+    requestOpts.extra_body = { thinking: { type: "disabled" } };
+  }
+  const response = await getClient().chat.completions.create(requestOpts, { timeout: 12e4 });
+  const msg = response.choices[0]?.message;
+  let content = msg?.content;
+  let source = "content";
+  if (!content && msg?.reasoning_content) {
+    content = msg.reasoning_content;
+    source = "reasoning_content";
+  }
+  if (!content) {
+    log(`vision: empty response. msg keys: ${Object.keys(msg || {}).join(",")}`);
+    throw new Error("Vision model returned empty response");
+  }
+  log(`vision done: ${Date.now() - t0}ms, source=${source}, content=${content.length} chars`);
+  return content;
+}
+async function callVisionLlm(modelId, systemPrompt, userPrompt, imageUrl) {
+  return callVision(modelId, systemPrompt, userPrompt, imageUrl);
+}
+function parseJsonFromVision(raw) {
+  let text = raw.trim();
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenced) text = fenced[1].trim();
+  const a = text.indexOf("{");
+  const b = text.lastIndexOf("}");
+  if (a !== -1 && b > a) text = text.slice(a, b + 1);
+  try {
+    return JSON.parse(text);
+  } catch {
+  }
+  const fixed = text.replace(/,(\s*[}\]])/g, "$1").replace(/([{,]\s*)([A-Za-z_][\w$]*)(\s*:)/g, '$1"$2"$3');
+  try {
+    return JSON.parse(fixed);
+  } catch (e) {
+    error("Failed to parse vision JSON:", e);
+    error("Raw text preview:", text.slice(0, 500));
+    return {};
+  }
+}
+function splitCodeAndNotes(content) {
+  const markerMatch = content.match(/\/\*\s*===\s*TODO NOTES\s*===\s*\*\/([\s\S]*)$/);
+  if (markerMatch) {
+    const code = content.slice(0, markerMatch.index).trim();
+    const notes = markerMatch[1].trim();
+    return { code, notes };
+  }
+  return { code: content.replace(/^```(?:kotlin)?\n?/m, "").replace(/```\s*$/m, "").trim(), notes: "" };
+}
+
+// src/tools/vision-analyze.ts
+async function analyzeWithVision(imagePath, prompt, systemPrompt) {
+  if (!fs3.existsSync(imagePath)) {
+    throw new Error(`File not found: ${imagePath}`);
+  }
+  const cfg = getActiveProvider();
+  const modelId = process.env.VISION_MODEL || cfg.defaultModel;
+  const resizedPath = await smartResizeForVision(imagePath);
+  try {
+    const imageUrl = encodeImageAsDataUrl(resizedPath);
     const defaultPrompt = `You are an Android UI expert. Analyze this screenshot and report:
 
 ## Layout
@@ -970,40 +1478,32 @@ List every UI problem you see, with:
 - Cards: proper spacing between them?
 
 Be very specific and quantitative. Measure approximate padding/margins using the screen dimensions as reference.`;
-    const response = await getClient().chat.completions.create(
-      {
-        model: "kimi-k2.6",
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt || "You are an Android UI/UX expert. Always give specific, actionable feedback with exact measurements and Compose code suggestions."
-          },
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: imageUrl } },
-              { type: "text", text: prompt || defaultPrompt }
-            ]
-          }
-        ],
-        max_tokens: 4096,
-        temperature: 1
-      },
-      { timeout: 12e4 }
+    return await callVisionLlm(
+      modelId,
+      systemPrompt || "You are an Android UI/UX expert. Always give specific, actionable feedback with exact measurements and Compose code suggestions.",
+      prompt || defaultPrompt,
+      imageUrl
     );
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("Vision model returned empty response");
-    return content;
+  } catch (e) {
+    error("analyzeWithVision failed:", e);
+    throw e;
   } finally {
-    cleanupResizedFile(resizedPath, imagePath);
+    if (resizedPath !== imagePath) {
+      try {
+        fs3.unlinkSync(resizedPath);
+      } catch {
+      }
+    }
   }
 }
 async function compareWithVision(baselinePath, currentPath, prompt) {
-  if (!fs2.existsSync(baselinePath)) throw new Error(`Baseline not found: ${baselinePath}`);
-  if (!fs2.existsSync(currentPath)) throw new Error(`Current not found: ${currentPath}`);
+  if (!fs3.existsSync(baselinePath)) throw new Error(`Baseline not found: ${baselinePath}`);
+  if (!fs3.existsSync(currentPath)) throw new Error(`Current not found: ${currentPath}`);
+  const cfg = getActiveProvider();
+  const modelId = process.env.VISION_MODEL || cfg.defaultModel;
   const [bResized, cResized] = await Promise.all([
-    resizeForApiAsync(baselinePath),
-    resizeForApiAsync(currentPath)
+    smartResizeForVision(baselinePath),
+    smartResizeForVision(currentPath)
   ]);
   try {
     const defaultPrompt = `Compare these two Android screenshots. The first is the design/baseline, the second is the current implementation.
@@ -1015,35 +1515,81 @@ Focus on:
 4. Specific issues introduced in the current version
 
 For each difference, state whether it's acceptable or needs fixing, and suggest exact Compose code changes.`;
-    const response = await getClient().chat.completions.create(
-      {
-        model: "kimi-k2.6",
-        messages: [
-          {
-            role: "system",
-            content: "You are an Android UI testing expert. Compare screenshots precisely and give actionable feedback."
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Here is the baseline/design screenshot:" },
-              { type: "image_url", image_url: { url: encodeAsDataUrl(bResized) } },
-              { type: "text", text: "Here is the current implementation screenshot:" },
-              { type: "image_url", image_url: { url: encodeAsDataUrl(cResized) } },
-              { type: "text", text: prompt || defaultPrompt }
-            ]
-          }
-        ],
-        max_tokens: 4096,
-        temperature: 1
-      },
-      { timeout: 12e4 }
-    );
-    return response.choices[0]?.message?.content || "Comparison failed";
+    const imageBaseUrl1 = encodeImageAsDataUrl(bResized);
+    const imageBaseUrl2 = encodeImageAsDataUrl(cResized);
+    const systemPrompt = "You are an Android UI testing expert. Compare screenshots precisely and give actionable feedback.";
+    const userContent = [
+      { type: "text", text: "Here is the baseline/design screenshot:" },
+      { type: "image_url", image_url: { url: imageBaseUrl1 } },
+      { type: "text", text: "Here is the current implementation screenshot:" },
+      { type: "image_url", image_url: { url: imageBaseUrl2 } },
+      { type: "text", text: prompt || defaultPrompt }
+    ];
+    return await callVisionLlmMultiContent(modelId, systemPrompt, userContent);
+  } catch (e) {
+    error("compareWithVision failed:", e);
+    throw e;
   } finally {
-    cleanupResizedFile(bResized, baselinePath);
-    cleanupResizedFile(cResized, currentPath);
+    if (bResized !== baselinePath) {
+      try {
+        fs3.unlinkSync(bResized);
+      } catch {
+      }
+    }
+    if (cResized !== currentPath) {
+      try {
+        fs3.unlinkSync(cResized);
+      } catch {
+      }
+    }
   }
+}
+var multiClient = null;
+var multiClientKey = "";
+function getMultiClient() {
+  const cfg = activeProvider();
+  const cacheKey = `${cfg.provider}|${cfg.apiKeyEnv}|${cfg.insecureTLS}`;
+  if (multiClient && multiClientKey === cacheKey) return multiClient;
+  const apiKey = process.env[cfg.apiKeyEnv];
+  if (!apiKey) throw new Error(`${cfg.apiKeyEnv} not set`);
+  if (cfg.insecureTLS) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  multiClient = new OpenAI2({
+    apiKey,
+    baseURL: cfg.baseURL,
+    ...cfg.insecureTLS ? { fetch: makeInsecureFetch() } : {}
+  });
+  multiClientKey = cacheKey;
+  return multiClient;
+}
+async function callVisionLlmMultiContent(modelId, systemPrompt, userContent) {
+  const cfg = activeProvider();
+  const model = modelId || cfg.defaultModel;
+  const t0 = Date.now();
+  log(`vision call (multi): provider=${cfg.provider} model=${model} contentParts=${userContent.length}`);
+  const requestOpts = {
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent }
+    ],
+    max_tokens: 4e3,
+    temperature: 1
+  };
+  if (model === "MiniMax-M3") {
+    requestOpts.extra_body = { thinking: { type: "disabled" } };
+  }
+  const response = await getMultiClient().chat.completions.create(requestOpts, { timeout: 12e4 });
+  const msg = response.choices[0]?.message;
+  let content = msg?.content;
+  if (!content && msg?.reasoning_content) {
+    content = msg.reasoning_content;
+  }
+  if (!content) {
+    log(`vision multi: empty response. msg keys: ${Object.keys(msg || {}).join(",")}`);
+    throw new Error("Vision model returned empty response");
+  }
+  log(`vision multi done: ${Date.now() - t0}ms, content=${content.length} chars`);
+  return content;
 }
 
 // src/tools/analyze.ts
@@ -1826,16 +2372,16 @@ async function runUITest(steps) {
         }
         case "screenshot": {
           const timestamp = Date.now();
-          const path5 = `./screenshots/test_${timestamp}.png`;
+          const path4 = `./screenshots/test_${timestamp}.png`;
           await execAsyncWithTimeout(
             'adb shell "screencap -p /sdcard/screen.png"',
             { timeout: 1e4 }
           );
           await execAsyncWithTimeout(
-            `adb pull /sdcard/screen.png "${path5}"`,
+            `adb pull /sdcard/screen.png "${path4}"`,
             { timeout: 1e4 }
           );
-          screenshots.push(path5);
+          screenshots.push(path4);
           break;
         }
       }
@@ -2686,7 +3232,7 @@ async function handleNetworkDebug(args, action) {
 }
 
 // src/tools/vision-action.ts
-import fs3 from "fs";
+import fs4 from "fs";
 var cachedScreen = null;
 async function getScreenSize() {
   if (cachedScreen) return cachedScreen;
@@ -2753,7 +3299,7 @@ function parseVisionAction(raw, width, height) {
   return r;
 }
 async function executeVisionStep(instruction, beforeScreenshotPath) {
-  const beforePath = beforeScreenshotPath && fs3.existsSync(beforeScreenshotPath) ? beforeScreenshotPath : (await screenshot()).path;
+  const beforePath = beforeScreenshotPath && fs4.existsSync(beforeScreenshotPath) ? beforeScreenshotPath : (await screenshot()).path;
   const { width, height } = await getScreenSize();
   log(`Vision: ${instruction}`);
   const t0 = Date.now();
@@ -3645,567 +4191,7 @@ async function handleAnimationScale(args) {
 
 // src/tools/design-spec.ts
 import fs5 from "fs";
-import path4 from "path";
-
-// src/utils/design-extractor.ts
-import OpenAI2 from "openai";
-import https from "https";
-import { URL } from "url";
-import fs4 from "fs";
 import path3 from "path";
-import { statSync as statSync2 } from "fs";
-var PROVIDERS = {
-  kimi: {
-    provider: "kimi",
-    baseURL: "https://api.moonshot.cn/v1",
-    apiKeyEnv: "MOONSHOT_API_KEY",
-    defaultModel: "kimi-k2.6",
-    availableModels: [
-      { id: "kimi-k2.6", tps: 0, thinking: true, description: "Reasoning model, \u6162\u4F46\u7CBE\u51C6\uFF0C\u8F93\u51FA 13K+ reasoning tokens" }
-    ],
-    insecureEnvVar: "MOONSHOT_INSECURE_TLS"
-  },
-  minimax: {
-    provider: "minimax",
-    baseURL: "https://api.minimaxi.com/v1",
-    apiKeyEnv: "MINIMAX_API_KEY",
-    defaultModel: "MiniMax-M3",
-    availableModels: [
-      { id: "MiniMax-M3", tps: 60, thinking: true, description: "\u6700\u65B0 M \u7CFB\u5217\uFF0C1M \u4E0A\u4E0B\u6587\uFF0C\u53EF\u5173 thinking \u52A0\u901F" },
-      { id: "MiniMax-M2.7", tps: 60, thinking: true, description: "M2.7\uFF0C\u5F00\u542F self-iteration\uFF0Cthinking \u4E0D\u80FD\u5173" },
-      { id: "MiniMax-M2.7-highspeed", tps: 100, thinking: true, description: "M2.7 \u6781\u901F\u7248\uFF08100 TPS\uFF09\uFF0Cthinking \u4E0D\u80FD\u5173" },
-      { id: "MiniMax-M2.5-highspeed", tps: 100, thinking: true, description: "M2.5 \u6781\u901F\u7248\uFF08100 TPS\uFF09" }
-    ],
-    insecureEnvVar: "MINIMAX_INSECURE_TLS"
-  }
-};
-function activeProvider() {
-  const p = process.env.VISION_PROVIDER || "minimax";
-  if (!PROVIDERS[p]) {
-    throw new Error(`Unknown VISION_PROVIDER: ${p}. Available: ${Object.keys(PROVIDERS).join(", ")}`);
-  }
-  return { ...PROVIDERS[p], insecureTLS: process.env[PROVIDERS[p].insecureEnvVar] === "1" };
-}
-function makeInsecureFetch() {
-  return (input, init = {}) => {
-    return new Promise((resolve, reject) => {
-      const url = typeof input === "string" ? new URL(input) : new URL(input.url);
-      const body = init?.body;
-      const headers = {};
-      if (init?.headers) {
-        if (init.headers instanceof Headers) {
-          init.headers.forEach((v, k) => {
-            headers[k] = v;
-          });
-        } else if (Array.isArray(init.headers)) {
-          for (const [k, v] of init.headers) headers[k] = v;
-        } else {
-          Object.assign(headers, init.headers);
-        }
-      }
-      headers["host"] = url.host;
-      if (body && !headers["content-length"] && typeof body === "string") {
-        headers["content-length"] = Buffer.byteLength(body);
-      }
-      const req = https.request(
-        {
-          hostname: url.hostname,
-          port: url.port || 443,
-          path: url.pathname + url.search,
-          method: init?.method || "GET",
-          headers,
-          rejectUnauthorized: false
-        },
-        (res) => {
-          const chunks = [];
-          res.on("data", (c) => chunks.push(c));
-          res.on("end", () => {
-            const respBody = Buffer.concat(chunks);
-            const respHeaders = {};
-            for (const [k, v] of Object.entries(res.headers)) {
-              if (Array.isArray(v)) respHeaders[k] = v.join(", ");
-              else if (v != null) respHeaders[k] = String(v);
-            }
-            resolve(new Response(respBody, {
-              status: res.statusCode || 0,
-              statusText: res.statusMessage || "",
-              headers: respHeaders
-            }));
-          });
-        }
-      );
-      req.on("error", reject);
-      if (body) {
-        if (typeof body === "string" || Buffer.isBuffer(body)) req.write(body);
-        else if (body instanceof Uint8Array) req.write(Buffer.from(body));
-        else if (typeof body.pipe === "function") body.pipe(req);
-        else reject(new Error("Unsupported fetch body type"));
-      }
-      req.end();
-    });
-  };
-}
-var client2 = null;
-var clientKey = "";
-function getClient2() {
-  const cfg = activeProvider();
-  const cacheKey = `${cfg.provider}|${cfg.apiKeyEnv}|${cfg.insecureTLS}`;
-  if (client2 && clientKey === cacheKey) return client2;
-  const apiKey = process.env[cfg.apiKeyEnv];
-  if (!apiKey) {
-    throw new Error(`${cfg.apiKeyEnv} not set. Required for provider '${cfg.provider}' (${cfg.baseURL})`);
-  }
-  if (cfg.insecureTLS) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  client2 = new OpenAI2({
-    apiKey,
-    baseURL: cfg.baseURL,
-    ...cfg.insecureTLS ? { fetch: makeInsecureFetch() } : {}
-  });
-  clientKey = cacheKey;
-  log(`vision client: provider=${cfg.provider} baseURL=${cfg.baseURL} insecureTLS=${cfg.insecureTLS}`);
-  return client2;
-}
-var SKIP_RESIZE_THRESHOLD_BYTES2 = 80 * 1024;
-var MAX_DIMENSION_FOR_API2 = 768;
-async function resizeForApiAsync2(imagePath) {
-  try {
-    const size = statSync2(imagePath).size;
-    if (size < SKIP_RESIZE_THRESHOLD_BYTES2) return imagePath;
-  } catch {
-    return imagePath;
-  }
-  const resizedPath = imagePath.replace(/\.(png|jpg|jpeg)$/, "_resized.$1");
-  try {
-    const cmd = `python3 -c "
-from PIL import Image
-img = Image.open('${imagePath}')
-w, h = img.size
-if max(w, h) > ${MAX_DIMENSION_FOR_API2}:
-    ratio = ${MAX_DIMENSION_FOR_API2} / max(w, h)
-    img = img.resize((int(w*ratio), int(h*ratio)), Image.LANCZOS)
-    img.save('${resizedPath}', quality=85, optimize=True)
-"`;
-    await execAsyncWithTimeout(cmd, { timeout: 1e4 });
-    return fs4.existsSync(resizedPath) ? resizedPath : imagePath;
-  } catch {
-    return imagePath;
-  }
-}
-function cleanupResizedFile2(resizedPath, originalPath) {
-  if (resizedPath !== originalPath) {
-    try {
-      fs4.unlinkSync(resizedPath);
-    } catch {
-    }
-  }
-}
-function encodeAsDataUrl2(p) {
-  const buf = fs4.readFileSync(p);
-  const ext = path3.extname(p).slice(1) || "png";
-  const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
-  return `data:${mime};base64,${buf.toString("base64")}`;
-}
-var JSON_SYSTEM_PROMPT = `You are a senior Android UI/UX engineer specializing in Jetpack Compose and Material 3. You analyze mobile app screenshots and produce machine-readable design specifications.
-
-## Output rules
-- Output a single JSON object only. No markdown fences, no commentary, no code blocks.
-- All color values must be exact hex (e.g. "#FF5757"), never "red" / "blue".
-- Coordinates use the screenshot's pixel space. Width and height must reflect the image.
-- All visible text (including Chinese) must be transcribed EXACTLY as shown.
-- Estimate dp values: assume 1080px wide \u2192 360dp (3x density).
-- Identify the page type from the bottom navigation and top bar context.
-- For each card / item, identify the visual type and structure.
-
-## JSON schema
-{
-  "page": {
-    "name": "string (e.g. '\u9996\u9875-\u63A8\u8350')",
-    "type": "home | video | profile | shop | detail | task | earn | other",
-    "dimensions": { "width": number, "height": number },
-    "description": "1-2 sentence summary of what this page is for"
-  },
-  "colorTokens": {
-    "primary": "#hex (\u54C1\u724C\u4E3B\u8272)",
-    "onPrimary": "#hex (\u4E3B\u8272\u4E0A\u7684\u6587\u5B57)",
-    "background": "#hex (\u9875\u9762\u80CC\u666F)",
-    "surface": "#hex (\u5361\u7247/\u8868\u9762)",
-    "onSurface": "#hex (\u4E3B\u6587\u5B57)",
-    "onSurfaceVariant": "#hex (\u6B21\u6587\u5B57)",
-    "outline": "#hex (\u5206\u5272\u7EBF/\u8FB9\u6846)",
-    "error": "#hex",
-    "accent": "#hex (\u9AD8\u4EAE/\u7EA2\u70B9/\u6570\u5B57)"
-  },
-  "typography": {
-    "titleLarge": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "titleMedium": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "bodyLarge": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "bodyMedium": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "labelSmall": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number }
-  },
-  "layout": {
-    "type": "scaffold",
-    "sections": [
-      { "id": "top-bar", "kind": "TopAppBar|StatusBar|TabRow|SearchBar|Banner|List|FAB|BottomNav", "bounds": {"x":0,"y":0,"width":number,"height":number}, "background": "#hex" }
-    ]
-  },
-  "components": [
-    {
-      "id": "card-1",
-      "kind": "TextTopCard|LeftTextRightImageCard|LargeImageCard|VideoCard|ImageOnlyCard|AvatarBlock|ActionRow|StatBlock|PromoBanner|CategoryGrid|Comment",
-      "bounds": { "x": number, "y": number, "width": number, "height": number },
-      "text": { "title": "string", "subtitle": "string?", "source": "string?", "time": "string?", "count": "string?" },
-      "hasImage": boolean,
-      "imagePosition": "top|bottom|right|left|none",
-      "isClickable": true
-    }
-  ],
-  "bottomNav": {
-    "items": [
-      { "label": "string", "iconHint": "home|video|money|shop|profile", "isSelected": boolean, "color": "#hex" }
-    ]
-  },
-  "textContent": {
-    "titles": ["array of visible page/card titles"],
-    "labels": ["array of button/tab labels"],
-    "placeholders": ["array of input placeholders"],
-    "hotKeywords": ["array of search hot words / news keywords if visible"]
-  },
-  "interactions": [
-    "Tap card \u2192 navigate to detail page",
-    "Swipe down \u2192 refresh feed",
-    "Tap tab in top bar \u2192 switch channel"
-  ],
-  "notes": "any anomalies, red badges (with text), live indicators, special states"
-}
-
-Be exhaustive. Capture EVERY card / text / icon you can see. Do not skip elements.`;
-var MARKDOWN_SYSTEM_PROMPT = `\u4F60\u662F\u8D44\u6DF1 Android UI \u5DE5\u7A0B\u5E08\uFF0C\u4E13\u6CE8 Jetpack Compose + Material 3\u3002\u5206\u6790\u79FB\u52A8\u7AEF App \u622A\u56FE\uFF0C\u8F93\u51FA\u4E00\u4EFD Markdown \u683C\u5F0F\u7684\u8BBE\u8BA1\u89C4\u8303\u6587\u6863\uFF0C\u4FBF\u4E8E\u5F00\u53D1\u8005\u636E\u6B64\u5B9E\u73B0 UI\u3002
-
-## \u8F93\u51FA\u7ED3\u6784\uFF08\u4E25\u683C\u6309\u987A\u5E8F\uFF09
-# [\u9875\u9762\u540D]
-> 1-2 \u53E5\u8BDD\u63CF\u8FF0\u8FD9\u4E2A\u9875\u9762\u7684\u529F\u80FD
-
-## \u9875\u9762\u5143\u4FE1\u606F
-- \u7C7B\u578B\uFF1Ahome / video / profile / shop / detail / task / earn / other
-- \u8BBE\u8BA1\u7A3F\u5C3A\u5BF8\uFF1AWxH px\uFF08\u5BF9\u5E94 W/3 \xD7 H/3 dp\uFF09
-- \u6574\u4F53\u914D\u8272\uFF1A\u4E3B\u8272 / \u80CC\u666F / \u5361\u7247 / \u4E3B\u6587\u5B57 / \u6B21\u6587\u5B57
-
-## \u989C\u8272 Token
-| Token | \u989C\u8272 | \u7528\u9014 |
-|-------|------|------|
-| primary | #FF5757 | \u54C1\u724C\u4E3B\u8272\u3001\u6309\u94AE |
-| ... | ... | ... |
-
-## \u5B57\u4F53\u89C4\u8303
-| \u7B49\u7EA7 | size | weight | \u989C\u8272 | \u7528\u9014 |
-|------|------|--------|------|------|
-| titleLarge | 22sp | Bold | #1A1A1A | \u9875\u9762\u6807\u9898 |
-| ... | ... | ... | ... | ... |
-
-## \u5E03\u5C40\u7ED3\u6784
-\u6309\u4ECE\u4E0A\u5230\u4E0B\u987A\u5E8F\u63CF\u8FF0\u6BCF\u4E2A section\uFF1A
-1. **StatusBar**\uFF08\u72B6\u6001\u680F\uFF09\uFF1A\u9AD8\u5EA6 24dp\uFF0C\u80CC\u666F #F5F5F5\uFF0C\u663E\u793A\u65F6\u95F4/\u7535\u91CF
-2. **TopBar**\uFF08\u9876\u90E8\u680F\uFF09\uFF1A\u9AD8\u5EA6 56dp\uFF0C\u7EA2\u5E95\u767D\u5B57
-3. ...
-
-## \u7EC4\u4EF6\u5217\u8868
-\u6309\u51FA\u73B0\u987A\u5E8F\uFF08\u4ECE\u4E0A\u5230\u4E0B\u3001\u4ECE\u5DE6\u5230\u53F3\uFF09\u5217\u51FA\u6BCF\u4E2A\u7EC4\u4EF6\uFF1A
-### \u7EC4\u4EF6 1: LeftTextRightImageCard
-- \u4F4D\u7F6E\uFF1Ax=0, y=800, \u5BBD=1080, \u9AD8=240
-- \u6807\u9898\uFF1A\u300Cxxx\u300D
-- \u526F\u6807\u9898\uFF08\u6765\u6E90\uFF09\uFF1A\u300Cxxx \xB7 2\u5C0F\u65F6\u524D\u300D
-- \u56FE\u7247\uFF1A\u53F3\u4FA7 200x200 \u7F29\u7565\u56FE
-- \u5907\u6CE8\uFF1A8dp \u8FB9\u8DDD\uFF0C\u5706\u89D2 4dp
-
-### \u7EC4\u4EF6 2: ...
-\uFF08\u91CD\u590D\u76F4\u5230\u6240\u6709\u5361\u7247\u5217\u5B8C\uFF09
-
-## \u5E95\u90E8\u5BFC\u822A
-| \u987A\u5E8F | \u6807\u7B7E | \u56FE\u6807 | \u9009\u4E2D\u6001\u989C\u8272 |
-|------|------|------|-----------|
-| 1 | \u9996\u9875 | home | #FF5757 |
-| ... | ... | ... | ... |
-
-## \u6587\u5B57\u5185\u5BB9
-- \u6807\u9898\uFF1Axxx, xxx
-- \u6309\u94AE\uFF1Axxx, xxx
-- \u5360\u4F4D\u7B26\uFF1Axxx
-- \u70ED\u641C\u8BCD\uFF1Axxx, xxx
-
-## \u4EA4\u4E92\u884C\u4E3A
-- \u70B9\u51FB\u5361\u7247 \u2192 \u8DF3\u8F6C\u5230\u8BE6\u60C5\u9875
-- \u4E0B\u62C9 \u2192 \u5237\u65B0\u5217\u8868
-- ...
-
-## \u5907\u6CE8
-- \u7EA2\u8272\u5C0F\u5706\u70B9\u663E\u793A\u5728\u300C\u6211\u7684\u300D\u56FE\u6807\u53F3\u4E0A\u89D2\uFF0C\u6570\u5B57 3
-- \u300C\u76F4\u64AD\u4E2D\u300D\u7EA2\u8272\u5FBD\u6807\u5728\u7B2C\u4E00\u4E2A\u5361\u7247\u5DE6\u4E0A
-
-\u8981\u6C42\uFF1A
-- \u5B8C\u6574\u5217\u51FA\u6240\u6709\u53EF\u89C1\u5143\u7D20\uFF0C\u4E0D\u8981\u7701\u7565
-- \u4E2D\u6587\u6587\u672C\u5FC5\u987B\u539F\u6837\u4FDD\u7559
-- \u989C\u8272\u5FC5\u987B\u7528 hex \u683C\u5F0F
-- \u6807\u6CE8\u6240\u6709\u7279\u6B8A\u72B6\u6001\uFF08\u7EA2\u70B9\u3001\u5FBD\u6807\u3001\u76F4\u64AD\u4E2D\u3001\u7F6E\u9876\u7B49\uFF09`;
-async function extractDesignSpec(imagePath, options) {
-  if (!fs4.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync2(imagePath);
-  const imageUrl = encodeAsDataUrl2(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (options.provider) process.env.VISION_PROVIDER = options.provider;
-  let json = void 0;
-  let markdown = void 0;
-  let raw = "";
-  let usedModel = "";
-  try {
-    const cfg = activeProvider();
-    const model = options.model || cfg.defaultModel;
-    usedModel = model;
-    if (options.format === "json" || options.format === "both") {
-      const userPrompt = options.pageHint ? `Analyze this Android app screenshot. The page name hint is: "${options.pageHint}". Output a single JSON object per the schema.` : `Analyze this Android app screenshot. Output a single JSON object per the schema.`;
-      const content = await callVision(model, JSON_SYSTEM_PROMPT, userPrompt, imageUrl);
-      raw = content;
-      json = parseJsonFromVision(content);
-    }
-    if (options.format === "markdown" || options.format === "both") {
-      const userPrompt = options.pageHint ? `Analyze this Android app screenshot (page: "${options.pageHint}"). Output a single Markdown document.` : `Analyze this Android app screenshot. Output a single Markdown document.`;
-      const content = await callVision(model, MARKDOWN_SYSTEM_PROMPT, userPrompt, imageUrl);
-      if (!raw) raw = content;
-      markdown = content.trim();
-    }
-    return {
-      success: true,
-      format: options.format,
-      source: imagePath,
-      json,
-      markdown,
-      raw,
-      model: usedModel
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client2 = null;
-    clientKey = "";
-    cleanupResizedFile2(resizedPath, imagePath);
-  }
-}
-async function extractColorTokens(imagePath, modelId, provider) {
-  if (!fs4.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync2(imagePath);
-  const imageUrl = encodeAsDataUrl2(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (provider) process.env.VISION_PROVIDER = provider;
-  const systemPrompt = `You are a design system engineer. Analyze this mobile UI screenshot and output a JSON object listing all color tokens used in the design.
-
-Output format (JSON only, no markdown):
-{
-  "tokens": {
-    "primary": { "hex": "#FF5757", "usage": "brand red, used in top bar and selected tab", "pixelPct": 12.5 },
-    "background": { "hex": "#F5F5F5", "usage": "page background", "pixelPct": 45.0 },
-    ...
-  }
-}
-
-Rules:
-- pixelPct: estimated coverage of this color in the screenshot (rough percentage)
-- Focus on the 5-10 most prominent colors only
-- hex values must be exact
-- If unsure, omit the token rather than guess`;
-  try {
-    const content = await callVision(
-      modelId || "",
-      systemPrompt,
-      "Extract the color tokens from this Android UI screenshot. Output JSON only.",
-      imageUrl
-    );
-    const parsed = parseJsonFromVision(content);
-    const cfg = activeProvider();
-    return {
-      success: true,
-      source: imagePath,
-      model: modelId || cfg.defaultModel,
-      tokens: parsed.tokens || {}
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client2 = null;
-    clientKey = "";
-    cleanupResizedFile2(resizedPath, imagePath);
-  }
-}
-async function extractComponents(imagePath, pageHint, modelId, provider) {
-  if (!fs4.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync2(imagePath);
-  const imageUrl = encodeAsDataUrl2(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (provider) process.env.VISION_PROVIDER = provider;
-  const systemPrompt = `You are an Android UI engineer. Analyze this screenshot and extract every visible UI component as a list.
-
-Output (JSON only):
-{
-  "components": [
-    {
-      "id": "card-1",
-      "kind": "TextTopCard|LeftTextRightImageCard|LargeImageCard|VideoCard|Avatar|Button|Text|SearchBar|Tab|Icon|BottomNavItem",
-      "bounds": { "x": number, "y": number, "width": number, "height": number },
-      "title": "string?",
-      "text": "string?",
-      "source": "string? (publisher/source name)",
-      "time": "string? (time text)",
-      "hasImage": boolean
-    }
-  ]
-}
-
-Rules:
-- Coordinates in pixel space
-- Be exhaustive: list every component (cards, buttons, text labels, icons, tabs, etc.)
-- Skip invisible/background elements
-- Chinese text must be preserved exactly
-- Order by Y coordinate (top to bottom)`;
-  try {
-    const prompt = pageHint ? `Extract all UI components from this Android screenshot (page: "${pageHint}"). JSON only.` : `Extract all UI components from this Android screenshot. JSON only.`;
-    const content = await callVision(modelId || "", systemPrompt, prompt, imageUrl);
-    const parsed = parseJsonFromVision(content);
-    const cfg = activeProvider();
-    return {
-      success: true,
-      source: imagePath,
-      model: modelId || cfg.defaultModel,
-      components: parsed.components || []
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client2 = null;
-    clientKey = "";
-    cleanupResizedFile2(resizedPath, imagePath);
-  }
-}
-async function designToComposeSkeleton(imagePath, packageName, modelId, provider) {
-  if (!fs4.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync2(imagePath);
-  const imageUrl = encodeAsDataUrl2(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (provider) process.env.VISION_PROVIDER = provider;
-  const systemPrompt = `\u4F60\u662F Jetpack Compose \u9AD8\u7EA7\u5DE5\u7A0B\u5E08\u3002\u7ED9\u5B9A\u79FB\u52A8\u7AEF UI \u622A\u56FE\uFF0C\u8F93\u51FA\u4E00\u4EFD\u53EF\u76F4\u63A5\u843D\u5230 /app/src/main/java/<package>/presentation/<page>/<Page>Screen.kt \u7684 Compose \u4EE3\u7801\u9AA8\u67B6\u3002
-
-\u8981\u6C42\uFF1A
-- \u4EC5\u8F93\u51FA\u4EE3\u7801\uFF0C\u4E0D\u8981 markdown \u5305\u88F9\uFF0C\u4E0D\u8981\u89E3\u91CA
-- \u7528 Material3 + Compose
-- \u5305\u542B Scaffold\u3001TopAppBar\u3001BottomNavigationBar\uFF08\u5982\u6709\uFF09\u3001TabRow\uFF08\u5982\u6709\uFF09\u3001LazyColumn\uFF08\u5982\u6709\u5361\u7247\uFF09
-- \u7EC4\u4EF6\u6309\u622A\u56FE\u7ED3\u6784\u4ECE\u4E0A\u5230\u4E0B
-- \u5173\u952E\u6587\u5B57\u5185\u5BB9\u4FDD\u7559\u539F\u6837
-- \u989C\u8272\u7528 Color(0xFF...) \u5F62\u5F0F
-- \u4E0D\u5B9E\u73B0\u5177\u4F53\u4E1A\u52A1\u903B\u8F91\uFF1A\u7528 TODO() \u6807\u6CE8\u9700\u8981\u586B\u5145\u7684\u5730\u65B9
-- \u5B57\u4F53\u5927\u5C0F\u7528 .sp\uFF0C\u8DDD\u79BB\u7528 .dp
-- \u5361\u7247\u7528 Card \u5305\u88F9\uFF0C\u6807\u9898/\u526F\u6807\u9898/\u56FE\u7247/\u6765\u6E90/\u65F6\u95F4\u7528 Column/Row \u6392\u7248
-- \u6587\u672B\u52A0\u6CE8\u91CA "/* === TODO NOTES === */" \u5217\u51FA\u8FD9\u4E2A\u9AA8\u67B6\u672A\u5B9E\u73B0\u7684\u90E8\u5206`;
-  try {
-    const userHint = packageName ? `Package: ${packageName}` : "";
-    const content = await callVision(
-      modelId || "",
-      systemPrompt,
-      `\u751F\u6210\u6B64\u9875\u9762\u7684 Compose \u9AA8\u67B6\u4EE3\u7801\u3002${userHint}`.trim(),
-      imageUrl
-    );
-    const { code, notes } = splitCodeAndNotes(content);
-    const cfg = activeProvider();
-    return {
-      success: true,
-      source: imagePath,
-      model: modelId || cfg.defaultModel,
-      kotlin: code,
-      notes
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client2 = null;
-    clientKey = "";
-    cleanupResizedFile2(resizedPath, imagePath);
-  }
-}
-async function callVision(modelId, systemPrompt, userPrompt, imageUrl) {
-  const cfg = activeProvider();
-  const model = modelId || cfg.defaultModel;
-  const t0 = Date.now();
-  log(`vision call: provider=${cfg.provider} model=${model} promptLen=${userPrompt.length}`);
-  const messages = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: [
-        { type: "image_url", image_url: { url: imageUrl } },
-        { type: "text", text: userPrompt }
-      ]
-    }
-  ];
-  const requestOpts = {
-    model,
-    messages,
-    max_tokens: 4e3,
-    temperature: cfg.provider === "kimi" ? 1 : 1
-    // 都用 1.0（kimi 强制）
-  };
-  if (cfg.provider === "minimax" && model === "MiniMax-M3") {
-    requestOpts.extra_body = { thinking: { type: "disabled" } };
-  }
-  const response = await getClient2().chat.completions.create(requestOpts, { timeout: 12e4 });
-  const msg = response.choices[0]?.message;
-  let content = msg?.content;
-  let source = "content";
-  if (!content && msg?.reasoning_content) {
-    content = msg.reasoning_content;
-    source = "reasoning_content";
-  }
-  if (!content) {
-    log(`vision: empty response. msg keys: ${Object.keys(msg || {}).join(",")}`);
-    throw new Error("Vision model returned empty response");
-  }
-  log(`vision done: ${Date.now() - t0}ms, source=${source}, content=${content.length} chars`);
-  return content;
-}
-function parseJsonFromVision(raw) {
-  let text = raw.trim();
-  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (fenced) text = fenced[1].trim();
-  const a = text.indexOf("{");
-  const b = text.lastIndexOf("}");
-  if (a !== -1 && b > a) text = text.slice(a, b + 1);
-  try {
-    return JSON.parse(text);
-  } catch {
-  }
-  const fixed = text.replace(/,(\s*[}\]])/g, "$1").replace(/([{,]\s*)([A-Za-z_][\w$]*)(\s*:)/g, '$1"$2"$3');
-  try {
-    return JSON.parse(fixed);
-  } catch (e) {
-    error("Failed to parse vision JSON:", e);
-    error("Raw text preview:", text.slice(0, 500));
-    return {};
-  }
-}
-function splitCodeAndNotes(content) {
-  const markerMatch = content.match(/\/\*\s*===\s*TODO NOTES\s*===\s*\*\/([\s\S]*)$/);
-  if (markerMatch) {
-    const code = content.slice(0, markerMatch.index).trim();
-    const notes = markerMatch[1].trim();
-    return { code, notes };
-  }
-  return { code: content.replace(/^```(?:kotlin)?\n?/m, "").replace(/```\s*$/m, "").trim(), notes: "" };
-}
-
-// src/tools/design-spec.ts
 var DESIGN_DIR = process.env.DESIGN_DIR || "./design";
 async function handleExtractDesignSpec(args) {
   try {
@@ -4292,8 +4278,8 @@ async function handleListDesignFiles(args) {
     }
     const entries = fs5.readdirSync(dir, { withFileTypes: true });
     const imageExts = /* @__PURE__ */ new Set([".png", ".jpg", ".jpeg", ".webp"]);
-    const files = entries.filter((e) => e.isFile() && imageExts.has(path4.extname(e.name).toLowerCase())).map((e) => {
-      const full = path4.join(dir, e.name);
+    const files = entries.filter((e) => e.isFile() && imageExts.has(path3.extname(e.name).toLowerCase())).map((e) => {
+      const full = path3.join(dir, e.name);
       const stat = fs5.statSync(full);
       return {
         name: e.name,
@@ -4347,21 +4333,21 @@ function resolveImagePath(input) {
   if (!input) {
     throw new Error("imagePath is required. Use list_design_files to discover available designs.");
   }
-  if (fs5.existsSync(input)) return path4.resolve(input);
-  const inDesign = path4.join(DESIGN_DIR, input);
-  if (fs5.existsSync(inDesign)) return path4.resolve(inDesign);
-  if (fs5.existsSync(inDesign + ".jpg")) return path4.resolve(inDesign + ".jpg");
-  if (fs5.existsSync(inDesign + ".png")) return path4.resolve(inDesign + ".png");
+  if (fs5.existsSync(input)) return path3.resolve(input);
+  const inDesign = path3.join(DESIGN_DIR, input);
+  if (fs5.existsSync(inDesign)) return path3.resolve(inDesign);
+  if (fs5.existsSync(inDesign + ".jpg")) return path3.resolve(inDesign + ".jpg");
+  if (fs5.existsSync(inDesign + ".png")) return path3.resolve(inDesign + ".png");
   throw new Error(`Image not found: ${input} (also tried ${inDesign}{.jpg,.png})`);
 }
 function fileNameToPageHint(filename) {
-  return path4.basename(filename, path4.extname(filename));
+  return path3.basename(filename, path3.extname(filename));
 }
 function derivePageHint(imagePath) {
   return fileNameToPageHint(imagePath);
 }
 function deriveScreenFileName(imagePath) {
-  const base = path4.basename(imagePath, path4.extname(imagePath));
+  const base = path3.basename(imagePath, path3.extname(imagePath));
   const safe = base.replace(/[^\w一-龥-]/g, "");
   return `${safe}Screen.kt`;
 }
@@ -4547,7 +4533,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ════════════════════════════════════════════════════════════
       {
         name: "verify_ui",
-        description: "UI \u50CF\u7D20\u7EA7\u9A8C\u8BC1\uFF1A'compare' \u5BF9\u6BD4\u4E24\u5F20\u622A\u56FE\u5DEE\u5F02\uFF1B'color' \u53D6 (x,y) \u50CF\u7D20\u989C\u8272\u5E76\u4E0E\u9884\u671F\u6BD4\u5BF9\uFF1B'ocr' \u5360\u4F4D\uFF08\u9700\u5B89\u88C5 tesseract.js\uFF09\u3002\u4F7F\u7528\u65F6\u673A\uFF1A\u56DE\u5F52\u6D4B\u8BD5 / \u9A8C\u8BC1\u67D0\u4E2A\u50CF\u7D20\u989C\u8272\u662F\u5426\u7B26\u5408\u8BBE\u8BA1\u7A3F\u3002\u6539\u7528 analyze_screenshot\uFF1A\u82E5\u8981 Kimi \u89C6\u89C9\u7406\u89E3\u6574\u4E2A\u5E03\u5C40\u3002\u8FD4\u56DE JSON\uFF1Acompare \u8FD4\u56DE {diffPixels, diffPercentage, isMatch, diffImagePath}\uFF1Bcolor \u8FD4\u56DE {match, expected, actual, x, y}\u3002\u8017\u65F6 compare fast (~500ms)\uFF0Ccolor fast (~100ms)\u3002\u793A\u4F8B\uFF1Averify_ui({ type: 'color', currentPath: './home.png', x: 100, y: 50, checkColor: '#FF5757' })",
+        description: "UI \u50CF\u7D20\u7EA7\u9A8C\u8BC1\uFF1A'compare' \u5BF9\u6BD4\u4E24\u5F20\u622A\u56FE\u5DEE\u5F02\uFF1B'color' \u53D6 (x,y) \u50CF\u7D20\u989C\u8272\u5E76\u4E0E\u9884\u671F\u6BD4\u5BF9\uFF1B'ocr' \u5360\u4F4D\uFF08\u9700\u5B89\u88C5 tesseract.js\uFF09\u3002\u4F7F\u7528\u65F6\u673A\uFF1A\u56DE\u5F52\u6D4B\u8BD5 / \u9A8C\u8BC1\u67D0\u4E2A\u50CF\u7D20\u989C\u8272\u662F\u5426\u7B26\u5408\u8BBE\u8BA1\u7A3F\u3002\u6539\u7528 analyze_screenshot\uFF1A\u82E5\u8981 Minimax \u89C6\u89C9\u7406\u89E3\u6574\u4E2A\u5E03\u5C40\u3002\u8FD4\u56DE JSON\uFF1Acompare \u8FD4\u56DE {diffPixels, diffPercentage, isMatch, diffImagePath}\uFF1Bcolor \u8FD4\u56DE {match, expected, actual, x, y}\u3002\u8017\u65F6 compare fast (~500ms)\uFF0Ccolor fast (~100ms)\u3002\u793A\u4F8B\uFF1Averify_ui({ type: 'color', currentPath: './home.png', x: 100, y: 50, checkColor: '#FF5757' })",
         inputSchema: {
           type: "object",
           properties: {
@@ -4564,7 +4550,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "analyze_screenshot",
-        description: "\u4E09\u9636\u6BB5\u622A\u56FE\u5206\u6790\uFF1A(1) PIL \u50CF\u7D20\u6D4B\u91CF\u5E03\u5C40 (2) Kimi k2.6 \u89C6\u89C9 AI \u8BED\u4E49\u7406\u89E3 (3) \u5361\u7247\u7EA7\u7CBE\u786E\u9A8C\u8BC1\u3002\u9700\u8981 Python3 + PIL \u73AF\u5883\uFF1B\u89C6\u89C9\u9636\u6BB5\u9700\u8981 MOONSHOT_API_KEY\u3002\u4F7F\u7528\u65F6\u673A\uFF1A\u7528\u6237\u8BF4\u300C\u5E2E\u6211\u770B\u770B\u8FD9\u4E2A\u9875\u9762\u300D\u300C\u6709\u4EC0\u4E48\u95EE\u9898\u300D\u65F6\u7684\u4E00\u7AD9\u5F0F UI \u5BA1\u67E5\u3002\u6539\u7528 verify_ui\uFF1A\u82E5\u53EA\u9700\u50CF\u7D20\u7EA7\u68C0\u67E5\u3002\u8FD4\u56DE JSON: {file, pil: {...}, vision: '...', cards: [...], checklist: [...]}\u3002\u8017\u65F6 slow (10-30s\uFF0Cvision \u9636\u6BB5\u5360\u5927\u5934)\u3002\u793A\u4F8B\uFF1Aanalyze_screenshot({ filePath: './home.png', prompt: '\u68C0\u67E5\u5361\u7247\u95F4\u8DDD' })",
+        description: "\u4E09\u9636\u6BB5\u622A\u56FE\u5206\u6790\uFF1A(1) PIL \u50CF\u7D20\u6D4B\u91CF\u5E03\u5C40 (2) Minimax \u89C6\u89C9 AI \u8BED\u4E49\u7406\u89E3 (3) \u5361\u7247\u7EA7\u7CBE\u786E\u9A8C\u8BC1\u3002\u9700\u8981 Python3 + PIL \u73AF\u5883\uFF1B\u89C6\u89C9\u9636\u6BB5\u9700\u8981 MINIMAX_API_KEY\u3002\u4F7F\u7528\u65F6\u673A\uFF1A\u7528\u6237\u8BF4\u300C\u5E2E\u6211\u770B\u770B\u8FD9\u4E2A\u9875\u9762\u300D\u300C\u6709\u4EC0\u4E48\u95EE\u9898\u300D\u65F6\u7684\u4E00\u7AD9\u5F0F UI \u5BA1\u67E5\u3002\u6539\u7528 verify_ui\uFF1A\u82E5\u53EA\u9700\u50CF\u7D20\u7EA7\u68C0\u67E5\u3002\u8FD4\u56DE JSON: {file, pil: {...}, vision: '...', cards: [...], checklist: [...]}\u3002\u8017\u65F6 slow (10-30s\uFF0Cvision \u9636\u6BB5\u5360\u5927\u5934)\u3002\u793A\u4F8B\uFF1Aanalyze_screenshot({ filePath: './home.png', prompt: '\u68C0\u67E5\u5361\u7247\u95F4\u8DDD' })",
         inputSchema: {
           type: "object",
           properties: {
@@ -4576,7 +4562,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "compare_screenshots",
-        description: "\u7528 Kimi \u89C6\u89C9 AI \u5BF9\u6BD4\u4E24\u5F20\u622A\u56FE\uFF08\u8BBE\u8BA1\u7A3F vs \u5B9E\u73B0\uFF09\u3002\u6BD4 verify_ui \u7684 compare \u6162\u4F46\u66F4\u667A\u80FD\uFF08\u80FD\u8BC6\u522B\u8BED\u4E49\u5DEE\u5F02\uFF09\u3002\u9700\u8981 MOONSHOT_APIKEY\u3002\u8FD4\u56DE JSON: {success, baseline, current, analysis: '...'}\u3002\u8017\u65F6 slow (5-20s)\u3002\u793A\u4F8B\uFF1Acompare_screenshots({ baselinePath: './design.png', currentPath: './home.png' })",
+        description: "\u7528 Minimax \u89C6\u89C9 AI \u5BF9\u6BD4\u4E24\u5F20\u622A\u56FE\uFF08\u8BBE\u8BA1\u7A3F vs \u5B9E\u73B0\uFF09\u3002\u6BD4 verify_ui \u7684 compare \u6162\u4F46\u66F4\u667A\u80FD\uFF08\u80FD\u8BC6\u522B\u8BED\u4E49\u5DEE\u5F02\uFF09\u3002\u9700\u8981 MINIMAX_API_KEY\u3002\u8FD4\u56DE JSON: {success, baseline, current, analysis: '...'}\u3002\u8017\u65F6 slow (5-20s)\u3002\u793A\u4F8B\uFF1Acompare_screenshots({ baselinePath: './design.png', currentPath: './home.png' })",
         inputSchema: {
           type: "object",
           properties: {
@@ -4589,7 +4575,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "vision_action",
-        description: "\u7528 Kimi \u89C6\u89C9 AI \u6309\u81EA\u7136\u8BED\u8A00\u63CF\u8FF0\u5B9A\u4F4D\u5143\u7D20\u5E76\u6267\u884C\u70B9\u51FB/\u6ED1\u52A8/\u8F93\u5165\u3002\u9002\u5408\uFF1A(1) Agent \u4E0D\u77E5\u9053\u76EE\u6807\u5750\u6807 (2) UI \u5143\u7D20\u4F4D\u7F6E/\u6587\u6848\u4F1A\u52A8\u6001\u53D8\u5316 (3) \u4E0D\u60F3\u5199\u89C4\u5219\u3002\u4EE3\u4EF7\uFF1A\u6BCF\u6B65 3-8s\uFF0C\u4E14\u9700 MOONSHOT_APIKEY\u3002\u6539\u7528 find_element + tap\uFF1A\u82E5\u5143\u7D20\u6709\u7A33\u5B9A text/resource-id\uFF08\u66F4\u5FEB\uFF09\u3002\u8FD4\u56DE JSON: {success, steps: [{action, x, y, text, confidence, reasoning}], screenshot, durationMs}\u3002\u8017\u65F6 slow (3-8s \u6BCF\u6B65)\u3002\u793A\u4F8B\uFF1Avision_action({ prompt: '\u70B9\u51FB\u5E95\u90E8\u5BFC\u822A\u7684\u300C\u89C6\u9891\u300Dtab' }) \u6216 prompts: ['\u70B9\u51FB\u641C\u7D22', '\u8F93\u5165 hello', '\u6309\u56DE\u8F66']",
+        description: "\u7528 Minimax \u89C6\u89C9 AI \u6309\u81EA\u7136\u8BED\u8A00\u63CF\u8FF0\u5B9A\u4F4D\u5143\u7D20\u5E76\u6267\u884C\u70B9\u51FB/\u6ED1\u52A8/\u8F93\u5165\u3002\u9002\u5408\uFF1A(1) Agent \u4E0D\u77E5\u9053\u76EE\u6807\u5750\u6807 (2) UI \u5143\u7D20\u4F4D\u7F6E/\u6587\u6848\u4F1A\u52A8\u6001\u53D8\u5316 (3) \u4E0D\u60F3\u5199\u89C4\u5219\u3002\u4EE3\u4EF7\uFF1A\u6BCF\u6B65 3-8s\uFF0C\u4E14\u9700 MINIMAX_API_KEY\u3002\u6539\u7528 find_element + tap\uFF1A\u82E5\u5143\u7D20\u6709\u7A33\u5B9A text/resource-id\uFF08\u66F4\u5FEB\uFF09\u3002\u8FD4\u56DE JSON: {success, steps: [{action, x, y, text, confidence, reasoning}], screenshot, durationMs}\u3002\u8017\u65F6 slow (3-8s \u6BCF\u6B65)\u3002\u793A\u4F8B\uFF1Avision_action({ prompt: '\u70B9\u51FB\u5E95\u90E8\u5BFC\u822A\u7684\u300C\u89C6\u9891\u300Dtab' }) \u6216 prompts: ['\u70B9\u51FB\u641C\u7D22', '\u8F93\u5165 hello', '\u6309\u56DE\u8F66']",
         inputSchema: {
           type: "object",
           properties: {
@@ -4990,56 +4976,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "extract_design_spec",
-        description: "\u3010\u6838\u5FC3\u5DE5\u5177\u3011\u7528\u89C6\u89C9 LLM \u628A\u8BBE\u8BA1\u7A3F\u622A\u56FE\u8F6C\u6362\u4E3A Agent \u53EF\u8BFB\u7684\u7ED3\u6784\u5316\u89C4\u8303\uFF08JSON \u6A21\u5F0F\uFF09\uFF1A\u542B colorTokens\uFF08\u76F4\u63A5\u5582\u7ED9 Compose ColorScheme\uFF09\u3001typography\uFF08\u5B57\u53F7/\u5B57\u91CD/\u989C\u8272\uFF09\u3001layout sections\uFF08Scaffold \u7684 topBar/TabRow/BottomNav \u5212\u5206\uFF09\u3001components \u5217\u8868\uFF08\u6BCF\u5F20\u5361\u7247\u7684 kind/bounds/text/source/hasImage\uFF09\u3001bottomNav\u3001textContent\u3001interactions\u3002format=both \u540C\u65F6\u8FD4\u56DE\u4EBA\u7C7B\u53EF\u8BFB\u7684 markdown\u3002\u6539\u7528 extract_design_tokens\uFF1A\u53EA\u5173\u5FC3\u989C\u8272\u3002\u6539\u7528 extract_design_components\uFF1A\u53EA\u5173\u5FC3\u7EC4\u4EF6\u5750\u6807\u3002\u6539\u7528 design_to_compose\uFF1A\u60F3\u8981\u76F4\u63A5\u53EF\u7528\u7684\u4EE3\u7801\u3002\u8FD4\u56DE JSON\uFF08format=json|markdown|both\uFF09\u3002\u8017\u65F6 slow (vision API \u4E3B\u5BFC)\u3002\u53EF\u7528 provider=minimax|minimax\uFF08\u9ED8\u8BA4 minimax\uFF0C\u9700 MINIMAX_API_KEY\uFF09\uFF1B\u53EF\u7528 model\uFF1Aminimax-MiniMax-M3\uFF08thinking-disabled\uFF0C\u6700\u5FEB\uFF09\u3001MiniMax-M2.7-highspeed\uFF08100 TPS\uFF09\u3001MiniMax-M2.7\uFF0860 TPS\uFF09\u3001kimi-k2.6\uFF08\u4EC5 legacy \u517C\u5BB9\uFF09\u3002\u793A\u4F8B\uFF1Aextract_design_spec({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg' }) \u6216 { imagePath: '\u8BBE\u8BA1/\u65B0\u7248\u9996\u9875.png', format: 'json', model: 'MiniMax-M3' }",
+        description: "\u3010\u6838\u5FC3\u5DE5\u5177\u3011\u7528 Minimax \u89C6\u89C9 LLM \u628A\u8BBE\u8BA1\u7A3F\u622A\u56FE\u8F6C\u6362\u4E3A Agent \u53EF\u8BFB\u7684\u7ED3\u6784\u5316\u89C4\u8303\uFF08JSON \u6A21\u5F0F\uFF09\uFF1A\u542B colorTokens\uFF08\u76F4\u63A5\u5582\u7ED9 Compose ColorScheme\uFF09\u3001typography\uFF08\u5B57\u53F7/\u5B57\u91CD/\u989C\u8272\uFF09\u3001layout sections\uFF08Scaffold \u7684 topBar/TabRow/BottomNav \u5212\u5206\uFF09\u3001components \u5217\u8868\uFF08\u6BCF\u5F20\u5361\u7247\u7684 kind/bounds/text/source/hasImage\uFF09\u3001bottomNav\u3001textContent\u3001interactions\u3002format=both \u540C\u65F6\u8FD4\u56DE\u4EBA\u7C7B\u53EF\u8BFB\u7684 markdown\u3002\u6539\u7528 extract_design_tokens\uFF1A\u53EA\u5173\u5FC3\u989C\u8272\u3002\u6539\u7528 extract_design_components\uFF1A\u53EA\u5173\u5FC3\u7EC4\u4EF6\u5750\u6807\u3002\u6539\u7528 design_to_compose\uFF1A\u60F3\u8981\u76F4\u63A5\u53EF\u7528\u7684\u4EE3\u7801\u3002\u8FD4\u56DE JSON\uFF08format=json|markdown|both\uFF09\u3002\u8017\u65F6 slow (vision API \u4E3B\u5BFC)\u3002\u9700 MINIMAX_API_KEY\u3002model \u53EF\u9009\uFF1AMiniMax-M3\uFF08\u9ED8\u8BA4\uFF0Cthinking-disabled\uFF0C\u6700\u5FEB\uFF09\u3001MiniMax-M2.7-highspeed\uFF08100 TPS\uFF09\u3001MiniMax-M2.7\uFF0860 TPS\uFF09\u3002\u793A\u4F8B\uFF1Aextract_design_spec({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg' }) \u6216 { imagePath: '\u8BBE\u8BA1/\u65B0\u7248\u9996\u9875.png', format: 'json', model: 'MiniMax-M3' }",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. \u8BBE\u8BA1\u7A3F\u8DEF\u5F84\uFF08\u7EDD\u5BF9\u8DEF\u5F84\u3001\u76F8\u5BF9\u8DEF\u5F84\u3001\u7EAF\u6587\u4EF6\u540D\u5747\u53EF\uFF0C\u6587\u4EF6\u540D\u65F6\u4F1A\u81EA\u52A8\u5728 ./design/ \u4E0B\u67E5\u627E\uFF09" },
             format: { type: "string", enum: ["json", "markdown", "both"], description: "\u53EF\u9009\u3002\u8F93\u51FA\u683C\u5F0F\uFF1Ajson=\u7ED3\u6784\u5316\u6570\u636E\uFF08\u5582\u7ED9\u4EE3\u7801\uFF09\u3001markdown=\u4EBA\u7C7B\u9605\u8BFB\u3001both=\u540C\u65F6\u8FD4\u56DE", default: "both" },
             pageHint: { type: "string", description: "\u53EF\u9009\u3002\u9875\u9762\u540D\u63D0\u793A\uFF08\u9ED8\u8BA4\u4ECE\u6587\u4EF6\u540D\u63A8\u65AD\uFF09\uFF0C\u5E2E\u52A9 LLM \u66F4\u597D\u7406\u89E3\u4E0A\u4E0B\u6587" },
-            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID\uFF08\u9ED8\u8BA4 minimax-MiniMax-M3\uFF0Cthinking-disabled\uFF09\u3002\u5176\u4ED6\u53EF\u9009\uFF1AMiniMax-M2.7\u3001MiniMax-M2.7-highspeed\u3001kimi-k2.6" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "\u53EF\u9009\u3002LLM \u63D0\u4F9B\u5546\u3002\u4F18\u5148\u7528 env VISION_PROVIDER\uFF1B\u4E0D\u4F20\u65F6\u6309 minimax\u2192kimi \u987A\u5E8F\u63A2\u6D4B" }
+            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID\uFF08\u9ED8\u8BA4 MiniMax-M3\uFF0Cthinking-disabled\uFF09\u3002\u5176\u4ED6\u53EF\u9009\uFF1AMiniMax-M2.7-highspeed\uFF08100 TPS\uFF09\u3001MiniMax-M2.7\uFF0860 TPS\uFF09" }
           },
           required: ["imagePath"]
         }
       },
       {
         name: "extract_design_tokens",
-        description: "\u53EA\u62BD\u53D6\u8BBE\u8BA1\u7A3F\u4E2D\u7684\u989C\u8272 token\uFF08hex + \u7528\u9014 + \u5927\u81F4\u5360\u6BD4\uFF09\u3002\u8F93\u51FA\u53EF\u76F4\u63A5\u751F\u6210 Compose ColorScheme\uFF1Aprimary/onPrimary/background/surface/onSurface/onSurfaceVariant/outline/accent/error \u7B49 5-10 \u4E2A\u6700\u663E\u8457\u989C\u8272\u3002\u6539\u7528 extract_design_spec\uFF1A\u82E5\u8FD8\u9700\u8981\u5B57\u4F53/\u5E03\u5C40/\u7EC4\u4EF6\u3002\u8FD4\u56DE JSON: {success, source, model, tokens: {tokenName: {hex, usage, pixelPct}}}\u3002\u8017\u65F6 slow\u3002\u53EF\u7528 model\uFF1AMiniMax-M3 (\u63A8\u8350)\u3001MiniMax-M2.7-highspeed\u3002\u793A\u4F8B\uFF1Aextract_design_tokens({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg' })",
+        description: "\u53EA\u62BD\u53D6\u8BBE\u8BA1\u7A3F\u4E2D\u7684\u989C\u8272 token\uFF08hex + \u7528\u9014 + \u5927\u81F4\u5360\u6BD4\uFF09\u3002\u8F93\u51FA\u53EF\u76F4\u63A5\u751F\u6210 Compose ColorScheme\uFF1Aprimary/onPrimary/background/surface/onSurface/onSurfaceVariant/outline/accent/error \u7B49 5-10 \u4E2A\u6700\u663E\u8457\u989C\u8272\u3002\u6539\u7528 extract_design_spec\uFF1A\u82E5\u8FD8\u9700\u8981\u5B57\u4F53/\u5E03\u5C40/\u7EC4\u4EF6\u3002\u8FD4\u56DE JSON: {success, source, model, tokens: {tokenName: {hex, usage, pixelPct}}}\u3002\u8017\u65F6 slow\u3002\u9700 MINIMAX_API_KEY\u3002model \u53EF\u9009\uFF1AMiniMax-M3\uFF08\u63A8\u8350\uFF09\u3001MiniMax-M2.7-highspeed\u3002\u793A\u4F8B\uFF1Aextract_design_tokens({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg' })",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. \u8BBE\u8BA1\u7A3F\u8DEF\u5F84" },
-            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "\u53EF\u9009\u3002LLM \u63D0\u4F9B\u5546" }
+            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID\uFF08\u9ED8\u8BA4 MiniMax-M3\uFF09" }
           },
           required: ["imagePath"]
         }
       },
       {
         name: "extract_design_components",
-        description: "\u6309\u4ECE\u4E0A\u5230\u4E0B\u987A\u5E8F\u62BD\u53D6\u8BBE\u8BA1\u7A3F\u91CC\u6240\u6709 UI \u7EC4\u4EF6\uFF08\u5361/\u6309\u94AE/\u56FE\u6807/\u6807\u7B7E/Tab/BottomNavItem\uFF09\uFF0C\u542B kind\u3001bounds\u3001title\u3001text\u3001source\u3001time\u3001hasImage\u3002\u5750\u6807\u7528\u622A\u56FE\u7684\u50CF\u7D20\u7A7A\u95F4\u3002\u6539\u7528 extract_design_spec\uFF1A\u82E5\u8FD8\u8981\u989C\u8272\u5B57\u4F53\u5E03\u5C40\u3002\u6539\u7528 dump_hierarchy\uFF1A\u82E5\u60F3\u770B\u5F53\u524D\u5B9E\u73B0\u7684\u5143\u7D20\uFF08\u800C\u4E0D\u662F\u8BBE\u8BA1\u7A3F\uFF09\u3002\u8FD4\u56DE JSON: {success, source, model, components: [{id, kind, bounds, title, text, source, time, hasImage}]}\u3002\u8017\u65F6 slow\u3002\u793A\u4F8B\uFF1Aextract_design_components({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg' })",
+        description: "\u6309\u4ECE\u4E0A\u5230\u4E0B\u987A\u5E8F\u62BD\u53D6\u8BBE\u8BA1\u7A3F\u91CC\u6240\u6709 UI \u7EC4\u4EF6\uFF08\u5361/\u6309\u94AE/\u56FE\u6807/\u6807\u7B7E/Tab/BottomNavItem\uFF09\uFF0C\u542B kind\u3001bounds\u3001title\u3001text\u3001source\u3001time\u3001hasImage\u3002\u5750\u6807\u7528\u622A\u56FE\u7684\u50CF\u7D20\u7A7A\u95F4\u3002\u6539\u7528 extract_design_spec\uFF1A\u82E5\u8FD8\u8981\u989C\u8272\u5B57\u4F53\u5E03\u5C40\u3002\u6539\u7528 dump_hierarchy\uFF1A\u82E5\u60F3\u770B\u5F53\u524D\u5B9E\u73B0\u7684\u5143\u7D20\uFF08\u800C\u4E0D\u662F\u8BBE\u8BA1\u7A3F\uFF09\u3002\u8FD4\u56DE JSON: {success, source, model, components: [{id, kind, bounds, title, text, source, time, hasImage}]}\u3002\u8017\u65F6 slow\u3002\u9700 MINIMAX_API_KEY\u3002\u793A\u4F8B\uFF1Aextract_design_components({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg' })",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. \u8BBE\u8BA1\u7A3F\u8DEF\u5F84" },
             pageHint: { type: "string", description: "\u53EF\u9009\u3002\u9875\u9762\u540D\u63D0\u793A" },
-            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "\u53EF\u9009\u3002LLM \u63D0\u4F9B\u5546" }
+            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID\uFF08\u9ED8\u8BA4 MiniMax-M3\uFF09" }
           },
           required: ["imagePath"]
         }
       },
       {
         name: "design_to_compose",
-        description: "\u8BBE\u8BA1\u7A3F\u76F4\u63A5\u8F6C Jetpack Compose Screen.kt \u9AA8\u67B6\uFF08Scaffold + TopAppBar + TabRow + BottomNavigationBar + LazyColumn + \u5361\u7247\u5360\u4F4D\uFF09\u3002\u6587\u672B\u7528\u300C/* === TODO NOTES === */\u300D\u6CE8\u91CA\u5217\u51FA\u672A\u5B9E\u73B0\u90E8\u5206\u3002Agent \u62FF\u5230\u540E\u53EF\u76F4\u63A5\u843D\u5230 /app/src/main/java/<package>/presentation/<page>/ \u4E0B\u7EE7\u7EED\u5F00\u53D1\u3002\u6539\u7528 extract_design_spec\uFF1A\u82E5\u8981\u7ED3\u6784\u5316\u6570\u636E\uFF08\u7528\u4E8E\u81EA\u5DF1\u5199\u4EE3\u7801\uFF09\u3002\u8FD4\u56DE JSON: {success, source, model, packageName, fileName, kotlin, notes, usage}\u3002\u8017\u65F6 slow\u3002\u63A8\u8350\u7528 MiniMax-M3\uFF08\u4EE3\u7801\u751F\u6210\u8D28\u91CF\u9AD8\u3001thinking-disabled \u540E\u5FEB\uFF09\u3002\u793A\u4F8B\uFF1Adesign_to_compose({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg', packageName: 'com.example.toutiao', model: 'MiniMax-M3' })",
+        description: "\u8BBE\u8BA1\u7A3F\u76F4\u63A5\u8F6C Jetpack Compose Screen.kt \u9AA8\u67B6\uFF08Scaffold + TopAppBar + TabRow + BottomNavigationBar + LazyColumn + \u5361\u7247\u5360\u4F4D\uFF09\u3002\u6587\u672B\u7528\u300C/* === TODO NOTES === */\u300D\u6CE8\u91CA\u5217\u51FA\u672A\u5B9E\u73B0\u90E8\u5206\u3002Agent \u62FF\u5230\u540E\u53EF\u76F4\u63A5\u843D\u5230 /app/src/main/java/<package>/presentation/<page>/ \u4E0B\u7EE7\u7EED\u5F00\u53D1\u3002\u6539\u7528 extract_design_spec\uFF1A\u82E5\u8981\u7ED3\u6784\u5316\u6570\u636E\uFF08\u7528\u4E8E\u81EA\u5DF1\u5199\u4EE3\u7801\uFF09\u3002\u8FD4\u56DE JSON: {success, source, model, packageName, fileName, kotlin, notes, usage}\u3002\u8017\u65F6 slow\u3002\u9700 MINIMAX_API_KEY\u3002\u63A8\u8350\u7528 MiniMax-M3\uFF08\u4EE3\u7801\u751F\u6210\u8D28\u91CF\u9AD8\u3001thinking-disabled \u540E\u5FEB\uFF09\u3002\u793A\u4F8B\uFF1Adesign_to_compose({ imagePath: '\u9996\u9875-\u63A8\u8350.jpg', packageName: 'com.example.toutiao', model: 'MiniMax-M3' })",
         inputSchema: {
           type: "object",
           properties: {
             imagePath: { type: "string", description: "Required. \u8BBE\u8BA1\u7A3F\u8DEF\u5F84" },
             packageName: { type: "string", description: "\u53EF\u9009\u3002\u5305\u540D\uFF08\u7528\u4E8E\u5EFA\u8BAE\u843D\u76D8\u8DEF\u5F84\uFF09\uFF0C\u9ED8\u8BA4 com.example.app" },
-            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID\uFF08\u9ED8\u8BA4 MiniMax-M3\uFF09" },
-            provider: { type: "string", enum: ["minimax", "kimi"], description: "\u53EF\u9009\u3002LLM \u63D0\u4F9B\u5546" }
+            model: { type: "string", description: "\u53EF\u9009\u3002\u89C6\u89C9\u6A21\u578B ID\uFF08\u9ED8\u8BA4 MiniMax-M3\uFF09" }
           },
           required: ["imagePath"]
         }

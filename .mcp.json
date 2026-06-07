@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "android-dev-assist": {
+      "command": "node",
+      "args": ["/Users/cm/AndroidStudioProjects/ToutiaoFeedDemo/skills/dist/server.js"],
+      "env": {
+        "MINIMAX_API_KEY": "sk-cp-fXF70yqVGXnviJFLtXsXqWDT2Gqs_Lq-qCC_1YXkZlBb5PYH-CZgw4HPDYYpjB6ZcZ2XySRdL6iGIotlDyssTbI15MdAP3wqhzKiqsHc56GiOnaKtn9gmc4",
+        "MINIMAX_INSECURE_TLS": "1",
+        "VISION_PROVIDER": "minimax"
+      }
+    }
+  }
+}

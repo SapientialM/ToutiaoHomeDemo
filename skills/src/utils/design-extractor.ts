@@ -8,8 +8,10 @@ import { log, error } from "./logger.js";
 import { execAsyncWithTimeout } from "./exec.js";
 
 // ── LLM 提供商配置 ─────────────────────────────────────
+//
+// 已统一使用 Minimax，移除 Kimi 路径以避免历史 reasoning_model 兼容代码干扰。
 
-export type LLMProvider = "kimi" | "minimax";
+export type LLMProvider = "minimax";
 
 interface ProviderConfig {
   provider: LLMProvider;
@@ -22,16 +24,6 @@ interface ProviderConfig {
 }
 
 const PROVIDERS: Record<LLMProvider, Omit<ProviderConfig, "insecureTLS">> = {
-  kimi: {
-    provider: "kimi",
-    baseURL: "https://api.moonshot.cn/v1",
-    apiKeyEnv: "MOONSHOT_API_KEY",
-    defaultModel: "kimi-k2.6",
-    availableModels: [
-      { id: "kimi-k2.6", tps: 0, thinking: true, description: "Reasoning model, 慢但精准，输出 13K+ reasoning tokens" },
-    ],
-    insecureEnvVar: "MOONSHOT_INSECURE_TLS",
-  },
   minimax: {
     provider: "minimax",
     baseURL: "https://api.minimaxi.com/v1",
@@ -47,7 +39,7 @@ const PROVIDERS: Record<LLMProvider, Omit<ProviderConfig, "insecureTLS">> = {
   },
 };
 
-function activeProvider(): ProviderConfig {
+export function activeProvider(): ProviderConfig {
   const p = (process.env.VISION_PROVIDER as LLMProvider) || "minimax";
   if (!PROVIDERS[p]) {
     throw new Error(`Unknown VISION_PROVIDER: ${p}. Available: ${Object.keys(PROVIDERS).join(", ")}`);
@@ -56,10 +48,18 @@ function activeProvider(): ProviderConfig {
   return { ...PROVIDERS[p], insecureTLS: process.env[PROVIDERS[p].insecureEnvVar] === "1" };
 }
 
+/**
+ * 公开 Provider 解析：供其他工具（vision-analyze 等）复用同一套提供商配置
+ */
+export function getActiveProvider(): { provider: LLMProvider; baseURL: string; defaultModel: string; apiKeyEnv: string } {
+  const cfg = activeProvider();
+  return { provider: cfg.provider, baseURL: cfg.baseURL, defaultModel: cfg.defaultModel, apiKeyEnv: cfg.apiKeyEnv };
+}
+
 // 自签名证书环境（公司代理/MITM）：
 // OpenAI SDK 在构造时锁定 fetch 引用，patch globalThis.fetch 不生效；
 // 必须在 new OpenAI({ fetch }) 时显式传入 https.request-based fetch。
-function makeInsecureFetch(): typeof fetch {
+export function makeInsecureFetch(): typeof fetch {
   return (input: any, init: any = {}) => {
     return new Promise((resolve, reject) => {
       const url = typeof input === "string" ? new URL(input) : new URL((input as Request).url);
@@ -170,6 +170,15 @@ if max(w, h) > ${MAX_DIMENSION_FOR_API}:
   }
 }
 
+/**
+ * 公开 resize 工具：被 vision-analyze / verify 等其他 vision 工具复用
+ *  - < 80KB 跳过
+ *  - 最长边 > 768 时缩到 768，JPEG quality=85
+ */
+export async function smartResizeForVision(imagePath: string): Promise<string> {
+  return resizeForApiAsync(imagePath);
+}
+
 function cleanupResizedFile(resizedPath: string, originalPath: string): void {
   if (resizedPath !== originalPath) {
     try { fs.unlinkSync(resizedPath); } catch { /* ignore */ }
@@ -181,6 +190,13 @@ function encodeAsDataUrl(p: string): string {
   const ext = path.extname(p).slice(1) || "png";
   const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
   return `data:${mime};base64,${buf.toString("base64")}`;
+}
+
+/**
+ * 公开 base64 编码工具：供 vision-analyze 复用
+ */
+export function encodeImageAsDataUrl(p: string): string {
+  return encodeAsDataUrl(p);
 }
 
 // ── Prompt 模板 ─────────────────────────────────────
@@ -602,9 +618,8 @@ export async function designToComposeSkeleton(imagePath: string, packageName?: s
 // ── 内部工具 ─────────────────────────────────────
 
 /**
- * 核心调用：统一处理 Kimi / Minimax 的 reasoning / non-reasoning 模式
+ * 核心调用：Minimax 视觉调用
  *
- * Kimi k2.6: 强制 temperature=1，答案在 reasoning_content
  * Minimax M3:  默认开 thinking，可关（thinking:disabled）加速 5-10x
  * Minimax M2.x: thinking 不能关
  *
@@ -632,10 +647,10 @@ async function callVision(modelId: string, systemPrompt: string, userPrompt: str
     model,
     messages,
     max_tokens: 4000,
-    temperature: cfg.provider === "kimi" ? 1.0 : 1.0, // 都用 1.0（kimi 强制）
+    temperature: 1.0,
   };
 
-  if (cfg.provider === "minimax" && model === "MiniMax-M3") {
+  if (model === "MiniMax-M3") {
     // M3 才能关 thinking；M2.7/M2.5 关不掉
     requestOpts.extra_body = { thinking: { type: "disabled" } };
   }
@@ -646,7 +661,7 @@ async function callVision(modelId: string, systemPrompt: string, userPrompt: str
   let content = msg?.content;
   let source: "content" | "reasoning_content" = "content";
 
-  // Reasoning 模型兜底：Kimi k2.6 答案在 reasoning_content
+  // 兜底：部分 thinking 模型把答案放 reasoning_content
   if (!content && msg?.reasoning_content) {
     content = msg.reasoning_content;
     source = "reasoning_content";
@@ -659,6 +674,18 @@ async function callVision(modelId: string, systemPrompt: string, userPrompt: str
 
   log(`vision done: ${Date.now() - t0}ms, source=${source}, content=${content.length} chars`);
   return content;
+}
+
+/**
+ * 公开 vision 调用入口：供 vision-analyze / verify 等复用同一套多 LLM 配置
+ */
+export async function callVisionLlm(
+  modelId: string,
+  systemPrompt: string,
+  userPrompt: string,
+  imageUrl: string,
+): Promise<string> {
+  return callVision(modelId, systemPrompt, userPrompt, imageUrl);
 }
 
 /**

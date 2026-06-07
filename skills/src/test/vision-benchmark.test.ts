@@ -1,11 +1,11 @@
 /**
- * Vision 端到端基准测试 —— Minimax 多模型 + Kimi 对比
+ * Vision 端到端基准测试 —— Minimax 多模型对比
  *
- * 测试矩阵：provider × model × tool，统计：
- * - 耗时、响应 token、JSON 解析质量、输出 token 质量
+ * 测试矩阵：model × tool，统计：
+ * - 耗时、响应 token、JSON 解析质量
  *
  * 运行：npm run test:vision-bench
- * 跳过：未设 MINIMAX_API_KEY / MOONSHOT_API_KEY 时自动 skip
+ * 跳过：未设 MINIMAX_API_KEY 时自动 skip
  */
 import { config as loadEnv } from "dotenv";
 loadEnv();
@@ -70,12 +70,11 @@ async function benchOne(
 }
 
 describe("Vision API benchmark", () => {
-  const hasKimi = !!process.env.MOONSHOT_API_KEY;
   const hasMinimax = !!process.env.MINIMAX_API_KEY;
   const activeProvider = process.env.VISION_PROVIDER || "minimax";
 
-  if (!hasKimi && !hasMinimax) {
-    it.skip("No vision LLM API key set, skipping", () => {});
+  if (!hasMinimax) {
+    it.skip("No MINIMAX_API_KEY set, skipping", () => {});
     return;
   }
 
@@ -85,22 +84,17 @@ describe("Vision API benchmark", () => {
       return;
     }
 
-    // Kimi 模式已废弃（耗时 100-150s/调用，JSON 解析还需 fallback reasoning_content），跳过整个测试
-    // 用 RUN_VISION_BENCH_WITH_KIMI=1 强制启用 Kimi benchmark
-    const includeKimi = process.env.RUN_VISION_BENCH_WITH_KIMI === "1" && hasKimi;
-
-    const testMatrix: Array<{ provider: "minimax" | "kimi"; model: string; skip?: boolean }> = [
-      { provider: "minimax", model: "MiniMax-M3" },                // thinking-disabled, 最快
-      { provider: "minimax", model: "MiniMax-M2.7-highspeed" },   // 100 TPS
-      { provider: "minimax", model: "MiniMax-M2.7" },              // 60 TPS baseline
-      { provider: "kimi", model: "kimi-k2.6", skip: !includeKimi },  // legacy, opt-in
+    const testMatrix: Array<{ model: string }> = [
+      { model: "MiniMax-M3" },                // thinking-disabled, 最快
+      { model: "MiniMax-M2.7-highspeed" },   // 100 TPS
+      { model: "MiniMax-M2.7" },              // 60 TPS baseline
     ];
 
     console.log("\n═══════════════════════════════════════════════════════════════");
-    console.log("🧪 VISION API BENCHMARK — multi-model comparison");
+    console.log("🧪 VISION API BENCHMARK — Minimax multi-model comparison");
     console.log("═══════════════════════════════════════════════════════════════");
     console.log(`📐 Test image: ${TEST_IMAGE} (${Math.round(fs.statSync(TEST_IMAGE).size / 1024)}KB)`);
-    console.log(`🔑 API: minimax=${hasMinimax ? "yes" : "no"}  kimi=${hasKimi ? "yes (skipped, set RUN_VISION_BENCH_WITH_KIMI=1 to enable)" : "no"}  active=${activeProvider}`);
+    console.log(`🔑 MINIMAX_API_KEY: ${hasMinimax ? "yes" : "no"}  active=${activeProvider}`);
     console.log("");
 
     // ── list_design_files (no vision API) ──
@@ -113,52 +107,14 @@ describe("Vision API benchmark", () => {
     console.log(`    输出：${listParsed.count} 个设计稿`);
     console.log("");
 
-    // 对每个模型跑 extract_design_spec(format=json) 和 extract_design_components
     const all: BenchResult[] = [];
 
     for (const cfg of testMatrix) {
-      if (cfg.skip) {
-        console.log(`⏭️  跳过 ${cfg.provider}/${cfg.model}（API key 未配置）`);
-        continue;
-      }
-      // kimi provider 在这次 benchmark 中以独立 baseURL 跑（不能用 minimax 的 URL）
-      if (cfg.provider === "kimi") {
-        console.log(`\n── ${cfg.provider}/${cfg.model} ──`);
-        const r1 = await benchOne(`[${cfg.provider}/${cfg.model}] extract_design_spec(json)`, async () => {
-          const r = await handleExtractDesignSpec({ imagePath: TEST_IMAGE, format: "json", model: cfg.model, provider: "kimi" });
-          return { text: r.content[0].text, parsed: r.isError ? undefined : JSON.parse(r.content[0].text) };
-        });
-        console.log(`    ① extract_design_spec(json): ${r1.totalMs}ms, ~${r1.responseTokens} tok, parse=${r1.parseOk ? "✅" : "❌"}`);
-        if (r1.jsonShape) console.log(`       keys: ${r1.jsonShape}`);
-        console.log(`       preview: ${r1.preview}...`);
-        all.push(r1);
-        await sleep(2000);
-
-        const r2 = await benchOne(`[${cfg.provider}/${cfg.model}] extract_design_tokens`, async () => {
-          const r = await handleExtractDesignTokens({ imagePath: TEST_IMAGE, model: cfg.model, provider: "kimi" });
-          return { text: r.content[0].text, parsed: r.isError ? undefined : JSON.parse(r.content[0].text) };
-        });
-        console.log(`    ② extract_design_tokens:     ${r2.totalMs}ms, ~${r2.responseTokens} tok, parse=${r2.parseOk ? "✅" : "❌"}`);
-        console.log(`       preview: ${r2.preview}...`);
-        all.push(r2);
-        await sleep(2000);
-
-        const r3 = await benchOne(`[${cfg.provider}/${cfg.model}] extract_design_components`, async () => {
-          const r = await handleExtractComponents({ imagePath: TEST_IMAGE, model: cfg.model, provider: "kimi" });
-          return { text: r.content[0].text, parsed: r.isError ? undefined : JSON.parse(r.content[0].text) };
-        });
-        console.log(`    ③ extract_design_components: ${r3.totalMs}ms, ~${r3.responseTokens} tok, parse=${r3.parseOk ? "✅" : "❌"}`);
-        if (r3.jsonShape) console.log(`       keys: ${r3.jsonShape}`);
-        console.log(`       preview: ${r3.preview}...`);
-        all.push(r3);
-        continue;
-      }
-
-      console.log(`\n── ${cfg.provider}/${cfg.model} ──`);
+      console.log(`\n── minimax/${cfg.model} ──`);
 
       // 1. extract_design_spec (json)
-      const r1 = await benchOne(`[${cfg.provider}/${cfg.model}] extract_design_spec(json)`, async () => {
-        const r = await handleExtractDesignSpec({ imagePath: TEST_IMAGE, format: "json", model: cfg.model, provider: cfg.provider });
+      const r1 = await benchOne(`[minimax/${cfg.model}] extract_design_spec(json)`, async () => {
+        const r = await handleExtractDesignSpec({ imagePath: TEST_IMAGE, format: "json", model: cfg.model });
         return { text: r.content[0].text, parsed: r.isError ? undefined : JSON.parse(r.content[0].text) };
       });
       console.log(`    ① extract_design_spec(json): ${r1.totalMs}ms, ~${r1.responseTokens} tok, parse=${r1.parseOk ? "✅" : "❌"}`);
@@ -168,8 +124,8 @@ describe("Vision API benchmark", () => {
       await sleep(2000);
 
       // 2. extract_design_tokens
-      const r2 = await benchOne(`[${cfg.provider}/${cfg.model}] extract_design_tokens`, async () => {
-        const r = await handleExtractDesignTokens({ imagePath: TEST_IMAGE, model: cfg.model, provider: cfg.provider });
+      const r2 = await benchOne(`[minimax/${cfg.model}] extract_design_tokens`, async () => {
+        const r = await handleExtractDesignTokens({ imagePath: TEST_IMAGE, model: cfg.model });
         return { text: r.content[0].text, parsed: r.isError ? undefined : JSON.parse(r.content[0].text) };
       });
       console.log(`    ② extract_design_tokens:     ${r2.totalMs}ms, ~${r2.responseTokens} tok, parse=${r2.parseOk ? "✅" : "❌"}`);
@@ -178,8 +134,8 @@ describe("Vision API benchmark", () => {
       await sleep(2000);
 
       // 3. extract_design_components
-      const r3 = await benchOne(`[${cfg.provider}/${cfg.model}] extract_design_components`, async () => {
-        const r = await handleExtractComponents({ imagePath: TEST_IMAGE, model: cfg.model, provider: cfg.provider });
+      const r3 = await benchOne(`[minimax/${cfg.model}] extract_design_components`, async () => {
+        const r = await handleExtractComponents({ imagePath: TEST_IMAGE, model: cfg.model });
         return { text: r.content[0].text, parsed: r.isError ? undefined : JSON.parse(r.content[0].text) };
       });
       console.log(`    ③ extract_design_components: ${r3.totalMs}ms, ~${r3.responseTokens} tok, parse=${r3.parseOk ? "✅" : "❌"}`);
@@ -201,15 +157,12 @@ describe("Vision API benchmark", () => {
       byModel[key].push(r);
     }
 
-    const summary: Array<{ model: string; avgMs: number; totalTokens: number; parseOk: number; total: number; speedupVsKimi: string }> = [];
-    const kimiAvg = byModel["[kimi/kimi-k2.6]"]?.reduce((s, r) => s + r.totalMs, 0) / (byModel["[kimi/kimi-k2.6]"]?.length || 1);
-
+    const summary: Array<{ model: string; avgMs: number; totalTokens: number; parseOk: number; total: number }> = [];
     for (const [model, results] of Object.entries(byModel)) {
       const avgMs = results.reduce((s, r) => s + r.totalMs, 0) / results.length;
       const totalTokens = results.reduce((s, r) => s + r.responseTokens, 0);
       const ok = results.filter((r) => r.parseOk).length;
-      const speedup = kimiAvg > 0 ? (kimiAvg / avgMs).toFixed(1) + "x" : "n/a";
-      summary.push({ model, avgMs, totalTokens, parseOk: ok, total: results.length, speedupVsKimi: speedup });
+      summary.push({ model, avgMs, totalTokens, parseOk: ok, total: results.length });
     }
 
     summary.sort((a, b) => a.avgMs - b.avgMs);
@@ -217,8 +170,7 @@ describe("Vision API benchmark", () => {
       console.log(
         `  ${s.model.padEnd(34)} avg=${s.avgMs.toFixed(0).padStart(5)}ms  ` +
         `tokens=${s.totalTokens.toString().padStart(5)}  ` +
-        `parse=${s.parseOk}/${s.total}  ` +
-        `speedup=${s.speedupVsKimi}`
+        `parse=${s.parseOk}/${s.total}`
       );
     }
 

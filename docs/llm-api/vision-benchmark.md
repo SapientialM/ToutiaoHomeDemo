@@ -2,6 +2,8 @@
 
 > 设计稿 → 结构化规范工具 (`extract_design_*` / `design_to_compose`) 的视觉 LLM 性能对比报告。
 > 目的：在多个提供商/模型中选型；为 prompt 与流程优化提供数据基础。
+>
+> **状态（2026-06-08）**：已统一迁移到 Minimax。Kimi 部分仅作为历史归档保留，不再用于生产路径。`design-extractor.ts` 中已删除 `kimi` provider 配置。
 
 **测试日期**：2026-06-07
 **测试环境**：
