@@ -1,6 +1,7 @@
 package com.example.toutiao.di
 
 import android.content.Context
+import com.example.toutiao.data.remote.datasource.MallDataSource
 import com.example.toutiao.data.remote.datasource.MockDataSource
 import com.example.toutiao.data.remote.datasource.RemoteDataSource
 import dagger.Module
@@ -19,4 +20,9 @@ object DataSourceModule {
     // 如果要切换真实API，直接切为 RealRemoteDataSource 即可
     fun provideRemoteDataSource(@ApplicationContext context: Context): RemoteDataSource =
         MockDataSource(context.applicationContext)
+
+    @Provides
+    @Singleton
+    fun provideMallDataSource(@ApplicationContext context: Context): MallDataSource =
+        MallDataSource(context.applicationContext)
 }
