@@ -51,6 +51,26 @@
   - ✅ MCP Skill 扩展：新增 `dump_hierarchy` / `find_element` / `wait_for_element`（uiautomator 元素查找）；`logcat_search` / `parse_crash`（崩溃归因）；`screenshot_region`（区域截图）；`apk_metadata`（aapt 自省）；`set_orientation` / `set_gps` / `animation_scale`（环境模拟）
   - ✅ MCP Skill 设计稿能力：新增 `list_design_files` / `extract_design_spec` / `extract_design_tokens` / `extract_design_components` / `design_to_compose`，把 design/ 下的 14 张设计稿转换为 Agent 可读的结构化规范
   - ✅ MCP Skill 多 LLM 支持：从 Kimi k2.6 切换到 Minimax（M3 / M2.7 / M2.7-highspeed），耗时 3-25x 提速，JSON 解析 0/3 → 3/3
+  - ✅ 「上次看到这里」按 tab 独立持久化（`ReadPositionRepository` / SharedPreferences），回到首页时在原阅读位置上方显示「X 分钟前看过，点击回到原位置」提示，点击跳回原位置
+  - ✅ 字体对齐设计稿：首页 Tab 选中 18sp→16sp Bold / LargeImage & TextTop 标题 18sp→17sp Medium / VideoScreen Tab 17sp/14sp→15sp Medium/Regular / Earn 大数字 40sp→36sp / Profile 用户名 22sp→17sp / Mall 商城 Tab 18sp→16sp / BrandTopRow Logo 18sp→17sp Medium / 豆包AI 9sp→10sp / Mall 商品卡 12sp→14sp 价格 15sp→18sp / Profile 6月幸运签 17sp→15sp
+  - ✅ 热榜频道差异化：`HotListView` 顶部 4 个圆角胶囊快捷入口 + 序号+🔥/爆/热/新/辟谣 标签徽标的纯文字榜单
+  - ✅ 深圳频道差异化：天气条（29° 阴 26°/30° + 切换城市）+ 本地热榜横条
+  - ✅ 财经频道差异化：风险提示条（投资有风险）+ 股票指数卡（上证/深证/创业板 22sp Bold 数字）
+  - ✅ 军事频道差异化：「军事榜」头（盾牌图标 + 完整榜单链接）+ 3 条军事榜（红圆点 + 标题 + 「新」角标）
+  - ✅ 畅听频道差异化：副 Tab（听头条/听书/听音乐）+ 双列热门榜（6 项 64x64 封面 + 评分角标）+ 分类 Chip（全部/总裁/玄幻...）+ 大卡式相关推荐
+  - ✅ 小说频道差异化：书架入口 + 3 本推荐书（"为你推荐" 标签）+ 排行榜（推荐榜/完结榜...）+ 双列榜项（1-3 红色 Bold 排名）+ 猜你喜欢大卡（金色评分）
+  - ✅ 体育频道差异化：足球主题横幅（蓝绿渐变）+ 赛事分类 Chip（直播/NBA/CBA/世界杯）+ 比赛卡片（时间/状态/联赛/两队/比分，胜方红色加粗）
+  - ✅ 视频频道沉浸式改造：VerticalPager 全屏 + 顶部 Tab（关注/精选/推荐/找短剧）+ 右上 + 号 + 右下垂直操作栏（头像+关注/点赞/评论/收藏/分享）+ 左下账号+描述+话题
+  - ✅ 赚钱页"看头条赚金币"6 格时间奖励网格（3x2 红底方格 16 待领取/16 3分钟/14 10分钟/20 20分钟/50 45分钟/90 90分钟）
+  - ✅ 首页 Tab 间距收紧：edgePadding 16dp→12dp，下划线 padding 8dp→6dp
+  - ✅ 首页右下角悬浮提示卡（设计稿「高考作文题来了，去热榜看详情 ›」），点击跳转热榜频道
+  - ✅ 商城页官方商城标签 + 商品双列（含"旗舰"/"618"红色角标）+ 你可能喜欢 2x2
+  - ✅ 性能优化：ToutiaoApplication 显式声明 CachePolicy（ENABLED × 3 个维度）+ BottomInfoRow 用 remember 缓存评论数格式化结果
+  - ✅ 搜索页增强：SharedPreferences 持久化搜索历史（最长 12 条）+ 每条带 X 删除 + 「搜索发现」横向 Chip 流（10 个个性化推荐词）+ 热搜前 3 名 Hot/Boom/New 徽标
+  - ✅ 我的页作品 Tab 内容填充：6 个 Tab（作品/收藏/赞过/短剧/草稿/推荐）各自独立空状态页（图标 + 标题 + 副标题 + 行动按钮）
+  - ✅ ktlint 代码规范配置：ktlint 12.1.1 通过 classpath 集成（绕开 aliyun 镜像 plugin 缺失），`./gradlew ktlintCheck` 与 `ktlintFormat` 命令可用
+  - ✅ Compose 性能 baseline 报告（`docs/performance-baseline.md`）：冷启动 1.3-1.6s（TTID A 级 / TTFD B 级），热启动 < 400ms，滚动 60fps，PSS 142MB
+  - ✅ 新闻详情页：接入新数据源（`app/src/main/assets/news_data.json` 2400+ 条**合成** mock，gitignored），点击卡片 → HTTP 抓取源 URL → Jsoup 手动解析（失败回退 LLM） → 渲染详情页框架；含 OkHttp 抓取、Jsoup 解析、Minimax LLM 解析、NewsContentRepository 编排、NewsDetailViewModel 状态机、NewsDetailScreen 全屏 UI
 - **当前未开始**：
   - ⬜ 新闻详情页（点击卡片仅打印日志，无页面跳转）
   - ⬜ 视频实际播放能力（VideoCard 仅封面 + 播放按钮 UI）
@@ -88,6 +108,12 @@
 
 # 仅编译（不打包）
 ./gradlew compileDebugKotlin
+
+# ktlint 代码规范检查
+./gradlew ktlintCheck
+
+# ktlint 自动修复
+./gradlew ktlintFormat
 ```
 
 APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
@@ -157,10 +183,19 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 
 ### 2. 顶部 Tab 切换
 
-- 6 个频道：关注(follow) / 推荐(recommend) / 热榜(hot) / 新时代(new era) / 小说(novel) / 视频(video)
+- 7 个频道：关注(follow) / 推荐(recommend) / 热榜(hot) / 深圳(shenzhen) / 小说(novel) / 发现(discover) / 视频(video)
 - 切换 Tab 时通过 `key(currentTab)` 销毁旧 Paging 流，新 Tab 从 page=0 开始加载
-- 当前选中 Tab 字体更大(18sp)、加粗、纯白；未选中略小(15sp)、半透明
+- 当前选中 Tab 字体 16sp Bold 红字+红色下划线；未选中 15sp Regular 黑字（设计稿对齐）
 - 搜索栏支持点击展开输入框、输入关键词、提交搜索、返回取消，展示 Mock 搜索结果
+- **频道差异化渲染**：
+  - `recommend` / `follow` / `discover` → `PagingFeedList`（标准 4 种 FeedCard）
+  - `hot` → `HotListView`（顶部 4 个圆角胶囊快捷入口 + 序号+🔥/爆/热/新/辟谣 徽标的纯文字榜单）
+  - `shenzhen` → `PagingFeedList` + 顶部 `ShenzhenWeatherStrip` + `ShenzhenLocalHotBanner`
+  - `finance` → `PagingFeedList` + 顶部 `FinanceRiskNotice` + `FinanceStockIndexCard`
+  - `military` → `PagingFeedList` + 顶部 `MilitaryRankHeader` + `MilitaryRankItem` ×3
+  - `audio` → `PagingFeedList` + 顶部 `AudioSubTabs` + `AudioSectionHeader` + 2 列 `AudioHotCard` ×6 + `AudioCategoryChips` + `AudioRecommendItem`
+  - `novel` → `PagingFeedList` + 顶部 `NovelBookshelfRow` + 排行榜（`NovelRankingTabs` + `NovelRankItem`）+ 猜你喜欢（`NovelRecommendItem`）
+  - `sports` → `PagingFeedList` + 顶部 `SportsBanner` + `SportsCategoryChips` + `SportsMatchRow`
 
 ### 3. 下拉刷新
 
@@ -213,17 +248,72 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 
 ### 8. 底部导航栏
 
-- 5 个 Tab：首页 / 视频 / 搜索 / 任务 / 我的
+- 5 个 Tab：首页 / 视频 / 赚钱 / 商城 / 我的
 - `selectedIndex` 是纯本地 UI 状态（`remember { mutableIntStateOf(0) }`），不经过 ViewModel
 - 使用 `when (selectedBottomNav)` 在 `MainActivity.kt` 中切换 5 个独立页面：
-  - 0 → `HomeScreen`（首页信息流）
-  - 1 → `VideoScreen`（视频列表页）
-  - 2 → `SearchScreen`（独立搜索页）
-  - 3 → `TaskScreen`（任务中心）
+  - 0 → `HomeScreen`（首页信息流 + 7 个频道差异化）
+  - 1 → `VideoScreen`（抖音式沉浸式全屏流）
+  - 2 → `EarnScreen`（任务中心 + 6 格时间奖励网格）
+  - 3 → `MallScreen`（商城）
   - 4 → `ProfileScreen`（个人中心）
-- 每个页面都有独立的 Screen 组件和 ViewModel（除 Task/Profile 为静态展示页）
+- 每个页面都有独立的 Screen 组件和 ViewModel（除 Earn/Profile 为静态展示页）
 
-### 9. 主题
+### 9. 「上次看到这里」功能
+
+- 持久化：`ReadPositionRepository`（`SharedPreferences`，按 channel 维度存 `last_seen_id_<channel>` 和 `last_seen_at_<channel>`）
+- 写入时机：用户滚动列表，`firstVisibleItemIndex > 0` 且首条 card id 变化时，上报 `HomeUiEvent.OnFirstVisibleCardChanged(id)`，ViewModel 写入
+- 读取时机：进入 tab（`switchTab` / init）时 ViewModel 同步到 `UiState.Success.lastSeenCardId / lastSeenAt`
+- 展示条件：UI 端
+  - `lastSeenCardId != null` 且在当前 `LazyPagingItems` 中能定位到 index（≥0）
+  - `firstVisibleItemIndex <= lastSeenIndex`（用户尚未滚过该位置）
+- 交互：点击 `LastSeenHint` 触发 `animateScrollToItem(lastSeenIndex)` 跳回原位置
+- 隐藏时机：用户滚过 `lastSeenIndex` 后自动隐藏（不擦除持久化，再次进入仍可恢复）
+
+### 10. 新闻详情页「点击 → 解析 → 渲染」全链路
+
+**触发**：首页/搜索结果中点击带 `sourceUrl` 的卡片（`HomeScreen` → `MainActivity.onCardClick` → `NewsDetailScreen`）
+
+**四步流程**（`NewsContentRepositoryImpl` 编排，Flow<Stage> 流式推进）：
+
+| 步骤 | 解析器 | 成功条件 | 失败回退 |
+|------|--------|----------|----------|
+| 1. HTTP 抓取 | `OkHttpContentFetcher` | 200 + HTML | 直接 Error |
+| 2. 手动解析 | `JsoupNewsContentParser` | ≥3 段 ≥100 字 | 步骤 3 |
+| 3. LLM 解析 | `MinimaxNewsContentParser` | chat completion 返回合法 JSON | 步骤 4 |
+| 4. 兜底 Mock | `MockFallbackNewsContentParser` | 永远 Success（生成 5 段占位内容 + picsum 配图） | 永不发生 |
+
+**状态机**（`NewsDetailViewModel` → `NewsDetailScreen`）：
+
+`Idle` → `Loading(Fetching)` → `Loading(ManualParsing)` → `Loading(LlmParsing)?` → `Loading(MockParsing)?` → `ContentReady(byLlm: Boolean)` / `Error(message)`
+
+- Loading 阶段显示「正在做什么」+ 二级文案（如「Jsoup 提取标题/段落/配图…」）
+- LLM 解析成功的页面顶部有「LLM 解析」红色徽标
+- 兜底 Mock 内容用占位段落 + picsum 占位图，标注「Mock 兜底」标识
+
+**LLM 配置**（`local.properties`，gitignore）：
+
+```properties
+LLM_API_KEY=sk-cp-...（来自 skills/.env 的 MINIMAX_API_KEY）
+LLM_BASE_URL=https://api.minimaxi.com/v1
+LLM_MODEL=MiniMax-Text-01
+```
+
+通过 `BuildConfig` 注入到 `MinimaxNewsContentParser`。
+
+**依赖**：
+- `okhttp` 抓取（已存在）
+- `jsoup` HTML 解析（新增，libs.versions.toml 1.18.3）
+
+**已知陷阱（调试时遇到）**：
+
+1. **Toutiao.com 是 SPA**（Vue/React 客户端渲染）：服务端返回的 HTML 只含 JS 框架代码，没有正文。Jsoup 拿不到内容，会回退到 LLM。LLM 也会识别出"这是 JS 代码非新闻"并返回解析结果。
+2. **KSP + Hilt 第三个 @Binds 解析失败**：当一个接口有 ≥3 个 @Binds 绑定时，Hilt 处理器偶尔报 "type could not be resolved"（实际编译通过但 KSP 找不到符号）。解决：第三个绑定用 `@Provides` 模式。详见 `NewsContentProvidesModule.provideMockParser`。
+3. **`sourceUrl` 必须经过 Room 透传**：原始 bug 是 `FeedItemEntity` 没有 `sourceUrl` 字段，导致 `toDomain()` 后 `FeedCard.sourceUrl = null`，详情页点击无响应。修复：Entity 加 `@ColumnInfo("source_url") val sourceUrl: String? = null` + Mapper 显式传 `sourceUrl = sourceUrl`。
+4. **AppDatabase 版本**：加 `sourceUrl` 字段后需升级 DB version（当前 v4 → v5），或靠 `fallbackToDestructiveMigration()` 重建。
+  - Minimax 复用 `OkHttpClient` + `kotlinx.serialization.json`
+- **Hilt 绑定**：`NewsContentModule` 用 `@ManualParser` / `@LlmParser` 限定符区分同一个 `NewsContentParser` 接口的两个实现
+
+### 11. 主题
 
 - 头条红白配色：主色 `Color(0xFFD81E06)`
 - 背景色 `Color(0xFFF5F5F5)`（浅灰）
@@ -558,6 +648,86 @@ jobs:
 
 ---
 
+## 内容安全与敏感词过滤约束
+
+### 背景
+
+项目从 `assets/news_data.json` 加载 1421 条真实新闻数据，新闻标题 / 正文 / 作者 / 来源可能涉及以下内容，调用 LLM 视觉 API（`analyze_screenshot` / `vision_action` / `compare_screenshots`）时容易触发模型内容安全策略导致请求失败：
+
+- 政治敏感（领导人、政策、事件等）
+- 暴力血腥（灾难、事故、凶杀、战争）
+- 色情低俗（露骨描写、性相关）
+- 歧视性内容（地域、性别、民族、宗教）
+- 自残 / 药物滥用
+- 违法犯罪细节
+
+### 硬约束
+
+**1. 读取新闻文本只读结构，不读值**
+
+读取 `assets/news_data.json` / `MockDataSource.kt` 中硬编码数据 / Room 数据库时，**只读取 JSON 字段名、类型、Schema**，不读取实际 `title` / `content` / `author` 文本值。
+
+- ✅ 合法：复述结构（如"含字段：title, content, source, publishTime"）
+- ❌ 禁止：在对话中复述具体新闻标题或正文
+- ❌ 禁止：把 `news_data.json` 整段 `cat` 出来给 LLM 看
+- 需要引用具体内容时使用占位符：`<title>` / `<content>` / `<source>` / `<N 字摘要>`
+
+**2. 调用 LLM 视觉 / 分析 API 前必须脱敏**
+
+调用以下 MCP 工具时，prompt 中不得包含新闻原文：
+
+| 工具 | 错误用法 | 正确用法 |
+|------|----------|----------|
+| `analyze_screenshot` | "分析屏幕上'某条新闻标题'是否正确" | "分析卡片间距与对齐是否符合设计稿" |
+| `vision_action` | "点击标题为'某条新闻'的卡片" | "点击列表中第 3 个 LargeImage 卡片" |
+| `compare_screenshots` | "对比两张图中'某条新闻标题'的字体大小" | "对比两张图第一张卡片的整体布局" |
+| `extract_design_spec` | 用于分析带新闻的截图 | 只用于 `./design/` 下的设计稿 |
+
+**3. 日志与异常信息处理**
+
+- logcat / Timber 日志中含新闻原文时，**不把整段日志原样粘贴给 LLM**
+- 异常堆栈中出现新闻内容时，**只保留堆栈结构**（类名 + 行号 + 方法名），省略消息值
+- 调试代码中禁止 `Log.d(tag, newsItem.title)` 形式的裸日志，使用 `Log.d(tag, "<news redacted>")`
+
+**4. UI 文本验证的替代方法**
+
+需要确认某条新闻是否在 UI 上正确渲染时：
+
+- ✅ 合法：`find_element(text = "<title 前 4 字>")` 验证存在性
+- ✅ 合法：`verify_ui(type=color)` 做颜色 / 位置校验
+- ✅ 合法：`dump_hierarchy` 后用结构描述（"找到 N 个 TextView，bounds 在 ... 区域"）
+- ❌ 禁止：把整条新闻标题拼到 LLM prompt 里要求确认
+- ❌ 禁止：`analyze_screenshot` 不带 `prompt` 让 LLM 自由识别（容易触发策略）
+
+**5. 设计稿 MCP 工具输出必须脱敏**
+
+设计稿截图（`./design/*.jpg`）通常包含示例新闻文本（标题、来源、正文），传给视觉 LLM 时同样可能触发内容安全策略。`skills/src/utils/design-extractor.ts` 中的 4 个 system prompt（`JSON_SYSTEM_PROMPT` / `MARKDOWN_SYSTEM_PROMPT` / `extractComponents` / `designToComposeSkeleton`）已统一为「**禁止原样转录截图中的文字**」规则：
+
+- ✅ 输出中的所有文字位置一律用占位符代替：`<title>` / `<subtitle>` / `<source>` / `<time>` / `<count>` / `<content>` / `<tab>` / `<nav>` / `<button>` / `<placeholder>` / `<badge>` / `<keyword>` / `<X>`
+- ✅ 颜色、布局、组件类型、坐标、尺寸、形状可照常提取（无敏感内容）
+- ❌ 禁止：让 LLM 在 JSON / Markdown / Compose 骨架里输出截图里的中英文字符串
+- ❌ 禁止：在 Agent 后处理时把这些占位符替换成真实新闻文本
+
+修改这 4 个 prompt 时必须同步更新：
+- `skills/src/utils/design-extractor.ts` 顶部的「内容安全与脱敏策略」注释（含占位符约定表）
+- `AGENTS.md` 本节（本条规则）
+- 涉及的工具描述：`extract_design_spec` / `extract_design_components` / `design_to_compose` 在 MCP 注册表中的 description
+
+### 适用场景速查
+
+| 场景 | 读取新闻文本？ | 调 LLM？ | 处理方式 |
+|------|----------------|----------|----------|
+| 检查 JSON Schema | 只读结构 | 否 | 复述字段名 |
+| 单元测试 mock 数据 | 读取示例 | 否 | 用 mock 数据 |
+| `dump_hierarchy` 调试 | 读取 elements | 否 | 不传文本到 LLM |
+| `analyze_screenshot` UI 审查 | 截图含新闻 | 是 | 描述 UI 不描述文本 |
+| 视觉对比设计稿 vs 实现 | 是 | 是 | 只描述布局差异 |
+| 排查新闻渲染 Bug | 读取 title 摘要 | 否 | 用前 4 字 + `…` |
+| logcat 异常归因 | 读取堆栈 | 是 | 屏蔽消息值 |
+| **设计稿 MCP（`extract_design_spec` / `_components` / `_tokens` / `design_to_compose`）** | 截图含示例文本 | 是 | system prompt 强制用占位符，输出中无原文 |
+
+---
+
 ## 建议验证路径
 
 ### 每次代码修改后（质量门禁）
@@ -621,6 +791,7 @@ jobs:
 - **DI 配置问题**：先看 `di/NetworkModule.kt` + `di/DatabaseModule.kt` + `di/RepositoryModule.kt`
 - **分页问题**：先看 `HomeViewModel.kt` 中 `loadMore()` 和 `loadFeed()`，再对照 `docs/02_技术设计文档.md` 第 8 章
 - **主题/样式问题**：先看 `ui/theme/Color.kt` + `ui/theme/Theme.kt` + `ui/theme/Type.kt`
+- **读取新闻数据 / 调用 LLM 视觉 API**：必看 [内容安全与敏感词过滤约束](#内容安全与敏感词过滤约束)，新闻文本只读结构不读值，传给 LLM 的 prompt 必须脱敏
 
 ---
 

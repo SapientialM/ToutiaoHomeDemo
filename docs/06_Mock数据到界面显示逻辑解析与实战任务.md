@@ -11,7 +11,7 @@
 本项目采用 **MVI + Clean Architecture + Paging3** 架构，数据流向是单向的：
 
 ```
-assets/news_data.json (1421 条真实新闻)
+assets/news_data.json (2400+ 条**合成** mock, gitignored)
     ↓
 MockDataSource (按频道过滤 + 分页 + 类型推断)
     ↓
@@ -31,7 +31,7 @@ Pager.flow → Repository → ViewModel → Compose UI
 ### 第 1 层：Mock 数据生成（Data 层）
 
 **功能解释**：
-`MockDataSource` 不请求真实网络，而是从 `assets/news_data.json` 加载 1421 条真实新闻数据，按 `channel` 过滤、按时间倒序排列，再按 `page` 分页返回。支持模拟网络延迟和模拟错误。
+`MockDataSource` 不请求真实网络，而是从 `assets/news_data.json` 加载 2400+ 条**合成** mock 数据（模板+种子随机生成, 不含真实信息, 详见 `app/src/main/java/com/example/toutiao/data/NEWS_DATA_README.md`），按 `channel` 过滤、按时间倒序排列，再按 `page` 分页返回。支持模拟网络延迟和模拟错误。
 
 **代码位置**：
 ```
@@ -70,7 +70,7 @@ class MockDataSource(context: Context) : RemoteDataSource {
 ```
 
 **学习要点**：
-- `recommend` 频道不过滤，返回全部 1421 条；其他频道按 `category` 字段过滤。
+- `recommend` 频道不过滤，返回全部 2400+ 条；其他频道按 `category` 字段过滤。
 - `page=0` 返回前 8 条，`hasMore` 根据实际数据量动态计算，不是写死的。
 - `mapToDto()` 中的 `determineType()` 决定每条新闻最终渲染成哪种卡片：
   - `category == "视频"` → `video`

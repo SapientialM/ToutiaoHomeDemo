@@ -19,12 +19,11 @@ import java.time.temporal.ChronoUnit
 // =============================================================================
 // MockDataSource — 数据链路的起点
 //
-// 角色：实现 RemoteDataSource 接口，从 assets/news_data.json 加载数据。
-//       新数据源（data/toutiao_mock_data.json）已 copy 到 assets，
-//       采用更简洁的 schema：{ 源URL, 封面URL, 标题, 类别 }。
+// 角色：实现 RemoteDataSource 接口，从 assets/news_data.json 加载**合成** mock 数据。
+//       数据用模板+种子随机生成, 不含真实信息, 详见 data/NEWS_DATA_README.md.
 //
 // 调用链中的位置：
-//   assets/news_data.json  ← 唯一数据来源（~17000 条）
+//   assets/news_data.json  ← 唯一数据来源（~2400 条合成, 10 频道）
 //          ↓ loadFromAssets()
 //   List<RawNewsItem>      ← 内部归一化结构（兼容旧字段：source/datetime/content）
 //          ↓ filterByChannel()
