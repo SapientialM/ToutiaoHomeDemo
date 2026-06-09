@@ -98,7 +98,9 @@ import com.example.toutiao.presentation.home.components.NovelRankingTabs
 import com.example.toutiao.presentation.home.components.NovelRecommendBook
 import com.example.toutiao.presentation.home.components.NovelRecommendItem
 import com.example.toutiao.presentation.home.components.NovelSectionHeader
+import com.example.toutiao.presentation.home.components.RecommendFlashCard
 import com.example.toutiao.presentation.home.components.ShenzhenLocalHotBanner
+import com.example.toutiao.presentation.home.components.TextTopCard
 import com.example.toutiao.presentation.home.components.ShenzhenWeatherStrip
 import com.example.toutiao.presentation.home.components.SportsBanner
 import com.example.toutiao.presentation.home.components.SportsCategoryChips
@@ -729,6 +731,43 @@ private fun PagingFeedList(
                     if (channelKey == "recommend") {
                         item(key = "hot_authors") {
                             HotAuthorsRow()
+                        }
+                        // MVPTask #3: 5 条置顶新闻（紧凑列表）
+                        item(key = "recommend_top_separator") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .background(Color(0xFFF5F5F5)),
+                            )
+                        }
+                        val topNews = listOf(
+                            "天天学习 | 青春正好 踏在脚下" to "央视网",
+                            "携手打造新时代全天候中老命运共同体" to "国际在线",
+                            "我国服务贸易持续扩能提质" to "央视网",
+                            "情绪消费何以吸引年轻人" to "人民日报",
+                            "飞针引线 绣出新光景" to "金台资讯",
+                        )
+                        items(
+                            count = topNews.size,
+                            key = { idx -> "recommend_top_$idx" },
+                        ) { idx ->
+                            val (title, source) = topNews[idx]
+                            TextTopCard(
+                                card = FeedCard.TextTop(
+                                    id = "recommend_top_$idx",
+                                    title = title,
+                                    source = source,
+                                    commentCount = if (idx == 0) 2993 else if (idx == 1) 177 else 101,
+                                    publishTime = if (idx == 0) "2小时前" else "3小时前",
+                                    sourceUrl = "https://www.example.com/recommend_top_$idx",
+                                    isTop = true,
+                                ),
+                            )
+                        }
+                        // MVPTask #3: 资讯速递卡片（蓝色水滴 + 标题 + 大图）
+                        item(key = "recommend_flash") {
+                            RecommendFlashCard()
                         }
                     }
                     // 顶部 header 区域：MVPTask #5 「上次看到这里」断点续读
