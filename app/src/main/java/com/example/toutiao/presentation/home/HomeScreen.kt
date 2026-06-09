@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -835,16 +834,17 @@ private fun HomeTopBar(
             "novel" to "小说",
             "discover" to "发现",
             "video" to "视频",
+            "finance" to "财经",
         )
     }
     val isSearching = (uiState as? HomeUiState.Success)?.isSearching ?: false
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding(),
+            .fillMaxWidth(),
     ) {
         // 顶部红色品牌栏（Logo + 搜索 + AI 入口）
+        // 去掉 statusBarsPadding() 让红色铺到系统状态栏（MVPTask #1）
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -874,31 +874,21 @@ private fun HomeTopBar(
                 selectedTabIndex = selectedTabIndex,
                 containerColor = Color.White,
                 contentColor = Color(0xFF1A1A1A),
-                // 设计稿：Tab 行边缘几乎贴边，从 16dp 缩到 12dp
-                edgePadding = 12.dp,
+                // MVPTask #2: Tab 行边缘更紧凑，缩短 padding 让按钮之间更近
+                edgePadding = 6.dp,
                 divider = {},
                 indicator = { tabPositions ->
                     if (selectedTabIndex < tabPositions.size) {
+                        // MVPTask #2: 红线比 2 字符文本宽度短一些
+                        // "推荐"/"热榜" 16sp Bold ≈ 36px 宽，加 14dp horizontal padding 缩到比字短
                         SecondaryIndicator(
                             modifier = Modifier
                                 .tabIndicatorOffset(tabPositions[selectedTabIndex])
-                                .padding(horizontal = 6.dp),
+                                .padding(horizontal = 14.dp),
                             height = 3.dp,
                             color = RedMain,
                         )
                     }
-                },
-                // PM 审查 ISSUE-003: 在 TabRow 之上绘制右边缘渐变，提示"还有更多 Tab"
-                // 用 drawWithContent 而非 Box 包裹，避免影响 LazyColumn 兄弟节点的尺寸计算
-                modifier = Modifier.drawWithContent {
-                    drawContent()
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color.Transparent, Color.White),
-                            startX = size.width - 28.dp.toPx(),
-                            endX = size.width,
-                        ),
-                    )
                 },
             ) {
                 tabs.forEach { (key, label) ->
@@ -906,14 +896,19 @@ private fun HomeTopBar(
                     Tab(
                         selected = selected,
                         onClick = { onEvent(HomeUiEvent.OnTabSelected(key)) },
+                        // MVPTask #2: 减小 Tab 之间水平 padding，让按钮更紧凑
+                        modifier = Modifier.padding(horizontal = 0.dp),
                         text = {
                             // 设计稿：选中 16sp Bold / 未选中 15sp Regular
-                            Text(
-                                text = label,
-                                fontSize = if (selected) 16.sp else 15.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) RedMain else Color(0xFF1A1A1A),
-                            )
+                            // 自带 padding 让 Tab 内部字与红线距离更窄
+                            Box(modifier = Modifier.padding(horizontal = 10.dp)) {
+                                Text(
+                                    text = label,
+                                    fontSize = if (selected) 16.sp else 15.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) RedMain else Color(0xFF1A1A1A),
+                                )
+                            }
                         },
                     )
                 }

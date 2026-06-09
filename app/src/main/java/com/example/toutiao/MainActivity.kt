@@ -2,6 +2,7 @@ package com.example.toutiao
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -11,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -53,7 +55,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // MVPTask #1: 状态栏透明 + 文字白色（红色背景）
+        // SystemBarStyle.dark(scrim) → isAppearanceLightStatusBars=false → 白字
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(
+                Color.Transparent.value.toInt(),
+            ),
+            navigationBarStyle = SystemBarStyle.dark(
+                Color.Transparent.value.toInt(),
+            ),
+        )
         setContent {
             ToutiaoFeedDemoTheme {
                 AppRoot(homeViewModel = viewModel)
@@ -82,6 +93,9 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
     val isOverlayOpen = detailTarget != null || subPage != null
 
     Scaffold(
+        // MVPTask #1: 让 Scaffold 不强行插入 statusBar inset，让 HomeScreen 内的
+        // 红色 topbar 自行铺到 statusBar 区域
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (!isOverlayOpen) {
                 AppBottomNav(
