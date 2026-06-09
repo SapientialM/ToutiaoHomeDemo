@@ -3,12 +3,15 @@ package com.example.toutiao.presentation.home
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -172,6 +175,10 @@ private fun HomeScreenContent(
     val isSearching = successState?.isSearching ?: false
     val searchError = successState?.searchError
 
+    // PM ISSUE-001 修复：浮卡「高考作文题来了」原本一进入就显示，会压在首张置顶卡的图片上。
+    // 改为只展示「用户已滚过 2 张卡片」时才显示浮卡。状态由 PagingFeedList 通过回调更新。
+    var scrolledPastFirstCard by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier.fillMaxSize(),
     ) {
@@ -243,6 +250,9 @@ private fun HomeScreenContent(
                                 onEvent = onEvent,
                                 onCardClick = onCardClick,
                                 channelKey = currentTab,
+                                onScrollProgressChange = { visibleCount ->
+                                    scrolledPastFirstCard = visibleCount >= 2
+                                },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -251,7 +261,8 @@ private fun HomeScreenContent(
             }
 
             // 悬浮提示卡（设计稿：右下角浮于内容之上）— 仅在「推荐/热榜」频道显示
-            if (currentTab == "recommend" || currentTab == "hot") {
+            // PM 审查 ISSUE-001 修复：仅在用户滚过 2 张卡片后才显示，避免遮挡首屏内容
+            if ((currentTab == "recommend" || currentTab == "hot") && scrolledPastFirstCard) {
                 FloatingHintCardWithState(
                     title = "高考作文题来了",
                     subtitle = "去热榜看详情  ›",
@@ -260,7 +271,7 @@ private fun HomeScreenContent(
                     },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 12.dp, bottom = 16.dp),
+                        .padding(end = 12.dp, bottom = 80.dp),
                 )
             }
         }
@@ -278,6 +289,7 @@ private fun PagingFeedList(
     onEvent: (HomeUiEvent) -> Unit,
     onCardClick: (FeedCard) -> Unit,
     channelKey: String,
+    onScrollProgressChange: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val refreshLoadState = lazyPagingItems.loadState.refresh
@@ -305,6 +317,11 @@ private fun PagingFeedList(
     // 当前 firstVisibleItemIndex
     val firstVisibleIndex by remember {
         derivedStateOf { listState.firstVisibleItemIndex }
+    }
+
+    // PM ISSUE-001: 把 firstVisibleIndex 透传给父组件，父组件据此控制浮卡可见性
+    LaunchedEffect(firstVisibleIndex) {
+        onScrollProgressChange(firstVisibleIndex)
     }
 
     // 当 firstVisibleIndex > 0 且首条 card 变化时，触发持久化。
@@ -552,14 +569,19 @@ private fun PagingFeedList(
                         }
                     }
                     if (channelKey == "novel") {
+                        item(key = "novel_bookshelf_header") {
+                            NovelSectionHeader(title = "为你推荐", rightText = "换一批")
+                        }
                         item(key = "novel_bookshelf") {
                             NovelBookshelfRow(
                                 books = listOf(
-                                    NovelBook("n1", "靠着模拟器,我把宗门带飞了", "为你推荐"),
-                                    NovelBook("n2", "家族修仙,我是老祖", "为你推荐"),
-                                    NovelBook("n3", "全属性武道", "为你推荐"),
+                                    NovelBook("n1", "靠着模拟器,我把宗门带飞了", "玄幻", coverUrl = "https://picsum.photos/seed/n1/240/320"),
+                                    NovelBook("n2", "家族修仙,我是老祖", "修仙", coverUrl = "https://picsum.photos/seed/n2/240/320"),
+                                    NovelBook("n3", "全属性武道", "都市", coverUrl = "https://picsum.photos/seed/n3/240/320"),
                                 ),
+                                bookshelfCount = 12,
                                 onBookClick = { onEvent(HomeUiEvent.OnCardClick(it)) },
+                                onBookshelfClick = { /* TODO: 跳书架页 */ },
                             )
                             Box(
                                 modifier = Modifier
@@ -586,12 +608,12 @@ private fun PagingFeedList(
                             )
                         }
                         val rankItems = listOf(
-                            NovelBook("r1", "都在等起义,我杀穿河工营先反了", "历史脑洞 · 2273万热度", "2273万热度"),
-                            NovelBook("r2", "开局无限分身,我一人包围全...", "玄幻脑洞 · 1813万热度", "1813万热度"),
-                            NovelBook("r3", "名义:家父赵德汉,我冒充成...", "男频衍生 · 1659万热度", "1659万热度"),
-                            NovelBook("r4", "开局召唤策...灾,横推修...", "玄幻脑洞 · 12...", "12万热度"),
-                            NovelBook("r5", "万倍返还...圣母,逆袭...", "玄幻脑洞 · 11...", "11万热度"),
-                            NovelBook("r6", "苟到成仙,报把修仙界...", "玄幻脑洞 · 11...", "11万热度"),
+                            NovelBook("r1", "都在等起义,我杀穿河工营先反了", tag = "", category = "历史脑洞", heat = "2273万热度", coverUrl = "https://picsum.photos/seed/rank1/120/160"),
+                            NovelBook("r2", "开局无限分身,我一人包围全...", tag = "", category = "玄幻脑洞", heat = "1813万热度", coverUrl = "https://picsum.photos/seed/rank2/120/160"),
+                            NovelBook("r3", "名义:家父赵德汉,我冒充成...", tag = "", category = "男频", heat = "1659万热度", coverUrl = "https://picsum.photos/seed/rank3/120/160"),
+                            NovelBook("r4", "开局召唤策...灾,横推修...", tag = "", category = "玄幻脑洞", heat = "1200万热度", coverUrl = "https://picsum.photos/seed/rank4/120/160"),
+                            NovelBook("r5", "万倍返还...圣母,逆袭...", tag = "", category = "玄幻脑洞", heat = "980万热度", coverUrl = "https://picsum.photos/seed/rank5/120/160"),
+                            NovelBook("r6", "苟到成仙,报把修仙界...", tag = "", category = "玄幻脑洞", heat = "750万热度", coverUrl = "https://picsum.photos/seed/rank6/120/160"),
                         )
                         items(
                             count = rankItems.size,
@@ -866,6 +888,18 @@ private fun HomeTopBar(
                         )
                     }
                 },
+                // PM 审查 ISSUE-003: 在 TabRow 之上绘制右边缘渐变，提示"还有更多 Tab"
+                // 用 drawWithContent 而非 Box 包裹，避免影响 LazyColumn 兄弟节点的尺寸计算
+                modifier = Modifier.drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, Color.White),
+                            startX = size.width - 28.dp.toPx(),
+                            endX = size.width,
+                        ),
+                    )
+                },
             ) {
                 tabs.forEach { (key, label) ->
                     val selected = key == currentTab
@@ -931,8 +965,9 @@ private fun BrandTopRow() {
                 )
                 Spacer(Modifier.width(6.dp))
                 // 设计稿：searchHint 13sp Regular
+                // 热搜词用单条完整短语，# 号包裹 + 前缀"热搜"小标签，避免被截断粘在一起
                 Text(
-                    text = "直击2026年高考  热  第一位走出考场",
+                    text = "热搜  高考首日现场直击",
                     color = Color(0xFF999999),
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -941,23 +976,18 @@ private fun BrandTopRow() {
             }
         }
         Spacer(Modifier.width(10.dp))
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.clickable { /* TODO: 豆包 AI */ },
+        // AI 入口：去重 — 之前同时显示红色"AI"徽标和"豆包 AI"文字
+        // 现在只用一个圆形图标 + tooltip，避免与底部"豆包 AI"标签重复
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFFFCDB2))
+                .clickable { /* TODO: 豆包 AI */ },
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFFFCDB2)),
-                contentAlignment = Alignment.Center,
-            ) {
-                // 设计稿：AI 文字 13sp Medium
-                Text("AI", color = Color(0xFFD81E06), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            }
-            Spacer(Modifier.height(2.dp))
-            // 设计稿：豆包 AI 标签 10sp Medium（之前 9sp 略小）
-            Text("豆包 AI", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+            // 用一个 16sp 的 "AI" 文字作图标（无独立 drawable 时用 emoji/文字占位）
+            Text("AI", color = Color(0xFFD81E06), fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
