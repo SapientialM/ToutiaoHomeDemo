@@ -226,6 +226,10 @@ private fun HomeScreenContent(
                             items = successState.hotListItems,
                             quickActions = successState.hotQuickActions,
                             onItemClick = { onEvent(HomeUiEvent.OnCardClick(it.id)) },
+                            onQuickActionClick = { action ->
+                                // MVPTask #4: 顶部快捷入口是新分页按钮 — 模拟点击进入子分页
+                                Timber.d("Hot quick action clicked: ${action.title} → 子分页")
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
