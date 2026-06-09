@@ -1,6 +1,7 @@
 package com.example.toutiao
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -26,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.core.view.WindowCompat
 import com.example.toutiao.presentation.common.AppBottomNav
 import com.example.toutiao.presentation.detail.NewsDetailScreen
 import com.example.toutiao.presentation.earn.EarnScreen
@@ -55,8 +57,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // MVPTask #1: 状态栏透明 + 文字白色（红色背景）
-        // SystemBarStyle.dark(scrim) → isAppearanceLightStatusBars=false → 白字
+        // 需求 #1: 状态栏透明 + 文字白色，让 HomeTopBar 的红色铺满状态栏
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(
                 Color.Transparent.value.toInt(),
@@ -65,6 +66,11 @@ class MainActivity : ComponentActivity() {
                 Color.Transparent.value.toInt(),
             ),
         )
+        // 显式设置 decorFitsSystemWindows = false（防止 status bar 系统层兜底画默认背景）
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // 状态栏背景设为透明（Android 15+ 强制）
+        window.statusBarColor = Color.Transparent.value.toInt()
+        window.navigationBarColor = Color.Transparent.value.toInt()
         setContent {
             ToutiaoFeedDemoTheme {
                 AppRoot(homeViewModel = viewModel)

@@ -1,0 +1,154 @@
+{
+  "timestamp": "2026-06-08T16:24:58.626Z",
+  "target": "仿今日头条首页-小说频道（之前是「暂无内容」空白 bug，现已修复），需要 PM 验证书架/排行榜/猜你喜欢是否正常 + 整体设计成熟度",
+  "focus": [
+    "ui_bug",
+    "layout",
+    "ux"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780935781085.png",
+  "ui_dump_summary": {
+    "node_count": 145,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "热榜",
+      "深圳",
+      "小说",
+      "发现",
+      "视频",
+      "书架",
+      "&#128214;",
+      "靠着模拟器,我把宗门带飞了",
+      "为你推荐",
+      "&#128214;",
+      "家族修仙,我是老祖",
+      "为你推荐",
+      "&#128214;",
+      "全属性武道",
+      "为你推荐",
+      "排行榜",
+      "更多",
+      " ›",
+      "推荐榜",
+      "完结榜",
+      "阅读榜",
+      "高分榜",
+      "热搜榜",
+      "1",
+      "都在等起义,我杀穿河工营先反了",
+      "2273万热度 · ",
+      "2",
+      "开局无限分身,我一人包围全...",
+      "1813万热度 · ",
+      "3",
+      "名义:家父赵德汉,我冒充成...",
+      "1659万热度 · ",
+      "4",
+      "开局召唤策...灾,横推修...",
+      "12万热度 · ",
+      "5",
+      "万倍返还...圣母,逆袭...",
+      "11万热度 · ",
+      "6",
+      "苟到成仙,报把修仙界...",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "C",
+  "summary": "整体框架能看出今日头条的影子，但小说频道存在明显的数据断层、信息要素缺失和卡片视觉不一致问题，距离行业成熟度还有差距。",
+  "thinking_process": "【整体扫描】\n屏幕显示小说频道首页，包含顶部搜索栏、5个一级Tab（热榜/深圳/小说/发现/视频），小说Tab为激活态（红色下划线）。主体分为两块：上方是4张横滑卡片（书架 + 3本推荐书），下方是排行榜（推荐榜为激活Tab），可见排名1-5。底部有5项导航栏。整体布局结构清晰，有头条APP的雏形。\n\n【可疑点深挖】\n1. 第一张横滑卡片「书架」只有一个图标占位，没有封面/标题/简介，与其他3本书卡片视觉差异巨大。\n2. 排行榜热度数据出现严重断层：#1-#3 都在千万级（2273万/1813万/1659万），但#4骤降到12万、#5只有11万，量级差了100倍以上，疑似数据转换/排序异常。\n3. 排行榜卡片只有「排名数字+标题+热度值」三要素，缺少封面图、作者名、简介/标签，行业标准（起点/番茄小说/七猫）通常至少有「封面+标题+作者+简介+分类标签」5要素。\n4. 3本推荐书卡片底部都贴着「为你推荐」红色标签，4张卡片里有3张都叫「为你推荐」，信息冗余且毫无区分度（书架没贴，说明这套推荐卡片本来就该是同一个标签系统）。\n5. 顶部右上角「AI」按钮只有纯文字，没有icon，对于主操作入口来说识别度太低，用户第一眼不知道这是干啥的。\n6. 一级Tab只有5个且能全显示，但如果频道有更多（娱乐/体育/科技等常见频道），没有右滑/淡出指示，用户可能不知道有更多频道。\n\n【正向亮点】\n- 一级Tab激活态用红色下划线，排行榜子Tab激活态用红色填充背景胶囊，两级Tab的视觉区分做得不错。\n- 底部导航栏「首页」用红色实心icon+红色文字表达激活态，识别度高。\n- 排行榜里排名1-3的红色数字足够醒目，符合榜单阅读习惯。\n\n【评级判断】\n整体有框架但细节粗糙，核心内容卡片信息密度不足，数据看起来像mock而非真实分布，给C级。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "顶部横滑推荐区第1张卡片「书架」",
+      "current_state": "卡片只有一个灰色的「书」图标+「书架」文字，没有封面缩略图也没有最近阅读记录，与同排其他3张有封面有标题的书卡片视觉严重不一致",
+      "expected_state": "书架卡片应该有最近阅读的书封面缩略图（如3本最近读过的书拼接/堆叠），或者明确设计成与推荐书不同的功能性入口卡片样式，避免视觉误导",
+      "suggestion": "把「书架」做成功能性入口卡：左边是图标+「我的书架」标题+「最近在读」副标题，右边放1-2本最近阅读的小封面缩略图，背景用浅灰区分；或者把它从横滑推荐区独立出来，放到顶部Tab栏右侧作为常驻icon",
+      "code_hint": "BookshelfCard Composable 不要复用 NovelRecommendCard 的布局，独立写一个布局分支；或者用 Column { Icon + Title + 最近3本书的Row(封面缩略图) }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "logic",
+      "location": "排行榜列表 排名 #4、#5",
+      "current_state": "#1-#3 热度为 2273万/1813万/1659万，#4 直接降到 12万、#5 降到 11万，量级差距100倍+，看起来像数据bug或mock数据未做归一化",
+      "expected_state": "真实排行榜数据应呈现平滑递减曲线（如100万→80万→65万→50万→40万），或者明确说明头部是「现象级爆款」用特殊标记（如TOP3加皇冠icon或不同背景色）",
+      "suggestion": "1) 排查后端是否返回了不同单位的热度值（如有的返回raw count有的返回万为单位）；2) 若为真实数据，给TOP3加特殊视觉标记（皇冠icon/渐变背景）说明热度断层是真实业务现象；3) 若为mock数据，重新生成平滑递减的热度序列",
+      "code_hint": "检查 NovelRanking 数据模型的 heat 字段类型（Int? Long? String?）和单位转换函数 formatHeat()，确保全列表单位一致",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "spec_deviation",
+      "location": "排行榜列表 全部5张卡片",
+      "current_state": "每张卡片只有「红色排名数字+书名+热度值」三要素，缺少封面图、作者名、简介/分类标签。卡片左侧大片灰色区域疑似封面占位但为空",
+      "expected_state": "参考起点/番茄/七猫等成熟小说App，每张排行榜卡片应有：封面缩略图(48-64dp)+ 书名 + 作者名 + 简介1行ellipsis + 分类标签 + 热度值",
+      "suggestion": "改造 RankingItem 布局：左侧封面缩略图(2:3比例，60dp宽) + 右侧Column(书名16sp粗体/作者名12sp灰色/简介1行ellipsis 13sp/底部Row(分类标签Chip + 热度值))",
+      "code_hint": "NovelRankingItem Composable: Row { AsyncImage(60.dp, cover) ; Column { Text(title); Text(author, color=OnSurfaceVariant); Text(intro, maxLines=1, ellipsis); Row { Tag; Heat } } }",
+      "estimated_effort": "2h"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "ux",
+      "location": "顶部横滑推荐区 3本推荐书卡片底部",
+      "current_state": "3张推荐书卡片底部都贴着「为你推荐」红色标签，4张卡里3张都是同一标签，毫无信息增量",
+      "expected_state": "「为你推荐」应该是区域级标题（在横滑区域上方显示一次），而不是每张卡片都贴；卡片底部应显示更有效的信息（如作者/分类/字数）",
+      "suggestion": "1) 把「为你推荐」上移为区域小标题（横滑区域左上方）；2) 卡片底部Chip改为显示书的分类（如「玄幻」「都市」）或字数（如「234万字」），提升信息密度",
+      "code_hint": "横滑区域改结构：Column { Row { Text(\"为你推荐\"); Spacer; Text(\"更多>\") }; LazyRow { items(recommendBooks) { NovelRecommendCard(book) } } }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "顶部搜索栏右侧「AI」按钮",
+      "current_state": "只是一个纯文字「AI」按钮，没有任何icon，在顶部这个高价值位置识别度极差，用户无法理解其功能",
+      "expected_state": "应该是一个有icon的AI功能入口按钮（如「AI智能问答」「AI搜书」），至少有icon+文字组合",
+      "suggestion": "1) 加一个有识别度的icon（如机器人/魔法棒/星星+sparkle的SVG），保持头条系常用的红/白配色；2) 如果只是占位入口，明确点击后跳转的功能说明",
+      "code_hint": "TopAppBar 的 actions 区域：IconButton { Icon(painterResource(R.drawable.ic_ai_sparkle), \"AI助手\") } 或 Button { Icon + Text(\"AI\") }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "low",
+      "category": "ux",
+      "location": "顶部一级Tab栏（热榜/深圳/小说/发现/视频）",
+      "current_state": "5个Tab全部平铺显示，没有任何「还有更多频道」的暗示（无右侧淡出蒙层/无右滑箭头/无「+」入口）",
+      "expected_state": "如果频道总数 > 5，Tab栏应该支持左右滑动，且右侧有视觉提示（如淡出蒙层或「+」按钮打开频道管理）",
+      "suggestion": "把Tab栏改为 LazyRow 或 HorizontalPager 实现，让Tab可滑动；右侧加一个「+」入口打开频道管理页（用户可订阅/排序频道，参考今日头条真实产品）",
+      "code_hint": "用 ScrollableTabRow 替代固定TabRow，或手动用 LazyRow + 自定义indicator；右侧加 IconButton(onClick = { showChannelManager = true })",
+      "estimated_effort": "1h"
+    }
+  ],
+  "positives": [
+    {
+      "item": "两级Tab的激活态视觉差异化做得好",
+      "evidence": "一级Tab「小说」用红色下划线指示激活，排行榜子Tab「推荐榜」用红色填充胶囊背景指示激活，两种激活态不混淆，层级清晰"
+    },
+    {
+      "item": "底部导航栏激活态识别度高",
+      "evidence": "底部「首页」用红色实心icon+红色文字，对比其他4项的灰色Outlined icon，未激活态对比明确，符合Material Design导航规范"
+    },
+    {
+      "item": "排行榜TOP3排名数字视觉权重突出",
+      "evidence": "排名1-3用红色加粗方块数字，#4#5用灰色普通数字，符合榜单类内容阅读习惯，引导用户先看头部"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-002",
+    "ISSUE-001",
+    "ISSUE-003"
+  ],
+  "review_id": "rev-1780935898626"
+}

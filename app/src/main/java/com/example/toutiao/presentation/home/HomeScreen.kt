@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -988,7 +991,15 @@ private fun HomeTopBar(
             .fillMaxWidth(),
     ) {
         // 顶部红色品牌栏（Logo + 搜索 + AI 入口）
-        // 去掉 statusBarsPadding() 让红色铺到系统状态栏（MVPTask #1）
+        // 需求 #1: 让红色从状态栏顶部开始铺
+        // 用 windowInsetsPadding 让 Column 包含 status bar 区域，
+        // 但 status bar 区域也需要画红色 — 通过 status bar spacer
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsTopHeight(WindowInsets.statusBars)
+                .background(RedMain),
+        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()

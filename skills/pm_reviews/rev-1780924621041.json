@@ -1,0 +1,145 @@
+{
+  "timestamp": "2026-06-08T13:17:01.041Z",
+  "target": "仿今日头条首页 Feed 列表（推荐频道）。本轮重点验证：是否还出现连续 2 条置顶、浮卡是否仍遮挡首屏内容、热门作者区的 4 张作者卡：粉丝数格式是否统一、头像是否仍是 emoji、4 要素是否齐全",
+  "focus": [
+    "mock_data_maturity",
+    "ui_bug",
+    "ux"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780924494082.png",
+  "ui_dump_summary": {
+    "node_count": 142,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "关注",
+      "推荐",
+      "热榜",
+      "深圳",
+      "小说",
+      "你可能想关注",
+      "查看全部",
+      "财",
+      "财经观察家",
+      "1245万 粉丝",
+      "本周 A 股复盘: 三大主线浮出水面",
+      "证券时报  ·  2 小时前  ·  8,642评",
+      "关注作者",
+      "深",
+      "深圳土著 1 号",
+      "8.6万 粉丝",
+      "深圳地铁 16 号线二期试乘体验",
+      "深圳特区报  ·  昨天 21:18  ·  2,140评",
+      "关注作者",
+      "王",
+      "老王爱数码",
+      "21.8万 粉丝",
+      "千元机选购指南: 这 5 款最值得入手",
+      "数码评测  ·  3 小时前  ·  5,318评",
+      "关注作者",
+      "强",
+      "美食探店阿强",
+      "341.2万 粉丝",
+      "藏在城中村的 10 家老店",
+      "美食纪录片  ·  5 小时前  ·  1.3万评",
+      "关注作者",
+      "以下为新内容",
+      "置顶",
+      "收盘｜沪指全线飘红，高股息板块走弱",
+      "新华社",
+      "2万评论",
+      "1小时前",
+      "银发经济试点扩围，未来空间",
+      "新华社",
+      "4千评论",
+      "1小时前",
+      "深度｜二手房成交回暖取得突破背后",
+      "新华社",
+      "2万评论",
+      "1小时前",
+      "首页",
+      "视频"
+    ]
+  },
+  "overall_rating": "B",
+  "summary": "整体框架完整、Tab/底部导航/搜索栏规范，但热门作者区的实现存在明显短板：头像仍是单字占位、粉丝数格式不统一、且浮卡仍占首屏约 1/3 视觉重量；下方新闻卡还存在时间/评论数格式分裂问题。",
+  "thinking_process": "Step1 整体扫：首屏从上到下分 5 段——顶栏（红色品牌色+搜索+AI）、频道 Tab（推荐高亮）、「你可能想关注」横滑作者卡（4 张，占首屏约 1/3 高度）、新闻 Feed（每条含图+标题+来源+时间+评论数）、底部 5 项 Tab。视觉密度偏高，红色 #FF5757 仅在品牌区、置顶 tag、关注按钮出现，克制度尚可。Step2 可疑点：①4 张作者卡头像都是单字（财/深/王/强），明显是占位符而非真头像；②粉丝数 1245万 vs 8.6万/21.8万/341.2万，精度不一；③置顶卡只有 1 张（收盘），未出现连续 2 张置顶，本轮关键问题已修复；④「你可能想关注」区高度 ≈ 首屏 35%，浮卡仍存在，挤压新闻 Feed；⑤新闻卡时间格式分裂：'2 小时前' vs '昨天 21:18' vs '3 小时前'；⑥评论数格式分裂：'8,642 评' vs '2 万评论' vs '4 千评论'。Step3 深挖：核心问题集中在 mock_data_maturity——这一屏 90% 是 mock 数据但缺乏产品级打磨，头像、粉丝、时间、评论数 4 处格式都没走统一 formatter，属于'看起来对、其实没数据治理'的典型。Step4 正向：4 要素（avatar/name/fans/follow）齐全，置顶仅 1 张、'以下为新内容'分隔符到位。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ux",
+      "location": "「你可能想关注」作者推荐区（首屏中段横滑卡）",
+      "current_state": "作者卡区含 4 张卡 + 关注作者按钮，高度占首屏约 1/3（≈380dp/1080dp），首屏新闻 Feed 只能露出 1 条完整卡片 + 1 条半截",
+      "expected_state": "建议降为 1 行紧凑条（如卡片高度 100dp 内，只露头像+名字+粉丝+关注按钮，3 张为限），或在用户进入第 2 次会话后才展开",
+      "suggestion": "在 UserPrefs 中加 hasShownRecommendBanner 标志，首登不展示；或者把作者区降为 sticky 横向 mini-bar（高度 72dp），让首屏至少露 3-4 条新闻卡",
+      "code_hint": "LazyRow(modifier = Modifier.height(96.dp)) { items(authors.take(3)) { AuthorMiniCard(it) } }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "作者卡头像（4 张全部：财/深/王/强）",
+      "current_state": "用单个汉字当头像，明显是 emoji/文字占位符，缺乏真实感与品牌质感",
+      "expected_state": "应使用真实头像 URL（即使 mock 也应用 Coil 加载 placeholder 图片 + fallback），或在数据层标注 avatarType = initial/text 走品牌色圆形兜底，但绝不能是裸字符",
+      "suggestion": "在 Author 模型加 avatarUrl 字段；用 Coil 的 SubcomposeAsyncImage 加载 + 加载失败时用 author.name.first().toString() 渲染进带品牌色背景的 CircleImage 占位（而不是直接 Text 字符）",
+      "code_hint": "SubcomposeAsyncImage(model = author.avatarUrl, loading = { CircularProgressIndicator() }, error = { Box(Modifier.background(BrandRed, CircleShape)){ Text(author.name.first().toString(), color=White) } })",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "作者卡粉丝数（4 处文本：1245万 / 8.6万 / 21.8万 / 341.2万）",
+      "current_state": "精度不统一——>1000 万时取整（1245万），<1000 万时保留 1 位小数（8.6万），但 341.2 万也走小数分支，导致视觉跳变",
+      "expected_state": "统一走 1 位小数 + '万+' 后缀（千万级以上才用 '1245.0万+' 或更智能的 '1245万+ / 1.24亿+'），或者全部取整到 '千' 位",
+      "suggestion": "写一个统一的 FanCountFormatter 工具类，输入 Long，输出 String：>= 1_0000_0000 -> '%.1f亿+', >= 1_0000 -> '%.1f万+', else '%d+'",
+      "code_hint": "fun Long.toFollowerText() = when { this >= 100_000_000 -> \"%.1f亿+\".format(this/1e8); this >= 10_000 -> \"%.1f万+\".format(this/1e4); else -> \"$this+\" }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "spec_deviation",
+      "location": "新闻 Feed 卡片的「时间」与「评论数」字段（4 条卡片混用多种格式）",
+      "current_state": "时间：'2 小时前' / '昨天 21:18' / '3 小时前'，缺统一规则；评论数：'8,642 评' / '2 万评论' / '4 千评论' / '2 万评论'，单位与后缀都不同",
+      "expected_state": "时间统一走 'X 分钟前 / X 小时前 / 昨天 HH:mm / MM-dd' 分级规则（参考今日头条客户端）；评论数统一为 'X.X 万评' 形式，< 1 万时显示原数字 + 逗号千分位",
+      "suggestion": "抽取 TimeFormatter + CommentFormatter 两个工具类，写单元测试覆盖 5+ 边界 case；reviewer 在 PR 中只放行通过测试的格式",
+      "code_hint": "fun Long.toCommentText() = when { this >= 10_000 -> \"%.1f万评\".format(this/1e4); else -> \"%,d评\".format(this) }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "low",
+      "category": "ui_bug",
+      "location": "作者卡横向滚动区最右侧卡（'美食探店阿强 / 341.2万粉丝'）",
+      "current_state": "最右卡被屏幕边缘裁切，'关注作者'按钮被切掉一半，'以下为新内容'的标题也对齐到卡边缘而非屏幕边缘",
+      "expected_state": "横向卡最后一张应有 16dp 右侧 padding 让用户感知'可滑动'，且裁切应符合 Material 滚动隐藏规范",
+      "suggestion": "给 LazyRow 加 contentPadding = PaddingValues(horizontal = 16.dp)，并让 horizontalArrangement 末尾留 spacing",
+      "code_hint": "LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp))",
+      "estimated_effort": "10min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "置顶/深度等 tag 系统已落地，新内容区只出现 1 张置顶，未出现连续 2 条置顶",
+      "evidence": "「以下为新内容」下方第 1 条「收盘」带 [置顶] tag，第 2 条「银发经济」无 tag、第 3 条「二手房」带 [深度] tag，分类清晰"
+    },
+    {
+      "item": "4 张作者卡 4 要素（头像 / 名字 / 粉丝数 / 关注按钮）全部齐全，无缺漏",
+      "evidence": "截图 4 张卡结构一致：圆形头像 + 名字 + 粉丝数 + 红底「关注作者」按钮"
+    },
+    {
+      "item": "「以下为新内容」分隔符是今日头条原版范式，UX 习惯一致",
+      "evidence": "浅灰文字 + 居中横线，区分「推荐/关注」与「最新」两段 Feed，过渡自然"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-002",
+    "ISSUE-004"
+  ],
+  "review_id": "rev-1780924621041"
+}

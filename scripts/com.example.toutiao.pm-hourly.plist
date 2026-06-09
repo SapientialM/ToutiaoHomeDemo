@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 每小时第 5 分钟跑一次（与 cron 兼容写法） -->
+    <key>Label</key>
+    <string>com.example.toutiao.pm-hourly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/cm/AndroidStudioProjects/ToutiaoFeedDemo/scripts/pm-hourly-check.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Minute</key>
+            <integer>5</integer>
+        </dict>
+    </array>
+
+    <!-- 模拟器不需要 GUI session（adb 是 headless），所以不要求 KeepAlive -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/pm-hourly.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/pm-hourly.err</string>
+</dict>
+</plist>

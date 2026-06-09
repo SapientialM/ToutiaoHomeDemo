@@ -1,0 +1,152 @@
+{
+  "timestamp": "2026-06-08T12:37:03.114Z",
+  "target": "仿今日头条首页 Feed 列表（推荐频道，含 Tab 栏、FeedCard 卡片、BottomNav）。本次重点审查 mock 数据是否成熟、卡片内容是否丰富真实、有没有一眼假的合成痕迹（如重复标题、无意义数字、空来源、占位 URL）",
+  "focus": [
+    "ui_bug",
+    "ux",
+    "logic",
+    "mock_data_maturity",
+    "performance"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780922097196.png",
+  "ui_dump_summary": {
+    "node_count": 129,
+    "texts": [
+      "头",
+      "直击2026年高考  热  第一位走出考场",
+      "AI",
+      "豆包 AI",
+      "关注",
+      "推荐",
+      "热榜",
+      "深圳",
+      "小说",
+      "你可能想关注",
+      "查看全部",
+      "&#128202;",
+      "财经观察家",
+      "124.5万 粉丝",
+      "本周 A 股复盘: 三大主线浮出水面",
+      "+ 关注",
+      "&#127796;",
+      "深圳土著 1 号",
+      "85.6万 粉丝",
+      "深圳地铁 16 号线二期试乘体验",
+      "+ 关注",
+      "&#128241;",
+      "老王爱数码",
+      "210.4万 粉丝",
+      "618 千元机选购指南 (2026 版)",
+      "+ 关注",
+      "&#127836;",
+      "美食探店阿强",
+      "341.2万 粉丝",
+      "藏在城中村的 10 家老店",
+      "+ 关注",
+      "以下为新内容",
+      "热议：文化为何引发讨论",
+      "推荐资讯",
+      "3千评论",
+      "1小时前",
+      "&#128240;",
+      "高考作文题来了",
+      "去热榜看详情  ›",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "B",
+  "summary": "整体骨架已成形，但 mock 数据成熟度明显不足、个别 FeedCard 缺失四要素，加上顶部 AI 入口与悬浮卡的可访问性隐患，距离可演示级别还有差距。",
+  "thinking_process": "1. 整体扫描：状态栏 8:34 / 5G 正常；顶部头条 logo + 搜索栏 + AI 入口；二级 Tab 选中「推荐」（红色）；中部「你可能想关注」四宫格；下部「以下为新内容」分隔；底部一张「热议：文化为何引发讨论」文章卡 + 悬浮「高考作文题来了」入口；底部 Nav 选中「首页」。整体布局节奏接近真实头条，但卡片信息密度和细节经不起推敲。\n2. 可疑点：①「热议」那张文章卡只有图片+标题，缺来源/评论数/时间（违反四要素）；②「你可能想关注」每个卡片都把账号最新文章标题塞进了关注推荐里，跟真实头条的关注推荐形态不一致；③顶部同时出现「AI」红色徽标和「豆包AI」文字标签，重复表达；④粉丝数全部是「X.X万」结尾（124.5 / 85.6 / 210.4 / 341.2），「618 千元机选购指南 (2026 版)」的「(2026 版)」看起来像占位符；⑤「我的」上的 88 角标是过于工整的占位数；⑥悬浮卡有 X 关闭按钮但位置压住了下方卡片，可能拦截点击。\n3. 深挖每个问题并分级。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "mock_data_maturity",
+      "location": "主 Feed 流第一张卡「热议：文化为何引发讨论」",
+      "current_state": "只有一张雨滴玻璃图片 + 一行「热议：文化为何引发讨论」标题，没有来源、评论数、时间戳，也没有任何文字摘要。",
+      "expected_state": "头条类卡片四要素齐全：标题 / 来源媒体名 / 评论数 / 发布时间（如「3 分钟前」「澎湃资讯 3千评论」）；三图或单图卡还应有图片角标。",
+      "suggestion": "在 FeedCard 数据类里强制校验四要素非空，mock 工厂补齐 source、commentCount、publishTime 字段；UI 层按 Material 3 列表卡规范把来源和时间放在图片下方一行。",
+      "code_hint": "data class FeedCard(val title: String, val source: String, val commentCount: Int, val publishTime: Long, val imageUrls: List<String>, val summary: String? = null)\n// 在 Preview/Seed 里确保每张卡都填充全部字段，禁止空字符串",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "medium",
+      "category": "ux",
+      "location": "「你可能想关注」四宫格区域",
+      "current_state": "每张卡片是「圆形头像 + 账号名 + 粉丝数 + 最新文章标题 + +关注按钮」，把关注推荐和文章预览塞在一个卡里，卡片高度比头条原版多一倍以上。",
+      "expected_state": "头条真实形态是「头像 + 账号名 + 粉丝数 + 关注按钮」紧凑两行布局，不在关注推荐卡里展示最新文章。",
+      "suggestion": "把 SuggestionAccount 和 ArticlePreview 拆成两个数据模型；UI 端用统一的 SuggestionRow Composable，高度控制在 72-80dp，文章标题挪到下面的 Feed 流里。",
+      "code_hint": "@Composable fun SuggestionRow(account: SuggestionAccount, onFollow: () -> Unit) // 仅显示头像/名称/粉丝/按钮",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "mock_data_maturity",
+      "location": "全屏 mock 数字",
+      "current_state": "粉丝数 124.5万 / 85.6万 / 210.4万 / 341.2万 全部以「.X万」结尾；「我的」角标是 88；文章标题里出现「(2026 版)」这种带括号版本号的占位痕迹。",
+      "expected_state": "真实平台粉丝数会跨量级分布（几千 / 几万 / 几十万 / 百万+），角标数字也是动态生成的非整数，标题里不应该出现版本号字样。",
+      "suggestion": "用 Random.nextLong(800, 9_999_999) 生成粉丝数，并按量级格式化（<1万 → 直接显示，>=1万 → xx.x万）；角标用 0-99 随机整数；删除标题里的「(2026 版)」后缀。",
+      "code_hint": "val followers = Random.nextLong(800, 9_999_999)\nText(formatFollowers(followers)) // <1万: \"8,326\"; >=1万: \"12.4万\"; >=1亿: \"1.2亿\"",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "顶部 Header 右侧",
+      "current_state": "右侧同时出现「AI」红色圆形徽标和下方「豆包AI」灰色文字标签，两层信息重复，占用顶部高度且让搜索栏被压缩。",
+      "expected_state": "二选一：要么只保留带 AI 字样的图标按钮，要么保留「豆包AI」入口图标（去掉 AI 角标）。",
+      "suggestion": "把 AI 入口收敛成一个 36dp 的圆形图标按钮，配 Tooltip「豆包 AI」；搜索栏宽度自适应，避免被压到截断热搜词。",
+      "code_hint": "IconButton(onClick = { /* openDoubao() */ }) { Icon(painterResource(R.drawable.ic_ai), contentDescription = \"豆包 AI\") }",
+      "estimated_effort": "20min"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "medium",
+      "category": "ux",
+      "location": "右下角悬浮卡「高考作文题来了」",
+      "current_state": "悬浮卡覆盖在 Feed 内容上方，有 X 关闭按钮但位置紧贴卡片边缘，且浮卡压住了「热议」文章卡的右下角点击热区；同时缺少「新内容提示」语义化标签，用户可能误以为是广告。",
+      "expected_state": "悬浮入口应距屏幕底部 BottomNav 上方 >= 16dp，距右边 >= 12dp；不遮盖卡片关键交互区；建议加脉冲呼吸动画+「新」角标区分广告。",
+      "suggestion": "用 BoxWithConstraints + offset 约束浮卡定位；通过 PointerInput 把穿透区域排除卡片点击；点击 X 时记住 dismiss 状态写入 DataStore。",
+      "code_hint": "Box(modifier = Modifier.padding(end = 12.dp, bottom = 80.dp).align(Alignment.BottomEnd)) { FloatingEntranceCard(...) }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "low",
+      "category": "mock_data_maturity",
+      "location": "「热议：文化为何引发讨论」标题 + 顶部搜索栏热搜",
+      "current_state": "标题「文化为何引发讨论」抽象无主体；搜索栏热搜「直击2026年高考」+「第一位走出考场」被拼到一行，看起来像两条热搜被截断粘在一起。",
+      "expected_state": "标题应是具体事件或观点（如「故宫新展为何一票难求」）；搜索栏热搜应该是一条完整短语或热搜词 + 排名序号。",
+      "suggestion": "准备 20 条具体化的事件型 mock 标题池，随机抽取；热搜词用「#直击2026年高考#」形式并带排名图标，避免两段拼接。",
+      "code_hint": "val headlinePool = listOf(\"故宫新展为何一票难求\", \"新能源车降价潮波及二手车市场\", ...) ",
+      "estimated_effort": "30min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "Tab 选中态规范",
+      "evidence": "「推荐」Tab 文字红色 + 下方红色 3dp 指示器，符合 Material 3 Tab 规范"
+    },
+    {
+      "item": "底部 Nav 选中态 + 角标",
+      "evidence": "「首页」图标红色填充、其余 Outline 风格统一；「我的」红色 88 角标位置准确"
+    },
+    {
+      "item": "整体卡片间距与节律",
+      "evidence": "「你可能想关注」与 Feed 流之间用「以下为新内容」软分隔替代硬分割线，符合 M3 留白优先原则"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-003",
+    "ISSUE-005"
+  ],
+  "review_id": "rev-1780922223114"
+}

@@ -1,0 +1,141 @@
+{
+  "timestamp": "2026-06-09T00:09:11.067Z",
+  "target": "小说频道列表（修复 NovelRankItem category 后）",
+  "focus": [
+    "ui_bug: 看起来对、其实有视觉/交互问题的地方",
+    "ux: 用户实际使用时可能卡壳的地方",
+    "performance: 性能、流畅度"
+  ],
+  "screenshot": "/Users/cm/AndroidStudioProjects/ToutiaoFeedDemo/skills/screenshots/after_fix_novel2.png",
+  "ui_dump_summary": {
+    "node_count": 150,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "热榜",
+      "深圳",
+      "小说",
+      "发现",
+      "视频",
+      "为你推荐",
+      "换一批",
+      " ›",
+      "书架",
+      "靠着模拟器,我把宗门带飞了",
+      "玄幻",
+      "家族修仙,我是老祖",
+      "修仙",
+      "全属性武道",
+      "都市",
+      "排行榜",
+      "更多",
+      " ›",
+      "推荐榜",
+      "完结榜",
+      "阅读榜",
+      "高分榜",
+      "热搜榜",
+      "1",
+      "都在等起义,我杀穿河工营先反了",
+      "历史脑洞 2273万热度",
+      "2",
+      "开局无限分身,我一人包围全...",
+      "玄幻脑洞 1813万热度",
+      "3",
+      "名义:家父赵德汉,我冒充成...",
+      "男频衍生 1659万热度",
+      "4",
+      "开局召唤策...灾,横推修...",
+      "玄幻脑洞 1200万热度",
+      "5",
+      "万倍返还...圣母,逆袭...",
+      "玄幻脑洞 980万热度",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "B",
+  "summary": "整体框架清晰、品牌色一致,但「为你推荐」轮播中混入书架占位项容易让用户误以为是加载失败,分类 Tag 与封面叠加存在可读性风险。",
+  "thinking_process": "1. 整体扫一遍：屏幕顶部品牌区 + 搜索栏(展示热搜词) + 一级 Tab(小说选中) + 二级 Tab(推荐榜选中) + 横向推荐轮播 + 纵向排行榜 + 底部 5 项导航。信息层级合理,但首屏密度偏高,书架入口与推荐内容混排。\n2. 可疑点：(a) 推荐区第一张是「书架」灰底占位图,极像图片加载失败;(b) 玄幻/修仙/都市三个分类 Tag 压在封面底部右下,白色文字在浅色封面上对比度可能不足;(c) 轮播中书名截断「靠着模拟器,我...」没有可点击展开的提示;(d) 排行榜分类字段出现「男频自主」「历史脑洞」「玄幻脑洞」三种不同维度,语义层级混乱;(e) 搜索框热搜词「高考首日现场直击」无来源标识,用户不知是热搜还是广告。\n3. 深挖后筛选出 5 个值得修的问题,其中 ISSUE-001 是最影响首屏体验的「看起来像 bug」的点。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "为你推荐 / 横向轮播第 1 张卡",
+      "current_state": "推荐区第一张是「书架」+ 灰色占位图标(像极了图片加载失败的占位),后跟三张真实书籍封面,视觉上像是列表渲染出错。",
+      "expected_state": "书架入口应作为独立操作入口(如圆角「+ 加入书架」按钮)固定在轮播末端或悬浮在右下,而不是混在推荐数据中;或者用真实书籍封面替代占位。",
+      "suggestion": "把书架从推荐数据源中抽离,作为 carousel 的 trailing item 或 floating action。封面层用 Coil 的 placeholder(R.drawable.ic_bookshelf) + contentDescription=\"我的书架\"。",
+      "code_hint": "// NovelRecommendUiState.sealed class 拆成 BookShelfAction + List<Novel>\nLazyRow { items(state.novels, key = { it.id }) { ... } ; item { BookShelfAction() } }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "为你推荐 / 书籍封面右下角分类 Tag",
+      "current_state": "「玄幻」「修仙」「都市」用半透明胶囊叠加在封面底部,在浅色封面(如《家族修仙》)上白字对比度不足,且挡住封面关键信息。",
+      "expected_state": "分类信息应在封面下方单独一行展示(参考微信读书),或者用黑色 60% 透明底 + 白字 + elevation=0.dp 提升可读性。",
+      "suggestion": "把 Tag 从 Modifier.align(Alignment.BottomEnd) 移到封面外的 Column 中,与标题同级。",
+      "code_hint": "Column { NovelCover(url); Spacer(4dp); Text(category, style = labelSmall, color = onSurfaceVariant) }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "ux",
+      "location": "为你推荐 / 书籍标题",
+      "current_state": "「靠着模拟器,我把...」「家族修仙,我是老祖...」单行 ellipsis 截断,但没看出有「展开」或 hover 提示,用户不知道完整书名。",
+      "expected_state": "窄封面卡片标准做法:1 行 ellipsis + 长按弹出全名,或者用 marquee 跑马灯(头条风格)。",
+      "suggestion": "Modifier.basicMarquee() 配合 onLongClick 显示 BottomSheet 含简介。",
+      "code_hint": "Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.basicMarquee())",
+      "estimated_effort": "20min"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "logic",
+      "location": "排行榜 / 列表项副标题",
+      "current_state": "5 条数据的分类字段分别为:历史脑洞、玄幻脑洞、男频自主、玄幻脑洞、玄幻脑洞。维度不统一(题材 vs 频道 vs 风格混排),「男频自主」语义模糊。",
+      "expected_state": "统一为同一维度,推荐用「一级分类-二级分类」(如「玄幻-脑洞」),否则用户认知成本高。",
+      "suggestion": "后端字段对齐,前端渲染时使用「{genre}-{subGenre}」模板,缺失 subGenre 时降级展示。",
+      "code_hint": "data class NovelRankItem(val genre: String, val subGenre: String?)\nText(\"${item.genre}${item.subGenre?.let { \"·$it\" } ?: \"\"}\")",
+      "estimated_effort": "1h(含后端对齐)"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "low",
+      "category": "ux",
+      "location": "顶部搜索框热搜词",
+      "current_state": "搜索框内显示「高考首日现场直击」作为占位/热搜,但前面没「🔥 热搜」图标也没灰色 placeholder 文案区分,用户分不清这是输入框默认值还是已经填好的热搜词。",
+      "expected_state": "热搜词应有 🔥 小图标 + 「热搜」前缀,明确告知「点击即搜索此词」。",
+      "suggestion": "搜索框 hint 文案 = \"🔍 搜索...\",热搜词作为独立横滚 chip 放在搜索框下方(头条、微博都这么做)。",
+      "code_hint": "SearchBar(hint = \"搜索感兴趣的内容\")\nLazyRow { items(trendingTopics) { TrendingChip(it) } }",
+      "estimated_effort": "1h"
+    }
+  ],
+  "positives": [
+    {
+      "item": "品牌红色 #FF5757 用克制,仅出现在一级 Tab「小说」、二级 Tab「推荐榜」、排行榜第 1 名序号,符合头条系产品的色彩纪律",
+      "evidence": "顶部 Tab「小说」红字 + 下划线;排行榜中数字 1 为红色,2-5 为中性灰"
+    },
+    {
+      "item": "Tab 选中态视觉反馈明确(文字色 + 下划线 + 字重),无白屏闪烁风险",
+      "evidence": "一级 Tab、二级 Tab 切换都使用 Material 3 TabIndicator 风格"
+    },
+    {
+      "item": "排行榜卡片结构简洁:封面 + 标题 + (分类 + 热度) 元信息,符合阅读扫视 F 型路径",
+      "evidence": "排行榜 1-5 项均为左封面 + 右两行文本布局"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-004",
+    "ISSUE-002"
+  ],
+  "review_id": "rev-1780963751067"
+}

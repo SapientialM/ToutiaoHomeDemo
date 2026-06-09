@@ -1,0 +1,144 @@
+{
+  "timestamp": "2026-06-08T16:32:29.560Z",
+  "target": "首页列表",
+  "focus": [
+    "ui_bug: 看起来对、其实有视觉/交互问题的地方",
+    "ux: 用户实际使用时可能卡壳的地方",
+    "performance: 性能、流畅度"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780936226211.png",
+  "ui_dump_summary": {
+    "node_count": 145,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "热榜",
+      "深圳",
+      "小说",
+      "发现",
+      "视频",
+      "为你推荐",
+      "换一批",
+      " ›",
+      "书架",
+      "&#128214;",
+      "靠着模拟器,我把宗门带飞了",
+      "玄幻",
+      "&#128214;",
+      "家族修仙,我是老祖",
+      "修仙",
+      "&#128214;",
+      "全属性武道",
+      "都市",
+      "排行榜",
+      "更多",
+      " ›",
+      "推荐榜",
+      "完结榜",
+      "阅读榜",
+      "高分榜",
+      "热搜榜",
+      "1",
+      "都在等起义,我杀穿河工营先反了",
+      "2273万热度 · ",
+      "2",
+      "开局无限分身,我一人包围全...",
+      "1813万热度 · ",
+      "3",
+      "名义:家父赵德汉,我冒充成...",
+      "1659万热度 · ",
+      "4",
+      "开局召唤策...灾,横推修...",
+      "12万热度 · ",
+      "5",
+      "万倍返还...圣母,逆袭...",
+      "11万热度 · ",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "C+",
+  "summary": "整体结构基本到位（底部 Tab、子分类、推荐位都有），但首屏图片全部为占位灰块、排行榜排名样式不一致、'书架'混入推荐位属于明显 IA 错位，需要返工。",
+  "thinking_process": "1) 整体扫一遍：屏幕呈现的是「小说」Tab 下的首页，包含搜索栏（含热搜词条）、5 个一级 Tab、'为你推荐'4 卡位（包含一个书架入口+3 本书）、'排行榜'带 5 个子榜单的 Top 5 列表、底部 5 个 Tab。布局密度合理，红色 #FF5757 用作品牌强调。\n\n2) 可疑点（共 6 处）：\n   ① 推荐位和排行榜左边的缩略图全是纯灰色矩形，无图、无骨架动画、无文字 fallback —— 大概率是 Coil 图片加载没接上或图源未就绪。\n   ② 排行榜第 1 名是红底白字徽章，第 2-5 名是纯灰色数字 —— 排名视觉权重不一致。\n   ③ '为你推荐'里第 1 张卡是'书架'（带人形 icon），后面 3 张是书籍推荐 —— 书架是个人资产入口，不应该跟内容混在推荐位里。\n   ④ 排行榜卡片只有标题 + 'X万热度'，没有来源/作者/评论数/更新时间，违反 PM 评审标准'四要素齐全'。\n   ⑤ 搜索栏里的'热搜 高考首日现场直击'看起来像已输入文字而不是 placeholder，普通用户会困惑。\n   ⑥ 'AI'按钮占了搜索栏右侧很大空间，与搜索功能互斥，按钮意图不明。\n\n3) 深挖每条：图片全灰是高频曝光点、严重程度 high；排名徽章不一致是视觉规范问题、medium；书架混入推荐是 IA 错位、medium；缺四要素是 spec 偏离、medium；搜索栏语义、low。\n\n4) 正向：底部 5 Tab 是行业标准做法；'我的'带红点徽标提示有消息、符合规范；Tab 选中态下划线指示清晰。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "'为你推荐' 4 张卡片左侧缩略图 + '排行榜' 5 张卡片左侧缩略图",
+      "current_state": "全部为纯灰色矩形占位块，无封面图、无骨架动画、无文字兜底。从节点树看 icon 节点缺失（只有书脊 emoji `📖` 残留），疑似 Coil 加载未触发或图源为空。",
+      "expected_state": "① 加载中：带 shimmer 骨架动画 ② 加载完成：清晰书封/海报 ③ 加载失败：显示'封面加载失败'文字 + 重试 icon，避免长时间白/灰块让用户以为 App 坏了。",
+      "suggestion": "在 NewsCard/BookCard Composable 中用 Coil 的 AsyncImage + placeholder(R.drawable.cover_placeholder) + error(R.drawable.cover_error)；并给 placeholder 加 Modifier.shimmer() 效果。同时给图片区域设置固定宽高比（如 3:4）避免布局抖动。",
+      "code_hint": "AsyncImage(\n  model = ImageRequest.Builder(LocalContext.current).data(book.coverUrl).crossfade(true).build(),\n  placeholder = painterResource(R.drawable.cover_placeholder),\n  error = painterResource(R.drawable.cover_error),\n  contentDescription = book.title,\n  modifier = Modifier.aspectRatio(3f/4f)\n)",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "'排行榜' Top 5 列表的排名序号（第 1 名 vs 第 2-5 名）",
+      "current_state": "第 1 名是 24×24 红底白字徽章，第 2-5 名是 14sp 灰色纯数字。两套样式混用，视觉权重不一致。",
+      "expected_state": "三种合理方案任选其一：① Top 3 用金/银/铜徽章（#FFD700/#C0C0C0/#CD7F32），4-5 用灰色徽章 ② 全部用同样大小的圆形/圆角徽章，只是 1 是红、其余是灰 ③ 全部纯数字，靠加粗和颜色区分排名。",
+      "suggestion": "在 RankingItem 中抽出 RankingBadge( rank: Int ) Composable，按 rank 区间返回不同颜色组合，避免每处单独写。",
+      "code_hint": "@Composable fun RankingBadge(rank: Int) {\n  val (bg, fg) = when(rank) { 1 -> Color(0xFFFF5757) to Color.White; 2,3 -> Color(0xFFFFB800) to Color.White; else -> Color(0xFFF0F0F0) to Color(0xFF999999) }\n  Box(Modifier.size(20.dp).clip(RoundedCornerShape(4.dp)).background(bg), contentAlignment = Center) { Text(rank.toString(), color = fg, style = MaterialTheme.typography.labelSmall) }\n}",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "ux",
+      "location": "'为你推荐' 推荐位第 1 张卡片（'书架'）",
+      "current_state": "'书架'（带人形 icon）作为推荐位第 1 张卡，与后面 3 本书混排。从 IA 看它属于个人资产入口，从未读/未买/收藏维度讲也不该当推荐展示。",
+      "expected_state": "'书架'应该从推荐位移除，统一在'我的'Tab 或首页右上角以独立入口（icon + '我的书架'）露出。'为你推荐'只放内容型卡片。",
+      "suggestion": "将 BookshelfEntry 从 RecommendedSection 抽出来，挪到 TopAppBar 的 actions 区域（icon 形式）或 BottomNav 紧邻'我的'的位置。",
+      "code_hint": "TopAppBar(actions = { IconButton(onClick = { nav.navigate(\"bookshelf\") }) { Icon(Icons.Outlined.LibraryBooks, \"我的书架\", tint = if (unreadCount > 0) Red else Gray) } if (unreadCount > 0) Badge { Text(unreadCount.toString()) } })",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "spec_deviation",
+      "location": "'排行榜' 5 张排行榜卡片的信息密度",
+      "current_state": "只有 '标题' + 'X万热度' 两行信息，PM 评审标准要求'标题、来源、评论数、时间四要素齐全'。小说类内容则需要'作者、字数、章节数、状态（在更/完结）'等。",
+      "expected_state": "在热度行下方加第二行辅助信息：作者 · 状态（在更/完结）· 字数（XX 万字）。让用户在列表里就能判断是否要点进去。",
+      "suggestion": "BookMetaRow 组件，固定三段式：'作者名 · 在更/完结 · XX万字'，字号 12sp 灰色。",
+      "code_hint": "@Composable fun BookMetaRow(book: Book) {\n  Row(verticalAlignment = CenterVertically) {\n    Text(book.author, style = labelSmall, color = Gray600); Text(\" · \", color = Gray400)\n    Text(if (book.isCompleted) \"完结\" else \"在更\", style = labelSmall, color = if(book.isCompleted) Green else Red); Text(\" · \", color = Gray400)\n    Text(\"${book.wordCount/10000}万字\", style = labelSmall, color = Gray600)\n  }\n}",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "low",
+      "category": "ux",
+      "location": "顶部搜索栏",
+      "current_state": "搜索框内显示'热搜 高考首日现场直击'，视觉上像用户已经输入的内容，且 '热搜' 前缀容易被误解为标签。'AI' 按钮占据右侧约 18% 宽度，挤压搜索输入区。",
+      "expected_state": "① 热搜词条应作为 placeholder（颜色 #999，斜体或更小字号），点击直接用该词搜索 ② 'AI' 按钮换成更小尺寸的圆形 icon button（FAB 风格），不挤压输入框。",
+      "suggestion": "用 TextField 的 placeholder 参数展示热搜词，加 clickable Modifier 实现点击搜索；AI 入口改成右上角独立 IconButton。",
+      "code_hint": "SearchBar(placeholder = { Text(\"热搜：${hotWords.first()}\", color = Gray400) }, trailingIcon = { SmallFloatingActionButton(onClick = { nav.navigate(\"ai\") }) { Icon(Icons.Filled.AutoAwesome, null) } })",
+      "estimated_effort": "30min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "底部导航 5 Tab 布局规范，'我的'角标红点提示有未读消息，符合 Material 3 Badge 规范",
+      "evidence": "截图底部 '我的' icon 右上方有红色实心圆点"
+    },
+    {
+      "item": "'排行榜' 内的 5 个子榜单（推荐榜/完结榜/阅读榜/高分榜/热搜榜）信息架构清晰，多维筛选对小说用户友好",
+      "evidence": "'排行榜' 标题下方一行 5 个 chip，第 1 个 '推荐榜' 选中态为红底白字"
+    },
+    {
+      "item": "'为你推荐' 配 '换一批' 刷新入口，避免推荐位变成死区",
+      "evidence": "'为你推荐' 标题右侧 '换一批 ›' 链接"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-003",
+    "ISSUE-004"
+  ],
+  "review_id": "rev-1780936349560"
+}

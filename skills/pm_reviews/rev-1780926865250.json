@@ -1,0 +1,94 @@
+{
+  "timestamp": "2026-06-08T13:54:25.251Z",
+  "target": "当前模拟器显示的页面（不限于首页，做一次性快速 review）",
+  "focus": [
+    "ui_bug"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780926773424.png",
+  "ui_dump_summary": {
+    "node_count": 50,
+    "texts": [
+      "Mon, Jun 8",
+      "Play Store",
+      "Gmail",
+      "Photos",
+      "YouTube",
+      "Phone",
+      "Messages",
+      "Chrome",
+      "YouTube"
+    ]
+  },
+  "overall_rating": "D",
+  "summary": "屏幕上显示的是 Android 系统桌面（Launcher），而非仿今日头条 App 本身。App 没有成功打开或被错误截图，导致核心 UI 完全不可见。",
+  "thinking_process": "1. 整体扫描：屏幕顶部是状态栏（9:52、5G、电量），左上角显示英文日期 'Mon, Jun 8'，中间是大片黑色背景（壁纸），下半部分是两排系统级 Google 应用图标（Play Store / Gmail / Photos / YouTube / Phone / Messages / Chrome / 第四个红底播放按钮图标），底部是 Google 搜索框（含语音和 Google Lens）。这是典型的 Pixel / 原生 Android 桌面，没有任何仿今日头条的元素（无 Tab、无新闻流、无搜索栏、无用户头像）。\n2. 可疑点：① 仿今日头条 App 应该至少有'首页/视频/微头条/我的'Tab + 卡片流 + 顶部频道栏，但屏幕上 0 个相关元素；② 日期是英文 Mon, Jun 8，目标用户是中文，但 Launcher 跟随系统英文 locale；③ 状态栏直接覆盖在 Launcher 上面，没有被 App 接管沉浸式状态栏；④ 底部 Google Search 框是 Launcher widget，与 App 应提供的'搜索新闻'功能完全无关。\n3. 深挖：最严重的问题是'App 根本不在前台'，剩下的所谓 UI 全部是系统级组件，无法评审 App 自身的 UI Bug。需要在补一张实际进入 App 后的截图后再做完整 review，但仅就'当前显示内容'而言，几个明显问题已经可以确定。\n4. 做得好的地方：找不到任何与仿今日头条 App 相关的正面项。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "整个屏幕",
+      "current_state": "屏幕上展示的是 Android 系统桌面（Pixel Launcher），包含状态栏、Google 应用图标和 Google 搜索 widget，看不到仿今日头条 App 的任何界面（无 Tab、无新闻流、无顶栏）。",
+      "expected_state": "App 启动后应进入首页，包含：① 顶部频道 Tab（推荐 / 视频 / 微头条等）；② 滚动新闻卡片流（标题 + 图 + 来源 + 评论数 + 时间）；③ 底部 Tab 栏（首页 / 视频 / 微头条 / 我的）；④ 沉浸式状态栏配色与 App 品牌一致。",
+      "suggestion": "1) 复现：在模拟器上安装 App，从 Launcher 点击图标启动并等待首页完全渲染后再截图；2) 检查 MainActivity / NavHost 配置：确认 setContent { ToutiaoApp() } 被正确调用，且未在启动时被路由到登录页/闪屏后未跳转；3) 如果闪退，查看 logcat 是否有 ClassNotFoundException / NetworkOnMainThreadException / Compose 重组异常；4) 修复后用 ADB screencap -p 截图复测。",
+      "code_hint": "adb logcat *:E | grep -i 'toutiao\\|crash'  →  adb shell am start -n com.example.toutiao/.MainActivity  →  adb exec-out screencap -p > home.png",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "spec_deviation",
+      "location": "状态栏 / 系统区域",
+      "current_state": "状态栏显示 5G 信号、英文时间 9:52、英文日期 Mon, Jun 8，壁纸是系统默认深色抽象图。",
+      "expected_state": "进入仿今日头条 App 后，状态栏应被 App 接管（edge-to-edge / enableEdgeToEdge），文字颜色应随 App 主题（通常是白字 + 透明状态栏），时间应跟随 App 内的中文习惯（24h 制更佳）。",
+      "suggestion": "在 MainActivity 的 onCreate / setContent 之前调用 WindowCompat.setDecorFitsSystemWindows(window, false)，并使用 enableEdgeToEdge()，状态栏图标颜色用 window.statusBarColor = Color.Transparent + isAppearanceLightStatusBars = false 强制白色图标。",
+      "code_hint": "enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT))",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "第二排右侧 / 图标区",
+      "current_state": "第二排第四个图标是红底白色播放按钮，与第一排第四个 YouTube 图标（也是红底白播放）高度相似，视觉上重复。",
+      "expected_state": "若该图标为 YouTube Music，应该使用其官方深色 / 圆形 + 音符标识，避免与 YouTube 产生歧义。App 抽屉 / Dock 内同类功能（视频）图标应差异化设计。",
+      "suggestion": "在系统层面无法修复（这是 Launcher 渲染的），但可以记录在产品文档中作为'测试机型 Launcher 兼容性问题'。如果 App 内自己做了 BottomBar 而底部功能 Tab 也叫'视频'，必须使用差异化 icon（Filled vs Outlined）。",
+      "code_hint": "无代码改动；但 App 内 BottomBar 应使用 vector drawable 时遵循 Material Symbols 唯一命名：videocam vs play_circle。",
+      "estimated_effort": "10min"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "ux",
+      "location": "底部 Google Search widget",
+      "current_state": "底部是系统级 Google Search Pill（白底，Google 彩色 G 标 + 语音 + Lens 三个图标），与仿今日头条 App 应该自带的'搜索新闻'功能无关。",
+      "expected_state": "App 进入前台后应隐藏系统 Search 框（如果用了 edge-to-edge + 全屏布局），并用 App 自己的输入框或搜索入口替代。",
+      "suggestion": "在 MainActivity 中通过 WindowCompat.setDecorFitsSystemWindows + insets 处理把底部 padding 抬高覆盖系统 widget 区域，或干脆在 App 内提供 Material 3 SearchBar Composable 替代。",
+      "code_hint": "Scaffold { padding -> Box(Modifier.padding(padding).consumeWindowInsets(padding)) { ... } }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "low",
+      "category": "spec_deviation",
+      "location": "状态栏 / 日期",
+      "current_state": "日期显示 'Mon, Jun 8'（英文短格式）。",
+      "expected_state": "仿今日头条面向中文用户，应使用中文格式 '6月8日 周一'，且 App 内自己渲染顶栏日期时也建议使用 '2025-06-08' 或 '今天 / 昨天 / 3 分钟前' 等相对时间。",
+      "suggestion": "App 顶栏不要直接读取系统日期，自己用 Java 的 DateTimeFormatter.ofPattern('M月d日 EEEE', Locale.SIMPLIFIED_CHINESE) 渲染。",
+      "code_hint": "val today = LocalDate.now().format(DateTimeFormatter.ofPattern(\"M月d日 EEEE\", Locale.SIMPLIFIED_CHINESE))",
+      "estimated_effort": "30min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "无（当前截图与仿今日头条 App 无关，无法提取有效正面证据）",
+      "evidence": "整个屏幕均为 Android 系统 Launcher 元素，未发现任何 App 自有 UI。"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-002",
+    "ISSUE-004"
+  ],
+  "review_id": "rev-1780926865250"
+}

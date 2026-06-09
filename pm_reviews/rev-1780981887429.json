@@ -1,0 +1,143 @@
+{
+  "timestamp": "2026-06-09T05:11:27.429Z",
+  "target": "小说频道（修复 ISSUE-001 书架 + ISSUE-004 分类 后）",
+  "focus": [
+    "ui_bug: 看起来对、其实有视觉/交互问题的地方",
+    "ux: 用户实际使用时可能卡壳的地方",
+    "performance: 性能、流畅度"
+  ],
+  "screenshot": "/Users/cm/AndroidStudioProjects/ToutiaoFeedDemo/skills/screenshots/after_fix3_novel.png",
+  "ui_dump_summary": {
+    "node_count": 151,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "热榜",
+      "深圳",
+      "小说",
+      "发现",
+      "视频",
+      "为你推荐",
+      "换一批",
+      " ›",
+      "&#128218;",
+      "书架",
+      "12 本",
+      "靠着模拟器,我把宗门带飞了",
+      "玄幻",
+      "家族修仙,我是老祖",
+      "修仙",
+      "全属性武道",
+      "都市",
+      "排行榜",
+      "更多",
+      " ›",
+      "推荐榜",
+      "完结榜",
+      "阅读榜",
+      "高分榜",
+      "热搜榜",
+      "1",
+      "都在等起义,我杀穿河工营先反了",
+      "历史脑洞 2273万热度",
+      "2",
+      "开局无限分身,我一人包围全...",
+      "玄幻脑洞 1813万热度",
+      "3",
+      "名义:家父赵德汉,我冒充成...",
+      "男频 1659万热度",
+      "4",
+      "开局召唤策...灾,横推修...",
+      "玄幻脑洞 1200万热度",
+      "5",
+      "万倍返还...圣母,逆袭...",
+      "玄幻脑洞 980万热度",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "B",
+  "summary": "布局骨架完整、视觉层次清晰，但「为你推荐」混入书架功能入口造成内容与导航混淆，排行榜缺封面图降低转化，整体仍处于可用但不够精致的阶段。",
+  "thinking_process": "1. 整体扫描：屏幕顶部有 Logo + 搜索 + AI 入口，二级 Tab 切到「小说」，下方分两大模块：「为你推荐」横滑卡片（4 张） + 「排行榜」竖向列表（5 条），底部 5 项 BottomNav，首页高亮。整体信息密度合理，品牌红 #FF5757 用得克制。\n2. 可疑点扫描：\n   - 「为你推荐」首张卡片是「书架」功能入口，与右侧 3 张内容卡片混排，内容流性质被破坏\n   - 书架卡片只有 📚 emoji + 「12本」字样，无具体书封/最近阅读/进度，信息密度为 0\n   - 排行榜前 5 名没有封面缩略图，与上方横滑卡片的视觉重量差距大\n   - 「换一批」放在横滑列表标题右侧，语义上像 reload 当前 4 张，但实际可能是换一批新的，用户预期不一致\n   - 底栏「首页」高亮 vs 顶部「小说」Tab 选中，状态归属有歧义\n   - 底部「赚钱」Tab 在小说阅读语境下突兀，且容易和「商城」产生认知冲突\n   - Tab 顺序「热榜, 深圳, 小说, 发现, 视频」把非频道 Tab（热榜/发现/视频）与频道 Tab（深圳/小说）混排，行业最佳实践是频道 Tab 单独成组\n3. 深挖每个问题，给出严重度 + 修复建议 + code hint\n4. 找出 3 个做得好的点作为正向反馈",
+  "issues": [
+    {
+      "id": "ISSUE-N01",
+      "severity": "high",
+      "category": "ux",
+      "location": "「为你推荐」横滑卡片第一项",
+      "current_state": "书架作为第 1 张卡片与 3 张小说推荐混排在同一个横向 Scroll 里，文案「12 本」+ 📚 emoji，无书封、无最近阅读、无进度信息",
+      "expected_state": "功能入口（书架/分类/榜单入口）应放在「频道首页」独立模块或顶部工具区，不应混入内容推荐流；如必须保留，也应在卡片上加「我的」标签并展示最近阅读的 3 本书封 + 进度条",
+      "suggestion": "把书架独立成「我的」模块置于频道顶部 icon 入口；或者在原卡片内增加 LazyRow 显示最近 3 本书缩略图与「最近阅读：XX 第 23 章」副标题",
+      "code_hint": "// 书架卡片 Composable 改造建议\n@Composable\nfun BookshelfCard(books: List<Book>) {\n    Column {\n        Row(verticalAlignment = Alignment.CenterVertically) {\n            Icon(Icons.Default.MenuBook, null)\n            Text(\"我的书架  12 本\")\n            Icon(Icons.Default.ChevronRight, null, modifier = Modifier.align(Alignment.CenterEnd))\n        }\n        LazyRow {\n            items(books.take(3)) { book ->\n                BookCoverWithProgress(book)\n            }\n        }\n    }\n}\n",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-N02",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "「排行榜」前 5 条卡片",
+      "current_state": "1-5 名只有排名数字 + 标题 + 分类 + 热度，无封面缩略图，视觉重量明显比上方「为你推荐」轻，转化路径断",
+      "expected_state": "每条排行项左侧应有 60x80dp 左右书封缩略图（参考起点/番茄小说），标题限 2 行 ellipsis，分类标签用弱化色块",
+      "suggestion": "在 CardItem Composable 中按 data class hasCover 渲染 Image；缺图时用占位（Color(0xFFF5F5F5) + Icon）而不是省略整块",
+      "code_hint": "Image(\n    painter = rememberAsyncImagePainter(item.cover),\n    contentDescription = null,\n    modifier = Modifier.size(60.dp, 80.dp).clip(RoundedCornerShape(4.dp)),\n    placeholder = painterResource(R.drawable.ic_book_placeholder),\n    error = painterResource(R.drawable.ic_book_placeholder),\n)\n",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-N03",
+      "severity": "medium",
+      "category": "ux",
+      "location": "「为你推荐」标题栏「换一批」按钮",
+      "current_state": "「换一批」紧贴横滑列表标题右侧，但点击后是替换当前 4 张还是追加？用户预期不一致，且按钮和右侧「›」距离过近",
+      "expected_state": "行业惯例：横滑列表用「›」表示更多/进入频道页；「换一批」按钮单独放卡片右下角或加 icon 提示",
+      "suggestion": "把「换一批」移至横滑列表右下角（卡片内 bottom-end），并加 Refresh icon 强化语义；点击后整批替换并加 Lottie/Rotate 动效反馈",
+      "code_hint": "IconButton(onClick = onRefresh) {\n    Icon(Icons.Default.Refresh, \"换一批\", tint = BrandRed)\n}\n",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-N04",
+      "severity": "low",
+      "category": "spec_deviation",
+      "location": "二级 Tab 栏（热榜/深圳/小说/发现/视频）",
+      "current_state": "频道类 Tab（深圳/小说）与场景类 Tab（热榜/发现/视频）混排在同一滚动区，5 个 Tab 已经接近屏幕宽度，新频道加入会拥挤",
+      "expected_state": "头条/番茄做法：场景入口（热榜/发现/视频）放顶部独立 Icon Bar，频道 Tab（深圳/小说/科技…）单独成 RowHorizontalPager，左右滑切换",
+      "suggestion": "拆成两行：顶行 3 个 Icon 入口（热榜/发现/视频），下行为频道 Tab + 末尾「+」自定义",
+      "code_hint": "// 频道 Tab 与场景入口解耦\nRow { IconBar(items = scenes) }\nRow { ChannelTabs(items = channels, selected = current) }\n",
+      "estimated_effort": "2h"
+    },
+    {
+      "id": "ISSUE-N05",
+      "severity": "low",
+      "category": "ux",
+      "location": "底部 Navigation 5 项",
+      "current_state": "「赚钱」Tab 放在小说频道下，与阅读主流程无关，且和「商城」语义重叠",
+      "expected_state": "阅读类 App 底栏通常为：书城/书架/分类/我的 4 项；如要保留赚钱入口建议放「我的」内",
+      "suggestion": "把「赚钱」Tab 移除或合并到「我的」页面顶部 Banner",
+      "code_hint": "BottomNavigationItem 数量控制在 3-5 个，超过 5 个用户记忆负担骤增\n",
+      "estimated_effort": "10min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "Tab 选中态用品牌红 #FF5757 + 底部 2dp 下划线，反馈明确，符合头条系规范",
+      "evidence": "截图「小说」Tab 文字 + 下划线均为红色"
+    },
+    {
+      "item": "排行榜采用榜单式（数字 + 标题 + 分类 Chip + 热度），信息密度合理，符合阅读类应用榜单惯例",
+      "evidence": "排行榜 1-5 名条目布局"
+    },
+    {
+      "item": "卡片分类标签用胶囊背景（玄幻/修仙/都市/历史脑洞/男频）做色彩区分但饱和度统一，没有出现五彩斑斓的视觉噪音",
+      "evidence": "横滑卡片右下 + 排行榜条目右侧的分类 Chip"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-N01",
+    "ISSUE-N02",
+    "ISSUE-N03"
+  ],
+  "review_id": "rev-1780981887429"
+}

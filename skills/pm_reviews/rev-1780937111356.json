@@ -1,0 +1,150 @@
+{
+  "timestamp": "2026-06-08T16:45:11.356Z",
+  "target": "仿今日头条首页-小说频道（修复后整体观感，验证书架+推荐+排行榜+猜你喜欢内容质量，PM 是否觉得已经成熟可以上线）",
+  "focus": [
+    "ui_bug",
+    "layout",
+    "content_quality"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780937052590.png",
+  "ui_dump_summary": {
+    "node_count": 150,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "热榜",
+      "深圳",
+      "小说",
+      "发现",
+      "视频",
+      "为你推荐",
+      "换一批",
+      " ›",
+      "书架",
+      "靠着模拟器,我把宗门带飞了",
+      "玄幻",
+      "家族修仙,我是老祖",
+      "修仙",
+      "全属性武道",
+      "都市",
+      "排行榜",
+      "更多",
+      " ›",
+      "推荐榜",
+      "完结榜",
+      "阅读榜",
+      "高分榜",
+      "热搜榜",
+      "1",
+      "都在等起义,我杀穿河工营先反了",
+      "2273万热度 · ",
+      "2",
+      "开局无限分身,我一人包围全...",
+      "1813万热度 · ",
+      "3",
+      "名义:家父赵德汉,我冒充成...",
+      "1659万热度 · ",
+      "4",
+      "开局召唤策...灾,横推修...",
+      "1200万热度 · ",
+      "5",
+      "万倍返还...圣母,逆袭...",
+      "980万热度 · ",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "C",
+  "summary": "书架核心入口仍呈占位态，排行榜字段残缺，小说频道套用新闻导航——上线前必须解决至少 3 个 high 项。",
+  "thinking_process": "整体扫一眼：状态栏 12:44，5G 信号满，顶部搜索栏带 AI 按钮，频道 Tab（小说高亮红），向下依次是\"为你推荐\"横滑卡片（书架 + 3 本书），\"排行榜\"（推荐榜/完结榜/阅读榜/高分榜/热搜榜子 Tab，1-5 序号榜），底部五 Tab。整体布局骨架是齐的，没有白屏或崩溃，但仔细抠内容细节就会发现：书架卡片就是个灰色 icon+文字，明显不是正常态；排行榜只有\"标题+热度\"，热度后面还挂着个空\"·\"；小说频道顶部却挂着\"热榜/深圳/发现/视频\"这种新闻频道才会用的 Tab，频道定位混乱；\"换一批\"右侧还冒出一个孤立的\"›\"。这些都是\"看起来对、点进去才觉得不对\"的典型问题，需要深挖。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "为你推荐 / 第一个卡片\"书架\"",
+      "current_state": "卡片中央只显示一个灰色方形占位 icon + \"书架\"文字，明显是图裂、缺图或未登录的空状态，但没有任何文案说明（\"登录后同步书架\"或\"暂无书籍，点击添加\"），也没有点击后的引导。",
+      "expected_state": "应区分三种状态：(a) 已登录但书架为空 → 显示\"还没有书籍，去书城逛逛\"+ 跳转 CTA；(b) 未登录 → 显示\"登录后同步你的书架\"+ 登录按钮；(c) 数据加载中 → skeleton 占位。",
+      "suggestion": "在 BookshelfCard Composable 内增加 uiState 枚举（Loading/Empty/LoggedOut/HasBooks），三种状态分别渲染不同 UI；加载中用 Modifier.placeholder shimmer，Empty/LoggedOut 状态用 Icon + Text + Button 三段式。",
+      "code_hint": "sealed class BookshelfUiState { object Loading; data class Empty(val msg:String); object LoggedOut; data class Filled(val books:List<Book>) }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "content_quality",
+      "location": "排行榜 / 1-5 条目",
+      "current_state": "每条只有\"红色序号 + 标题（截断）+ 2273万热度 ·\"，热度后面挂了一个孤立的\"·\"，暗示本应有\"作者 / 分类 / 简介\"但字段没渲染出来；没有封面图、没有作者，视觉权重全压在标题上，与上方\"为你推荐\"有封面书的视觉丰度差距巨大。",
+      "expected_state": "每条榜单条目应至少包含：左侧缩略封面（48-56dp）+ 标题（最多 2 行 ellipsis）+ 作者 + 分类标签 + 热度值（统一格式\"2273万热度\"，去掉尾部分隔符）。",
+      "suggestion": "补充 BookRankingItem 数据模型的 author/category/coverUrl 字段；RankingRow 增加左侧封面 Lazy 项；后端数据契约里给 ranking 列表单独返回 cover 字段，mock 数据里务必补齐避免空字段泄漏到 UI。",
+      "code_hint": "data class RankingItem(val rank:Int, val bookId:String, val title:String, val author:String, val category:String, val coverUrl:String, val heat:Long)",
+      "estimated_effort": "2h"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "high",
+      "category": "ux",
+      "location": "顶部频道 Tab（小说高亮区域）",
+      "current_state": "进入\"小说\"频道后，顶部仍显示\"热榜 / 深圳 / 小说 / 发现 / 视频\"——这是新闻频道的导航。小说频道应该展示分类（玄幻/修真/都市/历史/科幻/言情…），而不是新闻 Tab；当前实现让用户困惑\"我到底在新闻页还是小说页\"。",
+      "expected_state": "小说频道应显示小说专属二级分类（如 玄幻·修真·都市·历史·科幻·言情·轻小说），或在保持频道入口的同时把\"热榜/深圳\"等新闻 Tab 隐藏/替换。",
+      "suggestion": "在 NovelChannelScreen 里替换 topTab 数据源为 novelCategories（来自后端 NovelCategory API），点击分类切换下方推荐榜数据；保留主频道入口在更上一级（首页/侧边栏）。",
+      "code_hint": "val tabs = remember { listOf(\"玄幻\",\"修真\",\"都市\",\"历史\",\"科幻\",\"言情\") }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "排行榜 / \"换一批\"按钮右侧",
+      "current_state": "\"为你推荐\"区域右上角\"换一批\"后面紧跟着一个孤立的\"›\"字符（疑似被错误渲染的 Material Icon 或 chevron_right），但没有指向任何目标。",
+      "expected_state": "\"换一批\"本身已具备\"换内容\"语义，后面不应再加多余符号；如果想给\"更多\"入口，应改成单独按钮并有明确目的地（如\"全部推荐 ›\"）。",
+      "suggestion": "检查\"换一批\"所在的 Composable 是否重复渲染了 IconButton；如果是\"查看全部\"入口，改用独立行布局 + TextButton(\"查看全部 \")带 trailing icon。",
+      "code_hint": "Row { Text(\"为你推荐\", Modifier.weight(1f)); TextButton(onClick=refresh) { Text(\"换一批\") } }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "medium",
+      "category": "content_quality",
+      "location": "为你推荐 / 横向卡片",
+      "current_state": "推荐区只展示 3 本且全部集中在修仙/玄幻品类（\"靠着模拟器,我把宗门带飞了[玄幻]\"、\"家族修仙,我是老祖[修仙]\"、\"全属性武道[都市]\"），缺乏品类多样性，用户体验上会感觉\"全是修仙文\"。",
+      "expected_state": "推荐算法应在同一屏内覆盖 2-3 个不同品类（玄幻+都市+科幻或历史），并优先展示高分/新作；同时显示\"为何推荐\"的简短理由（\"因为你看过《XXX》\"）。",
+      "suggestion": "在 RecRequest 接口里增加 diversity_weight 参数（强制保证品类不重复），或在客户端拿到列表后做一次 re-rank 保证品类分散。",
+      "estimated_effort": "2h"
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "low",
+      "category": "spec_deviation",
+      "location": "底部 Tab Bar / \"赚钱\"按钮",
+      "current_state": "小说频道底部仍展示\"首页/视频/赚钱/商城/我的\"——其中\"赚钱\"是新闻/资讯类 App 的典型 Tab（在小说 App 中属于广告变种或签到），出现在沉浸式阅读频道显得突兀且分散注意力。",
+      "expected_state": "阅读频道下应弱化或隐藏变现类 Tab（赚钱/商城可合并到\"我的\"里作为二级入口），主 Tab 保留\"首页/书城/书架/我的\"四类。",
+      "suggestion": "频道粒度配置 BottomNavItem 列表，进入 NovelChannel 时通过 CompositionLocal 提供 bottomNavItems，替换默认配置。",
+      "estimated_effort": "2h"
+    }
+  ],
+  "positives": [
+    {
+      "item": "排行榜子 Tab 设计合理",
+      "evidence": "推荐榜/完结榜/阅读榜/高分榜/热搜榜 5 个维度覆盖了小说 App 的核心筛选场景，选中态红色填充 + 未选中灰字，对比清晰。"
+    },
+    {
+      "item": "榜单序号视觉强调恰当",
+      "evidence": "1-3 名使用红色字号更大的排名标识，4-5 名降为灰色常规字——这种层级处理是榜单类 UI 的标准做法，5 秒钟扫一眼就能识别 Top3。"
+    },
+    {
+      "item": "推荐卡片封面尺寸一致",
+      "evidence": "为你推荐 3 张书封大小相同、间距均匀，圆角统一，符合 Material 3 spacing 规范，避免了布局抖动风险。"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-002",
+    "ISSUE-003"
+  ],
+  "review_id": "rev-1780937111356"
+}

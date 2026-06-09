@@ -1,0 +1,165 @@
+{
+  "timestamp": "2026-06-09T05:19:47.266Z",
+  "target": "小说频道（最终：书架抽离到顶部独立导航 + 分类统一）",
+  "focus": [
+    "ui_bug: 看起来对、其实有视觉/交互问题的地方",
+    "ux: 用户实际使用时可能卡壳的地方",
+    "performance: 性能、流畅度"
+  ],
+  "screenshot": "/Users/cm/AndroidStudioProjects/ToutiaoFeedDemo/skills/screenshots/after_novel6.png",
+  "ui_dump_summary": {
+    "node_count": 151,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "热榜",
+      "深圳",
+      "小说",
+      "发现",
+      "视频",
+      "为你推荐",
+      "换一批",
+      " ›",
+      "&#128218;",
+      "我的书架",
+      "12 本",
+      "›",
+      "靠着模拟器,我把宗门带飞了",
+      "玄幻",
+      "家族修仙,我是老祖",
+      "修仙",
+      "全属性武道",
+      "都市",
+      "排行榜",
+      "更多",
+      " ›",
+      "推荐榜",
+      "完结榜",
+      "阅读榜",
+      "高分榜",
+      "热搜榜",
+      "1",
+      "都在等起义,我杀穿河工营先反了",
+      "历史脑洞 2273万热度",
+      "2",
+      "开局无限分身,我一人包围全...",
+      "玄幻脑洞 1813万热度",
+      "3",
+      "名义:家父赵德汉,我冒充成...",
+      "男频 1659万热度",
+      "4",
+      "开局召唤策...灾,横推修...",
+      "玄幻脑洞 1200万热度",
+      "5",
+      "万倍返还...圣母,逆袭...",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "C",
+  "summary": "视觉框架到位，但'书架独立导航'任务目标未达成（仍藏在'为你推荐'下），且书籍封面错配（风景照代替小说封面），分类体系混乱，需要回炉重做。",
+  "thinking_process": "整体扫一遍：屏幕是一个小说频道首页，顶部全局 tab（热榜/深圳/小说/发现/视频），下方分为'为你推荐'和'排行榜'两大模块。'为你推荐'模块第一个元素居然是'我的书架 12 本'，这是明显的任务偏差——任务明确要求'书架抽离到顶部独立导航'。再仔细看，'为你推荐'里推的三本书封面都是风景照（铁轨、山、云海），完全不是小说封面，这是数据/资源错配。排行榜前三条有封面、第四条没有，封面加载策略不一致。分类标签命名也不统一：上面是'玄幻/修仙/都市'（题材），下面排行榜是'历史脑洞/玄幻脑洞/男频'（频道+题材混搭）。底部导航'赚钱/商城'放在新闻类 App 里违和感强，且当前在小说频道，底部没有小说入口呼应。搜索框里的热搜词'高考首日现场直击'是新闻类热搜词，在小说频道出现也不合理。好的地方：排行榜有 5 个子 tab 分流做得好；#1 序号红色高亮做得对；分区标题+换一批/更多的右侧操作到位。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "spec_deviation",
+      "location": "'为你推荐' 模块下的 '我的书架 12 本' 卡片",
+      "current_state": "书架作为'为你推荐'模块下的第一个条目存在，挤占了推荐位",
+      "expected_state": "根据任务要求，书架应是顶部独立的一级导航入口（与 tab 平级或悬浮入口），不与推荐混在一起",
+      "suggestion": "将'我的书架'从'为你推荐'模块移除，做成：方案A) 顶部 tab 行下方独立的快捷入口 chip（如'📚 我的书架 12 本'）；方案B) 首页右下角的 FAB（Material Design FloatingActionButton）",
+      "code_hint": "在 HomeScaffold 中新增 BookshelfQuickEntry composable，作为 LazyColumn 的 stickyHeader 或 Column 的第一个独立 Section",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "'为你推荐' 三本书的封面（铁轨/山/云海）",
+      "current_state": "封面显示的是风景照片，与小说内容（'靠着模拟器我把宗门带飞了' / '家族修仙我是老祖' / '全属性武道'）完全不符",
+      "expected_state": "应该是对应小说的封面图（人物/插画/书名排版），或至少是与题材相关的图片",
+      "suggestion": "1) 后端排查 cover_url 字段是否被错误赋值为风景图；2) 前端加封面兜底图（novel_default_cover）；3) 排查数据源是否被混入占位图测试数据",
+      "code_hint": "AsyncImage(model = book.coverUrl, fallback = painterResource(R.drawable.ic_novel_placeholder), error = painterResource(R.drawable.ic_novel_placeholder))",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "high",
+      "category": "ux",
+      "location": "顶部 tab：热榜 | 深圳 | 小说 | 发现 | 视频",
+      "current_state": "在'小说'频道下，顶 tab 仍显示新闻类分类（热榜、深圳），与小说场景语义不符",
+      "expected_state": "小说频道下的 top tab 应该是小说分类（如'玄幻/都市/言情/历史/科幻'）或保持全局 tab 但用不同文案",
+      "suggestion": "二级 tab 跟随一级 tab 联动：进入'小说'频道后，二级 tab 切换为小说分类。可以封装一个 ChannelTabScaffold，根据 channel 类型渲染不同的二级 tab",
+      "code_hint": "data class ChannelConfig(val type: ChannelType, val secondaryTabs: List<String>); when(channelType) { NOVEL -> listOf(\"玄幻\",\"都市\",\"言情\",\"历史\") }",
+      "estimated_effort": "2h"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "spec_deviation",
+      "location": "'为你推荐' 分类标签（玄幻/修仙/都市）vs 排行榜分类（历史脑洞/玄幻脑洞/男频）",
+      "current_state": "两个模块的分类标签命名体系不统一：上面是纯题材，下面混杂'频道+题材'（男频是频道，不是题材）",
+      "expected_state": "全卡片分类标签应统一为同一套分类体系（要么都按题材，要么都按'男频/女频+题材'两段式）",
+      "suggestion": "在 NovelCategory 枚举中定义统一标签，UI 层统一渲染。建议：'玄幻·男频'、'修仙·男频' 这种两段式风格",
+      "code_hint": "data class BookMeta(val genre: String, val channel: ChannelType); Chip(text = \"${book.genre}·${book.channel.label}\")",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "排行榜 #4 '开局召唤棠..灾,横推修...' 行",
+      "current_state": "#4 行只有文字没有封面缩略图（#1/#2/#3 都有）",
+      "expected_state": "所有排行榜行应该统一显示封面缩略图（即使是 48dp x 64dp 小图）",
+      "suggestion": "1) 排查 #4 数据是否缺 coverUrl；2) 封面占位逻辑应保证布局不抖动（用 Modifier.aspectRatio(3f/4f) + placeholder）",
+      "code_hint": "Box(modifier = Modifier.size(48.dp, 64.dp).background(MaterialTheme.colorScheme.surfaceVariant)) { AsyncImage(...) }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "medium",
+      "category": "ux",
+      "location": "搜索框内的热搜词 '高考首日现场直击'",
+      "current_state": "小说频道下搜索框里展示的是高考新闻热搜词",
+      "expected_state": "热搜词应随当前频道变化：小说频道下应该是'凡人修仙传'、'最近热门小说'之类",
+      "suggestion": "搜索框热搜词根据当前 channel 拉取对应频道的热搜数据，或在频道切换时重新请求",
+      "code_hint": "LaunchedEffect(currentChannel) { viewModel.fetchHotSearchKeywords(currentChannel) }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-007",
+      "severity": "low",
+      "category": "ux",
+      "location": "底部导航 '赚钱 / 商城'",
+      "current_state": "新闻/内容类 App 底部出现'赚钱''商城'，且'我的' tab 上有红色未读点（但内容页没有任何引导）",
+      "expected_state": "如果是工具/资讯类定位，应弱化或移除变现 tab；'我的'角标应与真实未读数对应",
+      "suggestion": "1) 产品定位确认：如果是纯内容 App，建议把'赚钱'改为'书架'或'收藏'，'商城'放二级页；2) 角标必须与真实消息数绑定，禁止常驻红点",
+      "code_hint": "BottomNavigationItem 中 badge = { if (unreadCount > 0) Badge { Text(unreadCount.toString()) } }",
+      "estimated_effort": "30min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "排行榜 5 个子 tab 分流（推荐榜/完结榜/阅读榜/高分榜/热搜榜）",
+      "evidence": "满足用户多维度选书需求，是小说类 App 行业最佳实践"
+    },
+    {
+      "item": "排名 #1 序号用品牌红强调，#2-#4 用灰色降权",
+      "evidence": "视觉层级清晰，引导用户优先关注 #1"
+    },
+    {
+      "item": "'为你推荐 · 换一批' + '排行榜 · 更多' 右侧操作按钮统一",
+      "evidence": "分区标题与操作按钮的布局范式一致，可复用性强"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-002",
+    "ISSUE-003"
+  ],
+  "review_id": "rev-1780982387266"
+}

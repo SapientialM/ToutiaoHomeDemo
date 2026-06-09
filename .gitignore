@@ -30,3 +30,9 @@ skills/dist/
 # Mock 数据 (抓取自头条/苏宁, 详见 app/src/main/java/com/example/toutiao/data/NEWS_DATA_README.md)
 app/src/main/assets/news_data.json
 app/src/main/assets/mall_products.json
+scripts/hourly-pm-review/*.log
+scripts/hourly-pm-review/launchd.out.log
+scripts/hourly-pm-review/launchd.err.log
+.playwright-cli/
+screenshots/
+screenshots/

@@ -1,0 +1,154 @@
+{
+  "timestamp": "2026-06-09T05:25:49.894Z",
+  "target": "首页（hourly review）",
+  "focus": [
+    "ui_bug: 看起来对、其实有视觉/交互问题的地方",
+    "ux: 用户实际使用时可能卡壳的地方",
+    "performance: 性能、流畅度"
+  ],
+  "screenshot": "/Users/cm/AndroidStudioProjects/ToutiaoFeedDemo/skills/screenshots/hourly_1780982697.png",
+  "ui_dump_summary": {
+    "node_count": 151,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "热榜",
+      "深圳",
+      "小说",
+      "发现",
+      "视频",
+      "为你推荐",
+      "换一批",
+      " ›",
+      "&#128218;",
+      "我的书架",
+      "12 本",
+      "›",
+      "靠着模拟器,我把宗门带飞了",
+      "玄幻",
+      "家族修仙,我是老祖",
+      "修仙",
+      "全属性武道",
+      "都市",
+      "排行榜",
+      "更多",
+      " ›",
+      "推荐榜",
+      "完结榜",
+      "阅读榜",
+      "高分榜",
+      "热搜榜",
+      "1",
+      "都在等起义,我杀穿河工营先反了",
+      "历史脑洞 2273万热度",
+      "2",
+      "开局无限分身,我一人包围全...",
+      "玄幻脑洞 1813万热度",
+      "3",
+      "名义:家父赵德汉,我冒充成...",
+      "男频 1659万热度",
+      "4",
+      "开局召唤策...灾,横推修...",
+      "玄幻脑洞 1200万热度",
+      "5",
+      "万倍返还...圣母,逆袭...",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "B",
+  "summary": "小说频道整体框架清晰，但内容匹配度和卡片信息密度有明显缺口，需重点修复推荐区封面错配与排行榜信息不全问题。",
+  "thinking_process": "1. 整体扫描：当前位于「首页 -> 小说」二级 tab。页面结构为「搜索栏 -> 一级 Tab（热榜/深圳/小说/发现/视频）-> 为你推荐（3 张书卡）-> 我的书架入口 -> 排行榜（含 4 个子榜单 Tab 和 4 条排名）」。底部 Tab「首页」高亮。视觉上品牌红 #FF5757 用于选中态和强调，密度适中。\n2. 可疑点：\n   (a) 搜索栏 placeholder 写着「热搜 高考首日现场直击」——这是新闻热词，但当前在「小说」频道，搜索上下文不匹配；\n   (b) 「为你推荐」三本书的封面明显是横版风景/人物照片，不像正常的小说封面（应为竖版封面）；\n   (c) 卡片只有「封面 + 标题 + 分类 Tag」三要素，缺作者、字数、状态（连载/完结）、简介，违背 PM Checklist「卡片内容是否完整」；\n   (d) 排行榜前 3 名数字均为红色，按业界惯例一般 1=红、2=橙、3=灰/黄，需确认是否有意区分；\n   (e) 排行榜第 4 条「开局召唤萧..灾,横推修...」明显没有封面图，而 1-3 名都有缩略图，导致行高不一致；\n   (f) 选中态视觉不一致：一级 Tab「小说」用红色下划线，二级 Tab「推荐榜」用红色填充 pill，两套规范混用；\n   (g) 静态截图无法判断 loading/empty/error 状态，但缺少骨架屏占位痕迹，是潜在风险点；\n   (h) 「为你推荐」与「我的书架 12 本」之间没有任何分割/留白节奏，靠 spacing 区分略显单薄。\n3. 深挖：见 issues 列表。\n4. 正向：底部 Tab 选中态清晰；一级 Tab 用红色下划线区分当前频道符合头条系风格；排行榜子 Tab 横向滚动布局合理。\n5. 综合给 B，需优先解决封面错配与搜索上下文问题。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ux",
+      "location": "顶部搜索栏",
+      "current_state": "搜索框 placeholder 显示「热搜 高考首日现场直击」（新闻类热词），但当前在「小说」频道",
+      "expected_state": "搜索 placeholder 应跟随当前频道切换，小说频道应显示小说相关热搜（如「凡人修仙传」「斗破苍穹」等）",
+      "suggestion": "为 SearchBar 组件增加 channel-aware placeholder，数据来源按一级 Tab 拆开（newsHot / novelHot / videoHot），在 ChannelTab 切换时同步刷新",
+      "code_hint": "@Composable fun SearchBar(currentTab: HomeTab, hotKeywords: Map<HomeTab, List<String>>) { ... placeholder = hotKeywords[currentTab]?.first() ?: \"搜索\" }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "spec_deviation",
+      "location": "「为你推荐」3 张小说卡片",
+      "current_state": "封面是横版风景/人物照片（雪山、铁路、海岸），不符合小说封面竖版比例，疑似用错图或后端字段映射错误",
+      "expected_state": "小说封面应是 3:4 竖版图，使用 Book.coverUrl 字段，宽度约 80-100dp",
+      "suggestion": "检查数据契约是否把 coverUrl 误映射到 bannerUrl；UI 层用 AspectRatio(3f/4f) + Coil 的 placeholder(R.drawable.book_cover_placeholder) 兜底",
+      "code_hint": "BookCover(url = book.coverUrl, modifier = Modifier.aspectRatio(3f / 4f).placeholder(visible = isLoading, highlight = PlaceholderHighlight.shimmer()))",
+      "estimated_effort": "2h"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "排行榜列表项（第 1-4 名）",
+      "current_state": "仅展示「排名 + 缩略图 + 标题 + 分类 + 热度」；缺少作者名；第 4 名无缩略图，行高与前 3 条不一致",
+      "expected_state": "每条至少包含「排名 + 封面 + 标题 + 作者 + 分类 + 热度」；缩略图统一占位，避免布局抖动",
+      "suggestion": "在 NovelRankItem 布局中插入作者行；为无封面场景统一使用占位图占满 60dp×80dp 区域；标题限制 1 行 ellipsis",
+      "code_hint": "Row { AsyncImage(model = item.cover ?: R.drawable.placeholder_book, ...) ; Column { Text(item.title, maxLines = 1); Text(\"${item.author} · ${item.category}\", style = labelSmall) } }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "一级 Tab「小说」 vs 二级 Tab「推荐榜」",
+      "current_state": "两个层级使用了两种不同的「选中态」视觉：一级 Tab 用红色下划线，二级 Tab 用红色填充 pill",
+      "expected_state": "同一页面内的选中态应使用同一套语义（要么都用下划线，要么都用填充），减少用户认知负担",
+      "suggestion": "统一规则：横向一级 Tab 用下划线 + 加粗字重，二级分类 Tab 用填充 pill；如果确实要混用，至少保证选中态颜色和未选中态对比度 ≥ 3:1",
+      "code_hint": "封装 SelectedTabStyle 枚举：TopTabStyle.Underline / SubTabStyle.Pill，统一在 TabRow 中应用",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "排行榜数字 1/2/3",
+      "current_state": "前三名数字全部为同一种红色",
+      "expected_state": "按行业惯例：第 1 名深红/品牌红、第 2 名橙色、第 3 名黄色或灰色，形成视觉层级",
+      "suggestion": "为排名数字增加 colorForRank(rank: Int) 函数：1 -> BrandRed，2 -> #FFA940，3 -> #FAAD14，>=4 -> TextSecondary",
+      "code_hint": "@Composable fun rankColor(rank: Int) = when(rank){1->BrandRed;2->Color(0xFFFFA940);3->Color(0xFFFAAD14);else->Color.Gray}",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "low",
+      "category": "ux",
+      "location": "「为你推荐」与「我的书架」之间",
+      "current_state": "两个区块直接堆叠，仅靠 verticalSpacing 区分，缺少视觉锚点",
+      "expected_state": "中间应有清晰分隔（Section header 风格化 + 8-16dp 留白）",
+      "suggestion": "用 SectionTitle 组件统一标题样式（粗体 + 副标题），并强制 SectionSpacing = 16.dp",
+      "code_hint": "Spacer(Modifier.height(16.dp)); SectionTitle(\"为你推荐\", action = \"换一批\")",
+      "estimated_effort": "10min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "底部 Tab 选中态使用品牌红填充 + 黑色图标，识别度高，符合头条系规范",
+      "evidence": "底部「首页」Tab 红色填充椭圆 + 实心房子图标"
+    },
+    {
+      "item": "一级 Tab 与二级 Tab 分层清晰，用户能感知到当前在「小说 -> 推荐榜」的两层路径",
+      "evidence": "顶部红色下划线选中「小说」，下方 pill 选中「推荐榜」"
+    },
+    {
+      "item": "排行榜采用「排名 + 缩略图 + 标题 + meta」左图右文结构，是新闻/小说类列表的行业标准布局",
+      "evidence": "排行榜 1-3 名的卡片布局"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-002",
+    "ISSUE-003"
+  ],
+  "review_id": "rev-1780982749894"
+}

@@ -1,0 +1,30 @@
+{
+  "fixed": [
+    {
+      "issue_id": "novel-tab-empty-channel-mismatch",
+      "note": "修 MockDataSource.filterByChannel：novel 频道类别从【小说/文学/文化/读书/故事】扩展为加【推荐/娱乐/科技】，适配新数据源 2400+ 条 mock；shenzhen/discover/changting 同样加宽兜底。重启后小说频道正常显示书架 + 排行榜 + 猜你喜欢",
+      "fixed_at": "2026-06-08T16:01:28.987Z"
+    },
+    {
+      "issue_id": "ISSUE-003-tab-truncation",
+      "note": "HomeScreen.kt 的 ScrollableTabRow 用 Modifier.drawWithContent 加 28dp 右边缘白色渐变，提示 Tab 可向右滚动",
+      "fixed_at": "2026-06-08T16:01:42.011Z"
+    },
+    {
+      "issue_id": "ISSUE-001-author-row-fade",
+      "note": "HotAuthorsRow.kt 的 LazyRow 用 Modifier.drawWithContent 加 28dp 右边缘白色渐变，仅 canScrollForward=true 时显示",
+      "fixed_at": "2026-06-08T16:01:42.187Z"
+    },
+    {
+      "issue_id": "ISSUE-002-meta-format",
+      "note": "新增 presentation/common/Formatters.kt，compactCount (<10K 千分逗号 / >=10K X.X万) + relativeTime (刚刚/X分钟前/X小时前) + metaLine 三件套，HotAuthorsRow 用 Formatters.metaLine 统一来源·时间·评论数格式",
+      "fixed_at": "2026-06-08T16:12:12.076Z"
+    },
+    {
+      "issue_id": "ISSUE-004-chevron",
+      "note": "HotAuthorsRow 头部「查看全部」加 Row 包裹 + KeyboardArrowRight chevron + 浅红 #FF7B7B 文字色，提高可点击性视觉暗示",
+      "fixed_at": "2026-06-08T16:12:12.256Z"
+    }
+  ],
+  "ignored": []
+}

@@ -1,0 +1,148 @@
+{
+  "timestamp": "2026-06-08T16:00:04.416Z",
+  "target": "仿今日头条首页-推荐频道（修复后 4 个作者 + 3 个新闻 + Tab 渐变 + 作者横滑渐变），需要 PM 验证所有修复是否生效 + 还有没有新问题",
+  "focus": [
+    "ui_bug",
+    "layout",
+    "ux"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780934216289.png",
+  "ui_dump_summary": {
+    "node_count": 142,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "关注",
+      "推荐",
+      "热榜",
+      "深圳",
+      "小说",
+      "你可能想关注",
+      "查看全部",
+      "财",
+      "财经观察家",
+      "1245万 粉丝",
+      "本周 A 股复盘: 三大主线浮出水面",
+      "证券时报  ·  2 小时前  ·  8,642评",
+      "关注作者",
+      "深",
+      "深圳土著 1 号",
+      "8.6万 粉丝",
+      "深圳地铁 16 号线二期试乘体验",
+      "深圳特区报  ·  昨天 21:18  ·  2,140评",
+      "关注作者",
+      "王",
+      "老王爱数码",
+      "21.8万 粉丝",
+      "千元机选购指南: 这 5 款最值得入手",
+      "数码评测  ·  3 小时前  ·  5,318评",
+      "关注作者",
+      "强",
+      "美食探店阿强",
+      "341.2万 粉丝",
+      "藏在城中村的 10 家老店",
+      "美食纪录片  ·  5 小时前  ·  1.3万评",
+      "关注作者",
+      "以下为新内容",
+      "置顶",
+      "收盘｜沪指全线飘红，高股息板块走弱",
+      "新华社",
+      "2万评论",
+      "3小时前",
+      "银发经济试点扩围，未来空间",
+      "新华社",
+      "4千评论",
+      "3小时前",
+      "深度｜二手房成交回暖取得突破背后",
+      "新华社",
+      "2万评论",
+      "3小时前",
+      "首页",
+      "视频"
+    ]
+  },
+  "overall_rating": "C",
+  "summary": "基础结构齐全（4作者+3新闻+Tab选中态），但作者头像仍是单字占位、两套卡片元信息格式不统一、作者卡tap区域歧义——仿头条的'真'还差一截。",
+  "thinking_process": "先整体扫一遍：屏幕顶部是品牌色（红）搜索条+AI入口，下方Tab选中态清晰（推荐红色+下划线），推荐作者横向区有4个卡片，下方'以下为新内容'分隔后是3条新闻，底部5项Tab Bar结构完整。加载已完成，无loading/骨架屏，状态正常。\n\n再列可疑点（按PM视角）：\n1. 4个作者头像都是单字占位（财/深/王/强），纯色圆底+白字——这是微信公众式的设计，但仿今日头条里实际是真实用户头像照片，差异明显；\n2. 作者文章卡的元信息是「证券时报  ·  2 小时前  ·  8,642评」（· 分隔、万位逗号），新闻卡是「新华社 2万评论 3小时前」（空格分隔、万单位、无空格）——两套规则在同一个屏幕里打架；\n3. 作者卡内部嵌套了「小文章预览卡」+「关注作者」按钮，但视觉上三者（头像/标题/图片/关注按钮）挤在一起，用户不知道点图、点标题、点关注分别跳哪里；\n4. 「你可能想关注」右上角「查看全部」只有文字，没有chevron/箭头icon，可点击性弱；\n5. 第一个新闻「收盘」置顶无图，后两个有右图——可能是头条的大图/单图/纯文字三态，但屏幕里只有单图+纯文字两种，未给用户预期；\n6. Tab只有5个（关注/推荐/热榜/深圳/小说），小说已被裁掉一半——可能是水平滚动，但缺少右边缘渐变阴影暗示更多；\n7. 「赚钱」底部Tab+红点——新闻类APP里比较少见（极速版才有），需要确认是否符合产品定位。\n\n按严重度排序，前5个最值得修。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "spec_deviation",
+      "location": "「你可能想关注」区域 — 4个作者圆形头像",
+      "current_state": "头像使用单字（财/深/王/强）+ 纯色背景圆作占位，无真实图片",
+      "expected_state": "应展示作者真实头像（无图时降级到单字+渐变背景，但当前主路径应该是真实图片）",
+      "suggestion": "接入后端返回的 avatarUrl，用 Coil AsyncImage 加载；保留单字占位作为加载中和加载失败的 fallback，且占位态用品牌色线性渐变（橙→红）以体现设计感",
+      "code_hint": "AsyncImage(model = author.avatarUrl, contentDescription = author.name, modifier = Modifier.size(48.dp).clip(CircleShape), placeholder = painterResource(R.drawable.avatar_placeholder), error = painterResource(R.drawable.avatar_placeholder))"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "medium",
+      "category": "spec_deviation",
+      "location": "全卡片元信息（来源·时间·评论数）",
+      "current_state": "作者卡用「·」分隔：「证券时报  ·  2 小时前  ·  8,642评」；新闻卡用空格：「新华社 2万评论 3小时前」。时间格式也不统一（2 小时前 vs 3小时前），评论数格式不统一（8,642评 vs 2万评论）",
+      "expected_state": "全App统一一套规则：来源 + 「·」 + 相对时间（如「3小时前」无空格）+ 「·」 + 评论数（统一用阿拉伯数字+「评」字）",
+      "suggestion": "抽一个 MetadataFormatter 工具类，传入 NewsItem/AuthorArticle 输出统一字符串。相对时间用 HumanizeTime.format() 处理（<1分钟显示「刚刚」, <1小时显示「X分钟前」, 今日显示「HH:mm」, 昨日显示「昨天 HH:mm」, 更早显示「MM-dd」）",
+      "code_hint": "// MetadataFormatter.kt\nfun format(source: String, timeMillis: Long, commentCount: Int): String = \"$source · ${HumanizeTime.format(timeMillis)} · ${commentCount}评\""
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "ux",
+      "location": "「你可能想关注」作者卡 — 内嵌小文章预览 + 关注按钮",
+      "current_state": "单个作者卡里塞了 头像+昵称+粉丝数+文章图+文章标题+来源/时间/评论+关注作者按钮，信息密度过高，4个可点击区域（头像→作者主页/图→文章详情/标题→文章详情/关注按钮→关注）没有视觉层级区分",
+      "expected_state": "点击区域应有清晰分割：上半部分（头像+昵称+粉丝数）= 跳作者主页；中段（图片+标题）= 跳文章详情；底部关注按钮独立；按钮点击不应触发卡片点击",
+      "suggestion": "把卡片拆为 Row + Column + Button 三个独立 clickable 区域，用 Modifier.clickable {...} 显式声明 onClick 行为，避免整卡一个 clickable 导致事件穿透；关注按钮用 stopPropagation 思路或独立 Button 包裹",
+      "code_hint": "Card { Column { Row(Modifier.clickable { nav.toAuthor(author) }) { Avatar; Name; Followers }; ArticlePreview(Modifier.clickable { nav.toArticle(article) }); FollowButton(onClick = { vm.follow(author) }) } }"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "low",
+      "category": "ux",
+      "location": "「你可能想关注」右上角「查看全部」",
+      "current_state": "纯文字「查看全部」，无chevron/箭头icon，无背景色，与普通正文无异",
+      "expected_state": "加上 › 箭头icon（或 ▶ ），并用次级品牌色（浅红）作为文字色，提高可点击性的视觉暗示",
+      "suggestion": "用 Row 包裹 Text + Icon(Icons.ChevronRight, ...)，整 Row 设为 clickable，点击跳转作者广场页",
+      "code_hint": "Row(Modifier.clickable { nav.toAuthorSquare() }, verticalAlignment = Alignment.CenterVertically) { Text(\"查看全部\", color = Color(0xFFFF7B7B), fontSize = 13.sp); Icon(Icons.ChevronRight, contentDescription = null, tint = Color(0xFFFF7B7B), modifier = Modifier.size(14.dp)) }"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "low",
+      "category": "ux",
+      "location": "顶部 Tab 栏 — 5个Tab（关注/推荐/热榜/深圳/小说）",
+      "current_state": "「小说」已被裁掉一半，但右边缘没有渐变阴影/箭头暗示「这里可以右滑看更多Tab」，用户可能不知道后面还有 Tab",
+      "expected_state": "右边缘加一个从透明到白色的水平渐变蒙层（4-8dp 宽），暗示可滚动；或加一个「›」小箭头",
+      "suggestion": "在 LazyRow 的末尾 item 后用 Box + Modifier.background(Brush.horizontalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.background))) 叠加一个 24dp 宽的渐变层",
+      "code_hint": "Box { LazyRow { items(tabs) { TabItem(it) }; item { Spacer(Modifier.width(40.dp).background(Brush.horizontalGradient(Color.Transparent to Color.White))) } } }"
+    }
+  ],
+  "positives": [
+    {
+      "item": "Tab 选中态清晰",
+      "evidence": "「推荐」Tab 文字变红 + 下方红色指示器，颜色与品牌色一致，Material 3 风格规范"
+    },
+    {
+      "item": "置顶（Sticky）新闻标识明显",
+      "evidence": "「收盘」新闻左侧「置顶」红底白字badge，符合中文新闻类应用约定俗成的规范"
+    },
+    {
+      "item": "底部导航5项结构合理",
+      "evidence": "首页/视频/赚钱/商城/我的，5项是 Material 推荐上限，「首页」激活态用品牌红色突出，icon风格统一（线稿+实心切换）"
+    },
+    {
+      "item": "分区标识符克制",
+      "evidence": "「以下为新内容」用浅灰小字而非分割线，过渡自然不打断阅读流，符合 Material 3 spacing over dividers 原则"
+    },
+    {
+      "item": "首屏加载完整，无loading态残留",
+      "evidence": "142节点全部渲染，4作者+3新闻均显示图片/文字，下拉刷新视觉反馈在 Material PullRefresh 中可观察到"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-002",
+    "ISSUE-003"
+  ],
+  "review_id": "rev-1780934404416"
+}

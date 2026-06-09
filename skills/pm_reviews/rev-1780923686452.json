@@ -1,0 +1,171 @@
+{
+  "timestamp": "2026-06-08T13:01:26.452Z",
+  "target": "仿今日头条首页（推荐频道）。重点审查：(1) 4 要素是否仍齐全 (2) 是否有置顶过多、AI 重复、浮卡遮挡、粉丝数整齐划一、热搜词拼接等剩余问题 (3) 当前整体成熟度",
+  "focus": [
+    "mock_data_maturity",
+    "ui_bug",
+    "ux"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780923530696.png",
+  "ui_dump_summary": {
+    "node_count": 136,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "关注",
+      "推荐",
+      "热榜",
+      "深圳",
+      "小说",
+      "你可能想关注",
+      "查看全部",
+      "&#128202;",
+      "财经观察家",
+      "1.2万 粉丝",
+      "本周 A 股复盘: 三大主线浮出水面",
+      "+ 关注",
+      "&#127796;",
+      "深圳土著 1 号",
+      "8.6万 粉丝",
+      "深圳地铁 16 号线二期试乘体验",
+      "+ 关注",
+      "&#128241;",
+      "老王爱数码",
+      "2,104 粉丝",
+      "千元机选购指南: 这 5 款最值得入手",
+      "+ 关注",
+      "&#127836;",
+      "美食探店阿强",
+      "341.2万 粉丝",
+      "藏在城中村的 10 家老店",
+      "+ 关注",
+      "以下为新内容",
+      "置顶",
+      "收盘｜沪指全线飘红，高股息板块走弱",
+      "新华社",
+      "2万评论",
+      "1小时前",
+      "置顶",
+      "央视体育",
+      "3万评论",
+      "1小时前",
+      "电竞联赛前瞻｜黑马逆袭",
+      "&#128240;",
+      "高考作文题来了",
+      "去热榜看详情  ›",
+      "首页",
+      "视频",
+      "赚钱",
+      "商城",
+      "我的"
+    ]
+  },
+  "overall_rating": "C+",
+  "summary": "骨架像样但细节粗糙：浮卡遮挡、新闻卡缺四要素、置顶过多、粉丝数格式不统一等\"看起来对其实有问题\"的点还在，整体仍处于 demo 阶段。",
+  "thinking_process": "\n1. 整体扫一遍：\n- 顶部：Logo「头」+ 搜索栏（嵌入热搜词「高考首日现场直击」）+ 右侧 AI 入口\n- 二级 Tab：关注/推荐（选中红下划线）/热榜/深圳/小说（最后一个被裁切）\n- 「你可能想关注」横向区：4 个作者卡 + 下方 4 个新闻标题（实为\"作者+关联话题\"双层结构）\n- 「以下为新内容」分隔符\n- 主信息流：两条置顶 + 一条被浮卡遮挡\n- 浮卡「高考作文题来了」悬浮在右下\n- 底部 Tab：首页/视频/赚钱/商城/我的（带红点）\n\n整体感觉：信息密度高、配色统一、Tab 切换清晰——但仔细看，每一块都有不对劲的地方。\n\n2. 可疑点：\n- 浮卡「高考作文题来了」直接压在第二条置顶「电竞赛赛前瞻」的图片上\n- 连续 2 条「置顶」标签，行业惯例是 0~1 条\n- 4 个作者粉丝数格式混乱：1.2万 / 8.6万 / 2,104 / 341.2万（一个没\"万\"后缀、一个千分位逗号）\n- 下方 4 条新闻（A股/地铁/千元机/城中村）只有标题和「+ 关注」按钮，缺来源/评论数/时间——四要素丢了三\n- 作者头像用的是 emoji（📊🌴📱🍜）而不是真实头像\n- 「+ 关注」同时出现在作者和新闻标题旁，用户分不清是关注人还是订阅话题\n- 顶部 AI 按钮和搜索栏视觉打架，AI 没图标、没说明\n- 第一条置顶「收盘｜沪指全线飘红」只有一行文字没图，第二条置顶下面有灯笼图（被浮卡挡了一半）——视觉权重不均\n\n3. 深挖：\n挑出 6 个高/中优先级问题逐一分析（见 issues 数组）。\n\n4. 正向：\n- 「以下为新内容」分隔符做得好，明确告知推荐区和主信息流的分界\n- 红色 #FF5757 用得克制（选中 Tab / 置顶角标 / 我的红点），没有滥用\n- 搜索栏内嵌热搜词：发现性比纯输入框好\n- 底部 Tab 角标提示（我的红点）是成熟的 Material 模式\n\n5. 整体判定：\n- 4 要素：✗（新闻卡缺 3 项）\n- 置顶过多：✗（2 条）\n- 浮卡遮挡：✗（覆盖第二条置顶）\n- 粉丝数整齐划一 / 格式不统一：✗\n- AI 重复 / 热搜词拼接：AI 按钮位置奇怪但未重复；热搜词嵌入搜索栏处理得 OK\n- 综合：demo 级，70 分以下，不能上生产。\n",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ux",
+      "location": "主信息流 / 第二条置顶卡上方",
+      "current_state": "浮卡「高考作文题来了 去热榜看详情」悬浮在右下角，直接压住第二条置顶「电竞赛赛前瞻｜黑马逆袭」的灯笼配图右半部分，用户既看不清原图，也读不到完整标题",
+      "expected_state": "浮卡应避开内容卡片（Material 推荐 BottomSheet/Popup 不应遮挡重要媒体元素）；或仅在主信息流滑动停止后、距离底部 > 2 个屏时再展示",
+      "suggestion": "1) 给浮卡加 Modifier.pointerInput 监听 LazyListState firstVisibleItemIndex，仅当滑动停止且已滚过 3 个 item 后再淡入 2) 用 Scaffold + BoxWithConstraints 把浮卡锚定到 bottomBar 上方 24dp，避免压内容 3) 加 'X' 关闭按钮的持久化（localStorage / DataStore），不再二次弹出",
+      "code_hint": "Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).offset { IntOffset(0, -bottomBarHeight) }) { FloatingTipCard(visible = showFloatingTip) }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "spec_deviation",
+      "location": "主信息流 / 「以下为新内容」下方",
+      "current_state": "连续 2 条新闻都带红色「置顶」角标（收盘｜沪指全线飘红、电竞赛赛前瞻｜黑马逆袭），置顶失去稀缺性",
+      "expected_state": "推荐流最多 1 条置顶，且通常用于运营强插（重大新闻/活动）；如需多条合并为「新华社置顶 · 2 条」可展开",
+      "suggestion": "后端下发时限制 pinned 数组 length <= 1；多条时聚合为「1 条置顶 + 1 个折叠合集『查看更多置顶』」",
+      "code_hint": "val pinned = newsList.filter { it.pinned } val display = pinned.take(1) + pinned.drop(1).takeIf { it.isNotEmpty() }?.let { listOf(PinnedGroupItem(it)) } ?: emptyList()",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "「你可能想关注」横向区 / 4 张作者卡的粉丝数",
+      "current_state": "1.2万 / 8.6万 / 2,104 / 341.2万 —— 4 条用了 3 种格式（X.X万 / 原始数字带千分位 / X.X万），其中 2,104 突兀",
+      "expected_state": "统一规则：>= 10,000 显示「X.X万」（保留 1 位小数），< 10,000 显示「X,XXX」千分位",
+      "suggestion": "封装 Formatter.formatFollowers(count: Int): String，写到工具类里全局复用，不要在每个 Composable 内联",
+      "code_hint": "fun Int.formatFollowers(): String = when { this >= 10_000 -> String.format(\"%.1f万\", this / 10_000.0) else -> String.format(\"%,d\", this) }",
+      "estimated_effort": "10min"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "high",
+      "category": "spec_deviation",
+      "location": "「你可能想关注」下方 4 条新闻（A股/地铁/千元机/城中村）",
+      "current_state": "每条只显示标题 + 「+ 关注」按钮，缺来源、评论数、发布时间——违反新闻卡四要素",
+      "expected_state": "无论大小卡，必须有 Title / Source / CommentCount / PublishTime 四要素；推荐位小卡可压缩为「来源 · 3分钟前 · 5678评论」单行",
+      "suggestion": "在 NewsCard Composable 增加 meta 行；mock data 给每条补全 source/comments/publishTime 字段",
+      "code_hint": "@Composable fun NewsCardMeta(source: String, timeAgo: String, comments: Int) { Row { Text(source, 12sp, TextTertiary); Text(\" · \"); Text(timeAgo, 12sp); Text(\" · \"); Text(\"${comments}评论\") } }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "medium",
+      "category": "ux",
+      "location": "「你可能想关注」区，作者卡和新闻卡共用一行",
+      "current_state": "同一行内 4 个「+ 关注」按钮同时指向「作者」和「话题」，用户无法区分关注对象",
+      "expected_state": "作者卡用「+ 关注」灰色按钮；话题卡用「+ 订阅」描边按钮，并在卡片左上角加 # tag icon 暗示是话题",
+      "suggestion": "在数据模型上区分 AuthorCard / TopicCard 两个 sealed class；UI 层用不同样式渲染；mock 数据拆分",
+      "code_hint": "sealed class RecommendItem { data class Author(val name: String, val followers: Int, val avatar: String): RecommendItem() data class Topic(val title: String, val source: String): RecommendItem() }",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "「你可能想关注」4 张作者卡的头像",
+      "current_state": "4 个头像全是 emoji（📊🌴📱🍜），看起来像 placeholder 而非真实账号",
+      "expected_state": "使用真实圆形头像（占位图用 Coil 占位 + 真实 URL mock）",
+      "suggestion": "avatar 字段填真实图 URL 或本地 asset；占位 fallback 用渐变 + 用户名首字母而非 emoji",
+      "code_hint": "AsyncImage(model = author.avatar, placeholder = ColorPainter(Color(0xFFEEEEEE)), error = rememberVectorPainter(Icons.Default.Person))",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-007",
+      "severity": "low",
+      "category": "ux",
+      "location": "顶部搜索栏右侧 AI 按钮",
+      "current_state": "纯文字「AI」红色按钮，视觉上像广告 banner，和搜索框风格冲突；用户不知道点了会进 AI 对话还是 AI 搜索",
+      "expected_state": "用 IconButton + 火花/星星 icon（Material Symbols: auto_awesome），点击有涟漪反馈；或换成「AI 搜索」描述性文字",
+      "suggestion": "短期：换成 Outlined icon button；长期：首次进入时加 Tooltip 解释能力",
+      "code_hint": "IconButton(onClick = {}) { Icon(Icons.Outlined.AutoAwesome, \"AI 助手\") }",
+      "estimated_effort": "10min"
+    }
+  ],
+  "positives": [
+    {
+      "item": "「以下为新内容」分隔符明确区分推荐区与主信息流",
+      "evidence": "分隔符位置在两个推荐位（你可能想关注）和主信息流（置顶）之间，灰底文字居中，符合 Material 3 习惯"
+    },
+    {
+      "item": "红色 #FF5757 用得克制",
+      "evidence": "仅用于选中 Tab 下划线、「置顶」角标、「我的」红点、Logo；正文仍是中性灰，无视觉污染"
+    },
+    {
+      "item": "搜索栏内嵌热搜词提升发现性",
+      "evidence": "热搜词「高考首日现场直击」嵌入 placeholder 区域，点击即搜索热词，比纯 Search 更友好"
+    },
+    {
+      "item": "底部 Tab 通知红点",
+      "evidence": "「我的」右上角红点是成熟的未读提醒模式，符合 Material 规范"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-003",
+    "ISSUE-004",
+    "ISSUE-002"
+  ],
+  "review_id": "rev-1780923686452"
+}

@@ -1,0 +1,161 @@
+{
+  "timestamp": "2026-06-08T15:30:10.326Z",
+  "target": "仿今日头条首页 - 推荐频道（已经显示 4 个作者 + 3 个新闻卡，需要审查 UI/布局/文本可读性）",
+  "focus": [
+    "ui_bug",
+    "layout",
+    "text"
+  ],
+  "screenshot": "/tmp/pm_screenshot_1780932470448.png",
+  "ui_dump_summary": {
+    "node_count": 146,
+    "texts": [
+      "头",
+      "热搜  高考首日现场直击",
+      "AI",
+      "关注",
+      "推荐",
+      "热榜",
+      "深圳",
+      "小说",
+      "你可能想关注",
+      "查看全部",
+      "财",
+      "财经观察家",
+      "1245万 粉丝",
+      "本周 A 股复盘: 三大主线浮出水面",
+      "证券时报  ·  2 小时前  ·  8,642评",
+      "关注作者",
+      "深",
+      "深圳土著 1 号",
+      "8.6万 粉丝",
+      "深圳地铁 16 号线二期试乘体验",
+      "深圳特区报  ·  昨天 21:18  ·  2,140评",
+      "关注作者",
+      "王",
+      "老王爱数码",
+      "21.8万 粉丝",
+      "千元机选购指南: 这 5 款最值得入手",
+      "数码评测  ·  3 小时前  ·  5,318评",
+      "关注作者",
+      "强",
+      "美食探店阿强",
+      "341.2万 粉丝",
+      "藏在城中村的 10 家老店",
+      "美食纪录片  ·  5 小时前  ·  1.3万评",
+      "关注作者",
+      "上次看到这里",
+      "52 分钟前看过",
+      "点击回到原位置",
+      "置顶",
+      "收盘｜沪指全线飘红，高股息板块走弱",
+      "新华社",
+      "2万评论",
+      "2小时前",
+      "银发经济试点扩围，未来空间",
+      "新华社",
+      "4千评论",
+      "3小时前",
+      "深度｜二手房成交回暖取得突破背后",
+      "新华社",
+      "2万评论",
+      "3小时前"
+    ]
+  },
+  "overall_rating": "B",
+  "summary": "整体框架已经具备头条首页雏形（置顶+作者推荐+新闻流），但在横向列表截断提示、图片fallback、数字格式统一等'最后一公里'细节上存在明显短板，需要逐个修复才能达到上线标准。",
+  "thinking_process": "先整体扫一遍：屏幕从上到下分为状态栏、顶部Logo+搜索+AI、Tab栏(关注/推荐/热榜/深圳/小说)、'你可能想关注'的4个作者横向卡片+每张作者卡下方紧跟一条新闻卡、'上次看到这里'锚点、置顶新闻1条+普通新闻2条、底部5个Tab(首页/视频/赚钱/商城/我的)。整体节奏和分组是头条经典样式。\n\n然后逐区域找问题：\n1) 顶部Tab栏最右侧的'小说'被截了一半，且屏幕右边缘有'小'字残留，提示第6个Tab被裁切。横向Tab缺边缘渐变/阴影/箭头提示，用户不知道能往右滑。\n2) '你可能想关注'4个作者横排，'美食探店阿强'明显被截断，'341.2万粉'只能看到一半，名字被截为'美食探店阿...'。说明这是一个可以横向滑动的列表，但缺渐变/缺'还有N个'的提示。\n3) 下方每条新闻卡的右侧缩略图区域是空白的(深圳地铁16号线、藏在城中村的10家老店等)，看起来要么没请求到图，要么加载失败但没显示任何fallback(X图也没有，就一片空白)，体验是'裂了但装作没裂'。\n4) 数字格式极不统一：'8,642评'(带千位逗号)、'2,140评'(带千位逗号)、'2万评'(用万字单位)。同一屏三种格式，PM checklist明确要求'来源/时间戳格式一致'。\n5) 底部Tab'我的'右上角有红色未读小红点。头条里这个红点通常出现在'消息'入口，而不是'我的'，位置语义错误。如果业务上确实要在'我的'上加，那至少要配一个角标说明文字。\n6) 作者卡片区(头像+粉丝数)本身没有明显的'+关注'入口，用户想关注必须点进作者主页，路径偏长。\n7) '上次看到这里 52分钟前看过 点击回到原位置'这个交互是个亮点，但'52分钟前'是绝对时间锚点，与其他卡片'2小时前/昨天21:18'的相对时间在视觉权重上要平衡好，目前的灰色样式还行。\n\n评估每个问题的严重度：作者/Tab截断无提示、图片无fallback属于用户体验直接断点(high)；数字格式、Tab红点属于规范与逻辑问题(medium)；关注入口属于锦上添花(low)。\n\n最后筛到4个最值得修的，加上一个'建议关注'的功能缺口，共5个issue。",
+  "issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "'你可能想关注'区域，作者横向卡片列表最右侧",
+      "current_state": "第4个作者'美食探店阿强'被截断，名字显示'美食探店阿...'，粉丝数'341.2万粉'只显示一半，右侧没有渐变阴影或'更多'指示",
+      "expected_state": "用户在没滑动前就应该能感知到'还有更多作者'，常见做法是右侧加白色→透明渐变遮罩，或者露出一角下一张卡，或者加'查看全部 N >'入口",
+      "suggestion": "在LazyRow外层套一个Box，用Modifier.drawWithCache在右边缘绘制水平渐变(BottomAppBarDefaults到Color.Transparent)，并根据canScrollForward状态控制透明度",
+      "code_hint": "Modifier.drawWithCache { val edgeWidth = 24.dp.toPx() onDrawWithContent { drawContent(); if (canScrollForward) drawRect(brush = Brush.horizontalGradient(listOf(Color.Transparent, Color.White), startX = size.width - edgeWidth, endX = size.width)) } }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "high",
+      "category": "ui_bug",
+      "location": "作者推荐区下方的4条新闻卡(尤其'深圳地铁16号线'/'藏在城中村'两张)的右侧缩略图",
+      "current_state": "图片区域完全空白，没有占位图、也没有加载失败占位(X图标都没有)，视觉上像是'图片丢了'",
+      "expected_state": "加载中显示骨架/占位色块；加载失败显示可识别的'图片加载失败'占位(灰底+相机斜杠icon)；绝不能留白",
+      "suggestion": "Coil的AsyncImage配合placeholder()和error()两个参数，分别传入一张占位drawable和一张失败drawable。同时给图片容器设置固定aspectRatio(16:9或4:3)，避免布局抖动",
+      "code_hint": "AsyncImage(model = url, contentDescription = null, modifier = Modifier.aspectRatio(16f/9f), placeholder = painterResource(R.drawable.img_placeholder), error = painterResource(R.drawable.img_error))",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "medium",
+      "category": "ui_bug",
+      "location": "顶部Tab栏最右侧(关注/推荐/热榜/深圳/小说)",
+      "current_state": "'小说'被截了一半，屏幕最右边缘有'小'字残留，提示Tab可以横向滚动但完全没有视觉提示",
+      "expected_state": "右侧应有渐变阴影提示'可以往右滑更多'，或者Tab的可见数量根据屏宽动态调整保证不被截断",
+      "suggestion": "使用ScrollableTabRow而非固定TabRow，尾部加渐变遮罩；或者按屏幕宽度计算Tab可见数，使用TabRow的edgePadding参数",
+      "code_hint": "ScrollableTabRow(selectedTabIndex = ..., edgePadding = 0.dp) + Modifier.drawWithCache绘制右边缘渐变",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "medium",
+      "category": "spec_deviation",
+      "location": "新闻卡片的评论数/时间格式，全屏多张卡均可看到",
+      "current_state": "同一屏出现'8,642评'/'2,140评'(带千位逗号)和'2万评'(用万单位)三种格式，时间也有'2小时前'/'昨天 21:18'/'3小时前'混用",
+      "expected_state": "统一一种格式规则。建议：评论数<1万显示原数字+逗号(8,642评)，>=1万显示X.X万(2.1万评)；时间统一用相对时间(<24h用'X小时前'/'X分钟前'，>=24h用'昨天 HH:mm'，>=7天用日期)",
+      "suggestion": "写一个FormatUtils的扩展函数统一处理，所有卡片调用同一个函数",
+      "code_hint": "fun Int.formatComments() = if (this < 10_000) String.format(\"%,d\", this) else String.format(\"%.1f万\", this / 10_000.0)",
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "medium",
+      "category": "logic",
+      "location": "底部Tab栏最右侧'我的'icon右上角的红点",
+      "current_state": "'我的'Tab上有一个未读消息红点(常见于IM/通知类场景)",
+      "expected_state": "未读消息红点应挂在'消息'入口；如果业务上就是要放在'我的'上，应该有明确的角标含义(如'系统通知')，或干脆不做红点避免误引导",
+      "suggestion": "如果是'消息中心'Tab的入口，挪到消息Tab；如果产品确认'我的'就是消息聚合入口，把红点加上数字角标并配Badge文案",
+      "code_hint": "BadgedBox(badge = { Badge { Text(\"3\") } }) { Icon(...) }",
+      "estimated_effort": "30min"
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "low",
+      "category": "ux",
+      "location": "'你可能想关注'的4个作者卡(圆形头像+名字+粉丝数)",
+      "current_state": "作者卡只有一个'展示'形态，没有直接关注按钮，必须点进作者主页才能关注，转化路径长",
+      "expected_state": "在作者头像右上角加一个小的'+'浮动按钮(像微博/B站的做法)，或者长按作者卡弹出关注菜单",
+      "suggestion": "作者卡片用Box布局，头像右上角加一个16dp的圆形'+'IconButton，背景白色带阴影",
+      "code_hint": "Box { AsyncImage(...); IconButton(onClick = {}, modifier = Modifier.align(Alignment.TopEnd).size(20.dp)) { Icon(Icons.Default.Add, ...) } }",
+      "estimated_effort": "1h"
+    }
+  ],
+  "positives": [
+    {
+      "item": "'上次看到这里 — 52分钟前看过，点击回到原位置'是头条的招牌功能，开发者主动实现了这个锚点提示",
+      "evidence": "作者推荐区与新闻流之间有一行灰色提示，带定位icon，体感比没有这个提示的产品好一个档次"
+    },
+    {
+      "item": "置顶新闻用红色'置顶'实心标签 + 红色品牌色标题，与普通新闻流做了明显的视觉分层",
+      "evidence": "置顶行的'置顶'徽标和'收盘丨沪指全线飘红'的红色文字，与下方灰色'新华社'等普通新闻形成对比"
+    },
+    {
+      "item": "底部Tab选中态明确(红色icon + 红色文字 + 加粗)，符合头条一贯的红色品牌色统一性",
+      "evidence": "'首页'Tab的icon和文字都是#FF5757品牌红，未选中的'视频/赚钱/商城/我的'是灰色，层级清晰"
+    },
+    {
+      "item": "Tab栏选中Tab下方有2dp红色下划线指示器，遵循Material Design 3的Tab indicator规范",
+      "evidence": "'推荐'Tab文字正下方有一道红色短下划线，长度与文字宽度一致"
+    }
+  ],
+  "next_priorities": [
+    "ISSUE-001",
+    "ISSUE-002",
+    "ISSUE-004",
+    "ISSUE-005"
+  ],
+  "review_id": "rev-1780932610326"
+}
