@@ -325,6 +325,7 @@ private fun PagingFeedList(
 
     // 当 firstVisibleIndex > 0 且首条 card 变化时，触发持久化。
     // 注意：0 不持久化（避免刚进入 tab 立即把顶部条目当成"上次位置"覆盖）。
+    // MVPTask #5 修复：idx 等于 lastSeenIndex 也不持久化（避免 hint 显示位置被覆盖回自己）
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }
             .map { idx ->
@@ -333,7 +334,9 @@ private fun PagingFeedList(
             }
             .distinctUntilChanged { (oldIdx, _), (newIdx, _) -> oldIdx == newIdx }
             .collect { (idx, id) ->
-                if (idx > 0 && id != null && id != lastSeenCardId) {
+                Timber.d("PagingFeedList scroll: idx=$idx, id=$id, lastSeenCardId=$lastSeenCardId, lastSeenIndex=$lastSeenIndex")
+                if (idx > 0 && id != null && id != lastSeenCardId && idx > lastSeenIndex) {
+                    Timber.d("PagingFeedList persist: id=$id")
                     onEvent(HomeUiEvent.OnFirstVisibleCardChanged(id))
                 }
             }
@@ -341,12 +344,19 @@ private fun PagingFeedList(
 
     // Tab 切换 / 下拉刷新：key(currentTab) 重建整个子树，LazyListState 初始位置为 0，
     // 天然回到顶部。
-    LaunchedEffect(lazyPagingItems.loadState.refresh) {
-        if (lazyPagingItems.loadState.refresh is LoadState.NotLoading
-            && lazyPagingItems.itemCount > 0
-        ) {
-            listState.scrollToItem(0)
+    // 注意：不要在数据第一次到达时强制 scrollToItem(0)，会触发 firstVisibleIndex=0 → OnFirstVisibleCardChanged
+    // → 覆盖掉持久化的 lastSeenCardId，让「上次看到这里」hint 永远不显示。
+    // 实际语义：初始化时 LazyListState 本身就是 0，differ 后保持 0，不需要 scroll。
+    // 这里只在用户**主动下拉刷新**（loadState.append 进入 loading 后再 NotLoading）才回顶，
+    // 用 TrackPreviousKey 记录 append 的前一个状态来判断"是否刚 append 完成"。
+    val prevAppendState = remember { mutableStateOf<LoadState?>(null) }
+    LaunchedEffect(lazyPagingItems.loadState.append) {
+        val current = lazyPagingItems.loadState.append
+        if (prevAppendState.value is LoadState.Loading && current is LoadState.NotLoading) {
+            // 用户滚到底，触发了 append loading，加载完成后不要回顶（用户期待的是看到更多）
+            // 这里刻意不 scrollToItem(0)
         }
+        prevAppendState.value = current
     }
 
     // 决定 hint 是否展示：仅当 lastSeenIndex > 0 且用户尚未滚过该位置时
@@ -721,22 +731,23 @@ private fun PagingFeedList(
                             HotAuthorsRow()
                         }
                     }
-                    // 顶部 header 区域：根据是否展示 lastSeen hint 切换内容
+                    // 顶部 header 区域：MVPTask #5 「上次看到这里」断点续读
+                    // 显示条件：lastSeenCardId 存在 且 (没找到 index OR 还没滚到 index 位置)
                     item(key = "header_separator") {
-                        if (showLastSeenHint && lastSeenIndex > 0) {
-                            // 当前 firstVisibleIndex <= lastSeenIndex，
-                            // 提示条直接置顶（顶部不再展示「以下为新内容」分隔线）
+                        val canShowHint = !lastSeenCardId.isNullOrBlank() &&
+                            (lastSeenIndex < 0 || firstVisibleIndex <= lastSeenIndex)
+                        if (canShowHint) {
                             LastSeenHint(
                                 relativeMinutes = relativeMinutes,
                                 onClick = {
                                     onEvent(HomeUiEvent.OnLastSeenHintClicked)
                                     coroutineScope.launch {
-                                        listState.animateScrollToItem(lastSeenIndex)
+                                        val target = if (lastSeenIndex > 0) lastSeenIndex else 0
+                                        listState.animateScrollToItem(target)
                                     }
                                 },
                             )
                         } else {
-                            // 用户已滚过 / 没有持久化记录：展示原始分隔线
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
