@@ -101,6 +101,7 @@ import com.example.toutiao.presentation.home.components.NovelSectionHeader
 import com.example.toutiao.presentation.home.components.RecommendFlashCard
 import com.example.toutiao.presentation.home.components.ShenzhenLocalHotBanner
 import com.example.toutiao.presentation.home.components.TextTopCard
+import com.example.toutiao.presentation.home.components.ShenzhenVideoCarousel
 import com.example.toutiao.presentation.home.components.ShenzhenWeatherStrip
 import com.example.toutiao.presentation.home.components.SportsBanner
 import com.example.toutiao.presentation.home.components.SportsCategoryChips
@@ -430,6 +431,10 @@ private fun PagingFeedList(
                                     .height(1.dp)
                                     .background(Color(0xFFEDEDED)),
                             )
+                        }
+                        // MVPTask #6: 视频轮播（第一栏位置）
+                        item(key = "shenzhen_video_carousel") {
+                            ShenzhenVideoCarousel()
                         }
                     }
                     if (channelKey == "finance") {
