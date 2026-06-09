@@ -92,6 +92,8 @@ import com.example.toutiao.presentation.home.components.FollowAuthorSection
 import com.example.toutiao.presentation.home.components.FollowInterestCarousel
 import com.example.toutiao.presentation.home.components.HotListView
 import com.example.toutiao.presentation.home.components.LastSeenHint
+import com.example.toutiao.presentation.home.components.XhsGridList
+import com.example.toutiao.presentation.home.components.feedCardToXhsCard
 import com.example.toutiao.presentation.home.components.MilitaryRankDivider
 import com.example.toutiao.presentation.home.components.MilitaryRankHeader
 import com.example.toutiao.presentation.home.components.MilitaryRankItem
@@ -246,6 +248,19 @@ private fun HomeScreenContent(
                             val lazyPagingItems = feedPagingData.collectAsLazyPagingItems()
                             val listState = remember { LazyListState() }
 
+                            // MVPTask #8: 发现 tab 用小红书双列网格
+                            if (currentTab == "discover") {
+                                val xhsCards = lazyPagingItems.itemSnapshotList.items.map { feedCardToXhsCard(it) }
+                                XhsGridList(
+                                    items = xhsCards,
+                                    onItemClick = { card ->
+                                        val orig = lazyPagingItems.itemSnapshotList.items.firstOrNull { it.id == card.id }
+                                        if (orig != null) onCardClick(orig)
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+
                             // Tab 切换时 key 变化，LazyListState 是全新的，但 Paging3 的
                             // differ 过程可能在数据到达前就把列表滚离顶部。这里显式保证回顶。
                             LaunchedEffect(Unit) {
@@ -265,6 +280,7 @@ private fun HomeScreenContent(
                                 },
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            }
                         }
                     }
                 }
@@ -423,6 +439,12 @@ private fun PagingFeedList(
                     contentPadding = PaddingValues(top = 0.dp, bottom = 8.dp),
                 ) {
                     // ── 频道专属 Header ──
+                    if (channelKey == "discover") {
+                        // MVPTask #8: 小红书双列无限下拉
+                        // Paging 列表本身是 LazyColumn，但需要把每行 item 改成双列
+                        // 这里把 Paging items 改用 grid 方式渲染：每行 2 个 card
+                        // 由 SpecialGridPagingList 包装
+                    }
                     if (channelKey == "follow") {
                         // MVPTask #7: 关注频道 Header
                         item(key = "follow_author_section") {
