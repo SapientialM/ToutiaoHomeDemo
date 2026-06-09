@@ -86,6 +86,10 @@ import com.example.toutiao.presentation.home.components.AudioSubTabs
 import com.example.toutiao.presentation.home.components.FinanceRiskNotice
 import com.example.toutiao.presentation.home.components.FinanceStockIndexCard
 import com.example.toutiao.presentation.home.components.FloatingHintCardWithState
+import com.example.toutiao.presentation.home.components.FollowAuthor
+import com.example.toutiao.presentation.home.components.FollowAuthorRecommendRow
+import com.example.toutiao.presentation.home.components.FollowAuthorSection
+import com.example.toutiao.presentation.home.components.FollowInterestCarousel
 import com.example.toutiao.presentation.home.components.HotListView
 import com.example.toutiao.presentation.home.components.LastSeenHint
 import com.example.toutiao.presentation.home.components.MilitaryRankDivider
@@ -419,6 +423,65 @@ private fun PagingFeedList(
                     contentPadding = PaddingValues(top = 0.dp, bottom = 8.dp),
                 ) {
                     // ── 频道专属 Header ──
+                    if (channelKey == "follow") {
+                        // MVPTask #7: 关注频道 Header
+                        item(key = "follow_author_section") {
+                            FollowAuthorSection(
+                                authors = listOf(
+                                    FollowAuthor("财", "财经观察家", "1245万粉丝", Color(0xFFFF9F43), 3),
+                                    FollowAuthor("深", "深圳土著 1 号", "8.6万粉丝", Color(0xFF26C281), 2),
+                                    FollowAuthor("王", "老王爱数码", "21.8万粉丝", Color(0xFF45B7D1), 1),
+                                ),
+                            )
+                        }
+                        // MVPTask #7: 轮播"你可能感兴趣的人"
+                        item(key = "follow_interest_carousel") {
+                            FollowInterestCarousel()
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFEDEDED)),
+                            )
+                        }
+                        // MVPTask #7: 推荐账号列表
+                        item(key = "follow_recommend_header") {
+                            Text(
+                                text = "推荐关注",
+                                color = Color(0xFF1A1A1A),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(16.dp),
+                            )
+                        }
+                        val recommendAuthors = listOf(
+                            FollowAuthor("🔥", "头条热榜", "实时更新", Color(0xFFFF4757), 0),
+                            FollowAuthor("💰", "理财早班车", "投资理财", Color(0xFFFFA502), 0),
+                            FollowAuthor("🏥", "健康日报", "养生健康", Color(0xFF2ED573), 0),
+                        )
+                        items(
+                            count = recommendAuthors.size,
+                            key = { idx -> "follow_recommend_$idx" },
+                        ) { idx ->
+                            val author = recommendAuthors[idx]
+                            FollowAuthorRecommendRow(author = author)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(Color(0xFFF0F0F0)),
+                            )
+                        }
+                        // MVPTask #7: 朋友圈列表 Paging（每行带关注按钮）
+                        item(key = "follow_friends_divider") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .background(Color(0xFFF5F5F5)),
+                            )
+                        }
+                    }
                     if (channelKey == "shenzhen") {
                         item(key = "shenzhen_weather") {
                             ShenzhenWeatherStrip()
