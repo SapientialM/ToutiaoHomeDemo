@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
+import com.example.toutiao.ui.theme.RedMain
 import com.example.toutiao.presentation.common.AppBottomNav
 import com.example.toutiao.presentation.detail.NewsDetailScreen
 import com.example.toutiao.presentation.earn.EarnScreen
@@ -57,20 +58,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 需求 #1: 状态栏透明 + 文字白色，让 HomeTopBar 的红色铺满状态栏
+        // MVPTask #1: 让红色 topbar 铺到状态栏
+        // 把 status bar / nav bar 的 scrim 都设为 RedMain（不透明），
+        // 这样状态栏区域会被 HomeTopBar 的红色 Box 完全覆盖，无灰色留白。
+        val brandRedArgb = RedMain.value.toInt()
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(
-                Color.Transparent.value.toInt(),
-            ),
-            navigationBarStyle = SystemBarStyle.dark(
-                Color.Transparent.value.toInt(),
-            ),
+            statusBarStyle = SystemBarStyle.dark(brandRedArgb),
+            navigationBarStyle = SystemBarStyle.dark(brandRedArgb),
         )
-        // 显式设置 decorFitsSystemWindows = false（防止 status bar 系统层兜底画默认背景）
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        // 状态栏背景设为透明（Android 15+ 强制）
-        window.statusBarColor = Color.Transparent.value.toInt()
-        window.navigationBarColor = Color.Transparent.value.toInt()
+        // 显式把 status bar / nav bar 设为品牌红色（铺满）
+        window.statusBarColor = brandRedArgb
+        window.navigationBarColor = brandRedArgb
+        // 让 decor view 不去插入 insets（顶部 Box 自己处理 statusBar 区域）
+        window.decorView.fitsSystemWindows = false
         setContent {
             ToutiaoFeedDemoTheme {
                 AppRoot(homeViewModel = viewModel)

@@ -37,6 +37,7 @@ fun NewsItemDto.toEntity(channel: String): FeedItemEntity = FeedItemEntity(
     isTop = isTop,
     channel = channel,
     createdAt = createdAt,
+    sourceUrl = sourceUrl,
 )
 
 // ── Entity → Domain：Room 数据转为 UI 模型 ────────────────────────────────────
@@ -57,6 +58,7 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         commentCount = commentCount,
         publishTime = publishTime ?: "",
         isTop = isTop,
+        sourceUrl = sourceUrl,
     )
     "left_text_right_image" -> FeedCard.LeftTextRightImage(
         id = id,
@@ -66,6 +68,7 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         publishTime = publishTime ?: "",
         imageUrl = imageUrl ?: "",
         isTop = isTop,
+        sourceUrl = sourceUrl,
     )
     "large_image" -> FeedCard.LargeImage(
         id = id,
@@ -75,6 +78,7 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         publishTime = publishTime ?: "",
         imageUrl = imageUrl ?: "",
         isTop = isTop,
+        sourceUrl = sourceUrl,
     )
     "video" -> FeedCard.Video(
         id = id,
@@ -86,6 +90,16 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         videoUrl = videoUrl,
         duration = duration,
         isTop = isTop,
+        sourceUrl = sourceUrl,
+    )
+    "compact" -> FeedCard.Compact(
+        id = id,
+        title = title,
+        source = source,
+        commentCount = commentCount,
+        publishTime = publishTime ?: "",
+        isTop = isTop,
+        sourceUrl = sourceUrl,
     )
     // 未知 type 按 LeftTextRightImage 兜底渲染，避免崩溃
     else -> FeedCard.LeftTextRightImage(
@@ -96,5 +110,6 @@ fun FeedItemEntity.toDomain(): FeedCard = when (type) {
         publishTime = publishTime ?: "",
         imageUrl = imageUrl ?: "",
         isTop = isTop,
+        sourceUrl = sourceUrl,
     )
 }

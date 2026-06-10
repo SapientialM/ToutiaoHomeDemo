@@ -11,4 +11,8 @@ sealed class HomeUiEvent {
     data object OnSearchSubmit : HomeUiEvent()
     data object OnSearchDismiss : HomeUiEvent()
     data object OnMoreChannelsClicked : HomeUiEvent()
+    // MVPTask #5: 断点续读
+    data class OnFirstVisibleCardChanged(val cardId: String) : HomeUiEvent()
+    data object OnLastSeenHintClicked : HomeUiEvent()
+    data object OnLastSeenHintDismissed : HomeUiEvent()
 }

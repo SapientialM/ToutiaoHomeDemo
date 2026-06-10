@@ -28,4 +28,5 @@ data class NewsItemDto(
     @SerialName("publishTime") val publishTime: String? = null,
     @SerialName("isTop") val isTop: Boolean = false,
     @SerialName("createdAt") val createdAt: Long = 0L,
+    @SerialName("sourceUrl") val sourceUrl: String? = null,
 )

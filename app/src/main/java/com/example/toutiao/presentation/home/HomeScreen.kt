@@ -17,10 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -826,41 +824,33 @@ private fun PagingFeedList(
                     }
                     // 热门作者横向轮播: 仅推荐 tab
                     if (channelKey == "recommend") {
-                        item(key = "hot_authors") {
-                            HotAuthorsRow()
-                        }
-                        // MVPTask #3: 5 条置顶新闻（紧凑列表）
-                        item(key = "recommend_top_separator") {
+                        // MVPTask #3: 推荐频道 - 5 条置顶新闻（紧凑列表）+ 资讯速递卡片 + 多种图文动态混合
+                        // 取真实 Paging 数据前 5 条作为置顶
+                        val pinnedNews = lazyPagingItems.itemSnapshotList.items.take(5)
+                        items(
+                            count = pinnedNews.size,
+                            key = { idx -> "recommend_top_${pinnedNews[idx].id}" },
+                        ) { idx ->
+                            val card = pinnedNews[idx]
+                            // 把 FeedCard 转为 FeedCard.TextTop 显示（数据层已确保前 5 条是 text_top）
+                            val topCard = card as? FeedCard.TextTop
+                                ?: FeedCard.TextTop(
+                                    id = card.id,
+                                    title = card.title,
+                                    source = card.source,
+                                    commentCount = card.commentCount,
+                                    publishTime = card.publishTime,
+                                    sourceUrl = card.sourceUrl,
+                                    isTop = true,
+                                )
+                            // 必须包一层 Box.clickable，否则置顶卡无法跳详情页
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(8.dp)
-                                    .background(Color(0xFFF5F5F5)),
-                            )
-                        }
-                        val topNews = listOf(
-                            "天天学习 | 青春正好 踏在脚下" to "央视网",
-                            "携手打造新时代全天候中老命运共同体" to "国际在线",
-                            "我国服务贸易持续扩能提质" to "央视网",
-                            "情绪消费何以吸引年轻人" to "人民日报",
-                            "飞针引线 绣出新光景" to "金台资讯",
-                        )
-                        items(
-                            count = topNews.size,
-                            key = { idx -> "recommend_top_$idx" },
-                        ) { idx ->
-                            val (title, source) = topNews[idx]
-                            TextTopCard(
-                                card = FeedCard.TextTop(
-                                    id = "recommend_top_$idx",
-                                    title = title,
-                                    source = source,
-                                    commentCount = if (idx == 0) 2993 else if (idx == 1) 177 else 101,
-                                    publishTime = if (idx == 0) "2小时前" else "3小时前",
-                                    sourceUrl = "https://www.example.com/recommend_top_$idx",
-                                    isTop = true,
-                                ),
-                            )
+                                    .clickable { onCardClick(card) },
+                            ) {
+                                TextTopCard(card = topCard)
+                            }
                         }
                         // MVPTask #3: 资讯速递卡片（蓝色水滴 + 标题 + 大图）
                         item(key = "recommend_flash") {
@@ -900,31 +890,37 @@ private fun PagingFeedList(
                         }
                     }
 
+                    // Paging 渲染：过滤掉已在置顶部分展示的 item
+                    val allItems = lazyPagingItems.itemSnapshotList.items
+                    // 推荐频道：跳过前 5 条置顶
+                    val skipCount = if (channelKey == "recommend") 5 else 0
+                    val visibleItems = if (skipCount > 0) allItems.drop(skipCount) else allItems
                     items(
-                        count = lazyPagingItems.itemCount,
-                        key = lazyPagingItems.itemKey { it.id },
-                    ) { index ->
+                        count = visibleItems.size,
+                        key = { idx -> "paging_${visibleItems[idx].id}" },
+                    ) { idx ->
+                        val card = visibleItems[idx]
+                        // 注意：lastSeenCardId 的全局 index 也要重新映射（基于 allItems）
+                        val globalIndex = allItems.indexOfFirst { it.id == card.id }
                         Column {
                             // 当 index == lastSeenIndex 时，在该卡片前再插一个 hint
-                            // （覆盖 firstVisibleIndex = 0 但 lastSeenCardId 已加载的情况）
-                            if (index == lastSeenIndex && showLastSeenHint && firstVisibleIndex == 0) {
+                            if (globalIndex >= 0 && globalIndex == lastSeenIndex &&
+                                showLastSeenHint && firstVisibleIndex == 0
+                            ) {
                                 LastSeenHint(
                                     relativeMinutes = relativeMinutes,
                                     onClick = {
                                         onEvent(HomeUiEvent.OnLastSeenHintClicked)
                                         coroutineScope.launch {
-                                            listState.animateScrollToItem(lastSeenIndex)
+                                            listState.animateScrollToItem(globalIndex)
                                         }
                                     },
                                 )
                             }
-                            val card = lazyPagingItems[index]
-                            if (card != null) {
-                                FeedCardItem(
-                                    card = card,
-                                    onClick = remember(card.id) { { onCardClick(card) } },
-                                )
-                            }
+                            FeedCardItem(
+                                card = card,
+                                onClick = remember(card.id) { { onCardClick(card) } },
+                            )
                         }
                     }
 
@@ -991,19 +987,13 @@ private fun HomeTopBar(
             .fillMaxWidth(),
     ) {
         // 顶部红色品牌栏（Logo + 搜索 + AI 入口）
-        // 需求 #1: 让红色从状态栏顶部开始铺
-        // 用 windowInsetsPadding 让 Column 包含 status bar 区域，
-        // 但 status bar 区域也需要画红色 — 通过 status bar spacer
-        Spacer(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(RedMain),
-        )
+        // MVPTask #1: 用 statusBarsPadding() 把红色 Box 延伸覆盖到状态栏区域，
+        // 让状态栏完全红色，无灰色空白
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(RedMain),
+                .background(RedMain)
+                .statusBarsPadding(),
         ) {
             if (!isSearching) {
                 BrandTopRow()
@@ -1030,16 +1020,17 @@ private fun HomeTopBar(
                 containerColor = Color.White,
                 contentColor = Color(0xFF1A1A1A),
                 // MVPTask #2: Tab 行边缘更紧凑，缩短 padding 让按钮之间更近
-                edgePadding = 6.dp,
+                edgePadding = 4.dp,
                 divider = {},
                 indicator = { tabPositions ->
                     if (selectedTabIndex < tabPositions.size) {
                         // MVPTask #2: 红线比 2 字符文本宽度短一些
-                        // "推荐"/"热榜" 16sp Bold ≈ 36px 宽，加 14dp horizontal padding 缩到比字短
+                        // 16sp Bold "推荐" ≈ 36px ≈ 9dp 宽，所以红线总宽应 < 24dp（含 padding）
+                        // horizontal padding = 16dp 让红线仅 2 字符宽度一半左右
                         SecondaryIndicator(
                             modifier = Modifier
                                 .tabIndicatorOffset(tabPositions[selectedTabIndex])
-                                .padding(horizontal = 14.dp),
+                                .padding(horizontal = 16.dp),
                             height = 3.dp,
                             color = RedMain,
                         )
@@ -1055,8 +1046,8 @@ private fun HomeTopBar(
                         modifier = Modifier.padding(horizontal = 0.dp),
                         text = {
                             // 设计稿：选中 16sp Bold / 未选中 15sp Regular
-                            // 自带 padding 让 Tab 内部字与红线距离更窄
-                            Box(modifier = Modifier.padding(horizontal = 10.dp)) {
+                            // 文字 padding 收紧让红线距离更近
+                            Box(modifier = Modifier.padding(horizontal = 8.dp)) {
                                 Text(
                                     text = label,
                                     fontSize = if (selected) 16.sp else 15.sp,

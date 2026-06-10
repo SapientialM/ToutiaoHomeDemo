@@ -7,7 +7,8 @@ import kotlinx.serialization.Serializable
  * 新数据源 (assets/news_data.json, 合成) Schema：
  * {
  *   "新闻": [
- *     { "源URL": "...", "封面URL": "...", "标题": "...", "类别": "..." },
+ *     { "源URL": "...", "封面URL": "...", "标题": "...", "类别": "...",
+ *       "_source": "...", "_summary": "..." },
  *     ...
  *   ]
  * }
@@ -23,6 +24,8 @@ data class ToutiaoMockItem(
     @SerialName("封面URL") val imageUrl: String = "",
     @SerialName("标题") val title: String = "",
     @SerialName("类别") val category: String = "",
+    @SerialName("_source") val source: String = "",
+    @SerialName("_summary") val summary: String = "",
 )
 
 /**

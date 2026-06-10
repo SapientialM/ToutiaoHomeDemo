@@ -5,6 +5,7 @@ import com.example.toutiao.data.remote.dto.NewsFeedData
 import com.example.toutiao.data.remote.dto.NewsFeedResponse
 import com.example.toutiao.data.remote.dto.NewsItemDto
 import com.example.toutiao.data.remote.dto.RawNewsItem
+import com.example.toutiao.data.remote.dto.RawRealNewsItem
 import com.example.toutiao.data.remote.dto.ToutiaoMockItem
 import com.example.toutiao.data.remote.dto.ToutiaoMockWrapper
 import kotlinx.coroutines.delay
@@ -36,12 +37,45 @@ import java.time.temporal.ChronoUnit
 // 谁调用这里：
 //   NewsRemoteMediator.load()  → Paging3 分页时调用（唯一调用路径）
 // =============================================================================
-class MockDataSource(context: Context) : RemoteDataSource {
+class MockDataSource(private val context: Context) : RemoteDataSource {
 
     // by lazy：首次调用 getNewsFeed() 时才从 assets 读 JSON，不阻塞 App 启动
     private val allItems: List<RawNewsItem> by lazy {
         loadFromAssets(context)
     }
+
+    // ── 真实数据：每频道独立缓存 ──
+    // assets/news_data/{channel}.json 由 build 前置任务从项目根 news_data/ 复制
+    // （也允许手动 cp），每频道 100 条真实 URL（头条/B站抓取）。
+    // 优先于 allItems（合成 mock）使用；若缺失则回退到合成数据。
+    private val realChannelCache: MutableMap<String, List<RawRealNewsItem>> = mutableMapOf()
+
+    private fun loadRealChannelData(channel: String): List<RawRealNewsItem> {
+        realChannelCache[channel]?.let { return it }
+        val fileName = channelFileMap[channel] ?: return emptyList()
+        return try {
+            val jsonStr = context.assets.open("news_data/$fileName")
+                .bufferedReader().use { it.readText() }
+            val json = Json { ignoreUnknownKeys = true; isLenient = true }
+            val items = json.decodeFromString<List<RawRealNewsItem>>(jsonStr)
+            Timber.d("MockDataSource — loaded ${items.size} real items for channel=$channel from $fileName")
+            realChannelCache[channel] = items
+            items
+        } catch (e: Exception) {
+            Timber.d("MockDataSource — no real data for channel=$channel (file=$fileName): ${e.message}")
+            emptyList()
+        }
+    }
+
+    private val channelFileMap: Map<String, String> = mapOf(
+        "recommend" to "推荐.json",
+        "follow" to "推荐.json",
+        "hot" to "热榜.json",
+        "shenzhen" to "深圳.json",
+        "discover" to "发现.json",
+        "video" to "视频.json",
+        "finance" to "财经.json",
+    )
 
     // 从全部新闻中提取所有真实图片 URL，并将 HTTP 升级为 HTTPS，供无图新闻循环复用
     private val imageUrlPool: List<String> by lazy {
@@ -84,6 +118,13 @@ class MockDataSource(context: Context) : RemoteDataSource {
             throw IOException(DebugControls.DEFAULT_ERROR_MESSAGE)
         }
 
+        // 优先使用真实数据（assets/news_data/{channel}.json，含真实 URL）
+        val realItems = loadRealChannelData(channel)
+        if (realItems.isNotEmpty()) {
+            return buildResponseFromReal(channel, page, size, realItems)
+        }
+
+        // 回退：合成数据（旧逻辑）
         // 步骤 2：按频道过滤（1421 条 → 约 N 条，取决于频道映射）
         val filtered = filterByChannel(allItems, channel)
         // 步骤 3：排序 — 先按日期（天）倒序，同一日内置顶在前，同日内按精确时间倒序
@@ -105,20 +146,116 @@ class MockDataSource(context: Context) : RemoteDataSource {
         Timber.d("MockDataSource — channel=$channel, page=$page, total=${sorted.size}, returned=${pageItems.size}, hasMore=$hasMore")
 
         // 步骤 5：RawNewsItem → NewsItemDto（原始 JSON 结构 → Retrofit 期望的 DTO 结构）
-        Timber.i("MockDataSource — About to map ${pageItems.size} items to DTO")
         val dtoList = pageItems.mapIndexed { index, raw ->
             val globalIndex = offset + index
-            Timber.i("MockDataSource — Mapping item $index: ${raw.title.take(20)}...")
             mapToDto(raw, channel, globalIndex)
         }
-        Timber.i("MockDataSource — Mapped ${dtoList.size} items, first image URL: ${dtoList.firstOrNull()?.imageUrl}")
-        Timber.i("MockDataSource — Mapped ${dtoList.size} items, first image URL: ${dtoList.firstOrNull()?.imageUrl}")
 
         // 步骤 6：包装为 NewsFeedResponse（这是 Retrofit API 的标准响应格式）
         return NewsFeedResponse(
             code = 0,
             data = NewsFeedData(list = dtoList, hasMore = hasMore),
         )
+    }
+
+    /**
+     * 用真实数据构造响应（循环复用）。
+     *
+     * 每频道 100 条真实数据。当用户滑动到底（page*size >= totalSize），
+     * 继续按 offset % totalSize 取数据，从而实现"无限下拉 + 循环复用"。
+     * 同时限制最多加载 [REAL_MAX_PAGES] 页（避免 Room 无限增长），
+     * 达到上限后返回 hasMore=false，UI 停止自动加载，用户可下拉刷新重新开始。
+     */
+    private fun buildResponseFromReal(
+        channel: String,
+        page: Int,
+        size: Int,
+        items: List<RawRealNewsItem>,
+    ): NewsFeedResponse {
+        val totalSize = items.size
+        val offset = page * size
+        if (offset >= totalSize * REAL_MAX_PAGES) {
+            Timber.d("MockDataSource(real) — channel=$channel, page=$page, reached maxPages=$REAL_MAX_PAGES, stop")
+            return NewsFeedResponse(code = 0, data = NewsFeedData(list = emptyList(), hasMore = false))
+        }
+        // 循环：offset % totalSize 让页码超出后从头开始
+        val cycleOffset = offset % totalSize
+        val endIndex = minOf(cycleOffset + size, totalSize)
+        val pageItems = if (cycleOffset >= totalSize) {
+            emptyList()
+        } else {
+            items.subList(cycleOffset, endIndex)
+        }
+        val hasMore = (page + 1) < REAL_MAX_PAGES || endIndex < totalSize
+        Timber.d("MockDataSource(real) — channel=$channel, page=$page, total=$totalSize, returned=${pageItems.size}, cycleOffset=$cycleOffset, hasMore=$hasMore")
+        val dtoList = pageItems.mapIndexed { index, raw ->
+            mapRealToDto(raw, channel, offset + index)
+        }
+        return NewsFeedResponse(code = 0, data = NewsFeedData(list = dtoList, hasMore = hasMore))
+    }
+
+    private fun mapRealToDto(raw: RawRealNewsItem, channel: String, index: Int): NewsItemDto {
+        val resolvedImageUrl = if (raw.coverUrl.isNotBlank()) {
+            raw.coverUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
+        } else null
+        // 来源展示：用 source_name（头条号/账号名），缺省回退 source
+        val resolvedSource = raw.sourceName.ifBlank { raw.source.ifBlank { "未知来源" } }
+        val type = determineRealType(raw, channel, index)
+        val now = LocalDateTime.now()
+        val generatedDateTime = now.minusMinutes(index.toLong() * 7L)
+        return NewsItemDto(
+            id = "${channel}_${index}_${raw.title.hashCode()}",
+            type = type,
+            title = raw.title,
+            source = resolvedSource,
+            commentCount = generateCommentCountFromScore(raw.hotScore),
+            imageUrl = resolvedImageUrl,
+            videoUrl = if (type == "video") raw.url.takeIf { it.isNotBlank() } else null,
+            duration = if (type == "video") formatVideoDuration(raw.hotScore) else null,
+            publishTime = formatRelativeTime(generatedDateTime.format(datetimeFormatter)),
+            isTop = false,
+            createdAt = generatedDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            sourceUrl = raw.url.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /**
+     * 真实数据的卡片类型：
+     *  - 推荐频道前 5 条 → text_top（5 条置顶）
+     *  - 视频频道全部 → video
+     *  - 其他 → left_text_right_image
+     *
+     * 当 imageUrl 为空时强制降级为 text_top（避免占位图泛滥）。
+     */
+    private fun determineRealType(raw: RawRealNewsItem, channel: String, index: Int): String {
+        if (channel == "video") return "video"
+        if (raw.isVideo) return "video"
+        if (channel == "recommend" && index < 5) return "text_top"
+        // 没有封面图：兜底用 text_top（紧凑无图）
+        if (raw.coverUrl.isBlank()) return "text_top"
+        return "left_text_right_image"
+    }
+
+    private fun generateCommentCountFromScore(hotScore: Long): Int {
+        // hot_score → 评论数映射：score 越高，评论越多
+        return when {
+            hotScore >= 1_000_000 -> (30000 + hotScore % 30000).toInt()
+            hotScore >= 100_000 -> (5000 + hotScore % 15000).toInt()
+            hotScore >= 10_000 -> (1000 + hotScore % 4000).toInt()
+            hotScore > 0 -> (200 + hotScore % 800).toInt()
+            else -> (50..500).random()
+        }
+    }
+
+    private fun formatVideoDuration(seed: Long): String {
+        val secs = (seed.toInt().absoluteValue) % 600
+        return "%d:%02d".format(secs / 60, secs % 60)
+    }
+
+    companion object {
+        // 真实数据循环复用上限：每个频道最多加载 50 页 = 1000 条，
+        // 避免 Room 表无限增长。下拉刷新触发 REFRESH 重新加载。
+        private const val REAL_MAX_PAGES = 50
     }
 
     // ── JSON 加载 ──────────────────────────────────────────────────────────────
@@ -159,21 +296,22 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
     /**
      * 新 schema → RawNewsItem 归一化：
-     *  - 时间字段为空，按 index 倒推（idx=0 视为最新，依次递减 1 小时）
-     *  - 来源字段为空，按 category 推断（如 "时尚" → "时尚资讯"）
-     *  - 文本内容留空，由详情页 HTTP 访问源 URL 后解析
+     *  - 时间字段为空，按 index 倒推（idx=0 视为最新，依次递减 30 分钟）
+     *  - source 字段：优先用数据自带的 _source（头条号/账号），缺省按 category 推断
+     *  - content 字段：用 _summary（摘要），详情页再 HTTP 抓取源 URL 完整正文
      */
     private fun normalizeNewSchema(item: ToutiaoMockItem, index: Int): RawNewsItem {
         val now = LocalDateTime.now()
-        // 倒推 1 小时间隔，让首条数据保持"最新"语义
-        val generatedDatetime = now.minusHours(index.toLong()).format(datetimeFormatter)
-        val inferredSource = if (item.category.isNotBlank()) "${item.category}资讯" else "未知来源"
+        val generatedDatetime = now.minusMinutes(index.toLong() * 30L).format(datetimeFormatter)
+        val resolvedSource = item.source.ifBlank {
+            if (item.category.isNotBlank()) "${item.category}资讯" else "未知来源"
+        }
         return RawNewsItem(
             title = item.title,
             category = item.category,
-            content = "", // 留空，详情页会通过 sourceUrl 拉取并解析
+            content = item.summary,
             datetime = generatedDatetime,
-            source = inferredSource,
+            source = resolvedSource,
             imageUrl = item.imageUrl,
             sourceUrl = item.sourceUrl,
         )
@@ -181,24 +319,21 @@ class MockDataSource(context: Context) : RemoteDataSource {
 
     // ── 频道分类映射 ──────────────────────────────────────────────────────────
     private fun filterByChannel(items: List<RawNewsItem>, channel: String): List<RawNewsItem> {
-        // 兼容旧 + 新数据源的混合类别。新数据源类别：时尚/宠物/游戏/军事/娱乐/旅游/教育/科技/数码/深圳/美食/健康/文化/氢能
-        val categories: Set<String>? = when (channel) {
-            "recommend" -> null // 全量
-            "follow" -> setOf("关注") // 关注频道暂无独立数据源，返回空列表
-            "hot" -> setOf("社会", "财经", "科技", "娱乐", "体育", "国际", "国内", "军事", "美食", "健康", "数码")
-            "video" -> setOf("视频", "娱乐", "游戏")
-            "society" -> setOf("社会", "法治", "法律", "时政", "国内", "中国", "地方", "教育", "健康", "环境", "环保")
-            "tech" -> setOf("科技", "互联网", "数码", "AI", "人工智能", "氢能")
-            "newera" -> setOf("时政", "国内", "中国", "新时代", "党建", "政策")
-            "novel" -> setOf("小说", "文学", "文化", "读书", "故事")
-            // 新数据源专用频道
-            "shenzhen" -> setOf("深圳", "推荐") // 兜底: web 版无深圳频道, 拉推荐当本地
-            "discover" -> setOf("科技", "数码", "娱乐", "美食", "旅游", "时尚")
-            "video_channel" -> setOf("视频", "娱乐", "游戏")
-            "changting" -> setOf("科技", "娱乐", "财经", "视频") // 畅听 web 无独立, 代理
-            else -> null
+        // 新数据源 (assets/news_data.json): 每条新闻的 category 字段 = channel 名
+        //   ("推荐"/"热榜"/"深圳"/"发现"/"视频"/"财经")，直接按 channel 过滤即可
+        // 频道别名映射：UI tab 英文 key → 数据 category 中文名
+        val targetCategory = when (channel) {
+            "recommend", "follow" -> "推荐" // 关注频道暂时复用推荐数据
+            "hot" -> "热榜"
+            "shenzhen" -> "深圳"
+            "discover" -> "发现"
+            "video" -> "视频"
+            "finance" -> "财经"
+            "novel" -> "推荐" // 小说频道暂无独立数据，临时用推荐
+            "society", "tech", "newera", "video_channel", "changting", "military", "audio", "sports" -> "推荐"
+            else -> null // null = 全量
         }
-        return if (categories == null) items else items.filter { it.category in categories }
+        return if (targetCategory == null) items else items.filter { it.category == targetCategory }
     }
 
     // ── RawNewsItem → NewsItemDto 映射（核心转换逻辑） ─────────────────────────
@@ -206,14 +341,12 @@ class MockDataSource(context: Context) : RemoteDataSource {
     //   text_top → TextTopCard（置顶纯文字）
     //   left_text_right_image → LeftTextRightImageCard（左文右图）
     //   large_image → LargeImageCard（上文下大图）
+    //   video → VideoCard（上文下视频封面）
+    //   compact → CompactCard（紧凑无图）
     //
     // 推断规则：
-    //   首页首条权威来源 → text_top（每页最多 1 条纯文本）
-    //   其余新闻 → 按 index 1:1 分配 large_image 和 left_text_right_image
-    //
-    // 图片策略：
-    //   1. 原始 URL 存在时，自动将 HTTP 升级为 HTTPS（避免 Android 9+ 明文流量拦截）
-    //   2. 原始 URL 为空时，从 imageUrlPool 中循环分配真实新闻图片，确保所有图文卡片都有图
+    //   推荐频道前 5 条 → text_top（5 条置顶）
+    //   其余新闻 → 按 index % 6 轮转 4 种图文 + video + compact
     private fun mapToDto(raw: RawNewsItem, channel: String, index: Int): NewsItemDto {
         println("MockDataSource — mapToDto called for: ${raw.title.take(30)}...")
         val pinned = isPinned(raw.source)
@@ -225,8 +358,8 @@ class MockDataSource(context: Context) : RemoteDataSource {
         // 兜底用 picsum.photos 生成确定性图片（保证同一新闻总是显示同一张图）
         val resolvedImageUrl = when {
             type == "text_top" -> null
+            type == "compact" -> null
             raw.imageUrl.isNotBlank() -> {
-                // 新数据源的封面 URL 已经是 picsum.photos
                 val url = raw.imageUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
                 url
             }
@@ -254,27 +387,26 @@ class MockDataSource(context: Context) : RemoteDataSource {
             publishTime = relativeTime,
             isTop = pinned,
             createdAt = parseDatetimeToMillis(raw.datetime),
-            sourceUrl = raw.sourceUrl.ifBlank { null }, // 详情页会用到此 URL
+            sourceUrl = raw.sourceUrl.ifBlank { null },
         )
     }
 
     /**
-     * 卡片类型轮转（5 个一组）：
-     * 0 → text_top（仅当首条且为权威来源）
-     * 1 → large_image（大图）
-     * 2 → left_text_right_image（左文右图）
-     * 3 → video（视频缩略图 + 播放按钮 + 时长）
-     * 4 → left_text_right_image（左文右图）
-     * 循环 → 模拟真实头条「图文+视频+图文」混合流
+     * 卡片类型轮转：
+     * 推荐频道 index < 5 → text_top（5 条置顶纯文字）
+     * 其余按 index % 6 轮转：左文右图 → 大图 → 视频 → 左文右图 → 紧凑无图
+     * → 模拟真实头条「图文+视频+图文」混合流
      */
     private fun determineType(imageUrl: String?, index: Int, isPinned: Boolean): String {
         if (isPinned && index == 0) return "text_top"
-        // 娱乐/体育/社会类内容多设为视频
-        return when (index % 5) {
-            0 -> "large_image"
-            1 -> "left_text_right_image"
-            2 -> "video"
-            3 -> "left_text_right_image"
+        // 推荐频道前 5 条统一为置顶纯文字（HomeScreen 也会把前 5 条用作置顶）
+        if (index < 5) return "text_top"
+        return when (index % 6) {
+            0 -> "large_image"            // 上文下大图
+            1 -> "left_text_right_image"  // 左文右图
+            2 -> "video"                  // 上文下视频
+            3 -> "left_text_right_image"  // 左文右图
+            4 -> "compact"                // 紧凑无图（小标题 + 灰色信息行）
             else -> "left_text_right_image"
         }
     }

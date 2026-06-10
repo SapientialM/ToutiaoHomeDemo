@@ -13,7 +13,7 @@ interface RemoteDataSource {
     /**
      * 获取视频频道数据
      */
-    suspend fun getVideoFeed(page: Int, size: Int = 20): NewsFeedResponse
+    suspend fun getVideoFeed(tab: String, page: Int, size: Int = 20): NewsFeedResponse
 
     /**
      * 搜索新闻

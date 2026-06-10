@@ -7,6 +7,7 @@ import androidx.paging.cachedIn
 
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.domain.repository.NewsRepository
+import com.example.toutiao.domain.repository.ReadPositionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 
 import kotlinx.coroutines.flow.Flow
@@ -49,6 +50,7 @@ import timber.log.Timber
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val newsRepository: NewsRepository,
+    private val readPositionRepository: ReadPositionRepository,
 ) : ViewModel() {
 
     // 当前选中的 Tab（recommend/hot/video/society）
@@ -84,6 +86,8 @@ class HomeViewModel @Inject constructor(
 
     init {
         Timber.d("HomeViewModel init")
+        // 初始 tab 同步持久化的 lastSeen 到 UiState
+        syncLastSeenForTab(_currentTab.value)
     }
 
     fun onEvent(event: HomeUiEvent) {
@@ -118,6 +122,15 @@ class HomeViewModel @Inject constructor(
             is HomeUiEvent.OnMoreChannelsClicked -> {
                 Timber.d("OnMoreChannelsClicked — 预留更多频道入口")
             }
+            is HomeUiEvent.OnFirstVisibleCardChanged -> {
+                persistReadPosition(event.cardId)
+            }
+            is HomeUiEvent.OnLastSeenHintClicked -> {
+                Timber.d("OnLastSeenHintClicked — UI scrolls to last seen position")
+            }
+            is HomeUiEvent.OnLastSeenHintDismissed -> {
+                // UI 隐藏 hint（用户已滚过），不擦除持久化
+            }
         }
     }
 
@@ -125,6 +138,64 @@ class HomeViewModel @Inject constructor(
         Timber.d("switchTab — tab=$tab")
         _currentTab.value = tab
         _uiState.update { HomeUiState.Success(currentTab = tab) }
+        syncLastSeenForTab(tab)
+        // 热榜频道：切到 hot 时拉取榜单数据
+        if (tab == "hot") {
+            loadHotList()
+        }
+    }
+
+    /**
+     * 拉取热榜数据。
+     * 当前用 Mock，未来切真实 API 时仅需修改 repository 实现。
+     */
+    private fun loadHotList() {
+        viewModelScope.launch {
+            _uiState.update {
+                (it as? HomeUiState.Success)?.copy(hotListLoading = true) ?: it
+            }
+            try {
+                val (quickActions, items) = newsRepository.getHotList()
+                _uiState.update {
+                    (it as? HomeUiState.Success)?.copy(
+                        hotQuickActions = quickActions,
+                        hotListItems = items,
+                        hotListLoading = false,
+                    ) ?: it
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Timber.e(e, "loadHotList failed")
+                _uiState.update {
+                    (it as? HomeUiState.Success)?.copy(hotListLoading = false) ?: it
+                }
+            }
+        }
+    }
+
+    /**
+     * 把当前 tab 持久化的 lastSeen 信息同步到 UiState，供 UI 决定是否展示 hint。
+     */
+    private fun syncLastSeenForTab(tab: String) {
+        val lastId = readPositionRepository.getLastSeenId(tab)
+        val lastAt = readPositionRepository.getLastSeenAt(tab)
+        _uiState.update {
+            (it as? HomeUiState.Success)?.copy(
+                lastSeenCardId = lastId,
+                lastSeenAt = lastAt,
+            ) ?: it
+        }
+        Timber.d("syncLastSeenForTab — tab=$tab, lastId=$lastId, lastAt=$lastAt")
+    }
+
+    /**
+     * 把当前首条可见 card id 持久化到当前 tab。
+     */
+    private fun persistReadPosition(cardId: String) {
+        if (cardId.isBlank()) return
+        val tab = _currentTab.value
+        readPositionRepository.setLastSeenId(tab, cardId)
     }
 
     private fun performSearch(query: String) {

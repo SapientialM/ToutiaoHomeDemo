@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.toutiao.domain.model.FeedCard
+import com.example.toutiao.presentation.home.components.CompactCard
 import com.example.toutiao.presentation.home.components.LargeImageCard
 import com.example.toutiao.presentation.home.components.LeftTextRightImageCard
 import com.example.toutiao.presentation.home.components.TextTopCard
@@ -38,6 +39,7 @@ fun FeedCardItem(
             is FeedCard.LeftTextRightImage -> LeftTextRightImageCard(card)
             is FeedCard.LargeImage -> LargeImageCard(card)
             is FeedCard.Video -> VideoCardItem(card)
+            is FeedCard.Compact -> CompactCard(card)
         }
     }
 }

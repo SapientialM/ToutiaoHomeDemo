@@ -62,4 +62,18 @@ sealed class FeedCard {
         override val sourceUrl: String? = null,
         val isTop: Boolean = false,
     ) : FeedCard()
+
+    /**
+     * 紧凑无图卡片：仅标题 + 灰色信息行（来源 / 时间 / 评论数）
+     * 用于 MVPTask #3 推荐频道 "无图且紧凑" 布局
+     */
+    data class Compact(
+        override val id: String,
+        override val title: String,
+        override val source: String,
+        override val commentCount: Int,
+        override val publishTime: String,
+        override val sourceUrl: String? = null,
+        val isTop: Boolean = false,
+    ) : FeedCard()
 }

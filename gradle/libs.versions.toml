@@ -19,6 +19,7 @@ kotlinxSerializationJson = "1.8.0"
 lifecycleViewmodelCompose = "2.8.0"
 navigationCompose = "2.8.0"
 timber = "5.0.1"
+jsoup = "1.17.2"
 
 [libraries]
 # AndroidX Core
@@ -70,6 +71,9 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 
 # Image Loading
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+
+# HTML Parsing
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 
 # Logging
 timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }

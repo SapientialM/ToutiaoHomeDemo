@@ -25,4 +25,6 @@ data class FeedItemEntity(
     @ColumnInfo(name = "is_top") val isTop: Boolean = false,
     @ColumnInfo(name = "channel") val channel: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
+    // 新闻源 URL，点击卡片跳转详情页用。Room 升级后字段（fallbackToDestructiveMigration）
+    @ColumnInfo(name = "source_url") val sourceUrl: String? = null,
 )
