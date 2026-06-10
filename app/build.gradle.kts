@@ -110,6 +110,9 @@ dependencies {
     // Image Loading
     implementation(libs.coil.compose)
 
+    // HTML Parsing
+    implementation(libs.jsoup)
+
     // Logging
     implementation(libs.timber)
 

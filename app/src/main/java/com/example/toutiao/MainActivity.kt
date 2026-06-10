@@ -34,7 +34,9 @@ import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.detail.NewsDetailScreen
 import com.example.toutiao.presentation.earn.EarnScreen
 import com.example.toutiao.presentation.home.HomeScreen
+import com.example.toutiao.presentation.home.HomeUiState
 import com.example.toutiao.presentation.home.HomeViewModel
+import com.example.toutiao.presentation.hot.HotTopicScreen
 import com.example.toutiao.presentation.mall.MallScreen
 import com.example.toutiao.presentation.mall.sub.CouponsScreen
 import com.example.toutiao.presentation.mall.sub.FollowedShopsScreen
@@ -102,8 +104,12 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
     var videoTarget by rememberSaveable(stateSaver = VideoTarget.Saver) {
         mutableStateOf<VideoTarget?>(null)
     }
+    // 热榜快捷入口子分页：null = 不显示
+    var hotTopicTarget by rememberSaveable(stateSaver = HotQuickActionSaver) {
+        mutableStateOf<com.example.toutiao.domain.model.HotQuickAction?>(null)
+    }
 
-    val isOverlayOpen = detailTarget != null || subPage != null || videoTarget != null
+    val isOverlayOpen = detailTarget != null || subPage != null || videoTarget != null || hotTopicTarget != null
 
     Scaffold(
         // MVPTask #1: 让 Scaffold 不强行插入 statusBar inset，让 HomeScreen 内的
@@ -146,6 +152,10 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                                 } ?: Timber.w("MainActivity onCardClick — no sourceUrl, skip")
                             }
                         },
+                        onQuickActionClick = { action ->
+                            Timber.d("MainActivity hot quick action — title=${action.title}")
+                            hotTopicTarget = action
+                        },
                     )
                     1 -> VideoScreen(
                         onVideoClick = { video ->
@@ -185,6 +195,16 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                 VideoDetailScreen(
                     video = target.toFeedCardVideo(),
                     onBack = { videoTarget = null },
+                )
+            }
+
+            // 热榜子分页层（从热榜顶部快捷入口进入）
+            hotTopicTarget?.let { action ->
+                val hotList = (homeViewModel.uiState.value as? HomeUiState.Success)?.hotListItems ?: emptyList()
+                HotTopicScreen(
+                    action = action,
+                    items = hotList,
+                    onBack = { hotTopicTarget = null },
                 )
             }
 
@@ -312,6 +332,25 @@ data class VideoTarget(
         )
     }
 }
+
+/**
+ * HotQuickAction 的 Saver — 持久化应对 Activity 重建
+ */
+val HotQuickActionSaver: Saver<com.example.toutiao.domain.model.HotQuickAction?, Any> = listSaver(
+    save = { target ->
+        if (target == null) emptyList()
+        else listOf(target.id, target.title, target.subtitle, target.icon)
+    },
+    restore = { list ->
+        if (list.isEmpty()) null
+        else com.example.toutiao.domain.model.HotQuickAction(
+            id = list[0] as String,
+            title = list[1] as String,
+            subtitle = list[2] as String,
+            icon = list[3] as String,
+        )
+    },
+)
 
 /** 子页面类型 */
 enum class SubPage {

@@ -203,8 +203,13 @@ private fun HotListItemRow(item: HotListItem, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 10.dp),  // 紧凑：14→10
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 序号：前 3 名用红色加粗（设计稿约定），其余灰色
-        val rankColor = if (item.rank <= 3) RedMain else Color(0xFF999999)
+        // 序号：1=深红/2=橙/3=黄/4+=灰（行业惯例视觉层级）
+        val rankColor = when (item.rank) {
+            1 -> Color(0xFFFF3B30)
+            2 -> Color(0xFFFFA940)
+            3 -> Color(0xFFFAAD14)
+            else -> Color(0xFF999999)
+        }
         Text(
             text = item.rank.toString(),
             color = rankColor,

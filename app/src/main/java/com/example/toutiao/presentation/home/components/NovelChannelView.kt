@@ -216,7 +216,10 @@ fun NovelSectionHeader(
 }
 
 /**
- * 小说频道 - 排行榜子 Tab（红底白字胶囊）
+ * 小说频道 - 排行榜子 Tab
+ *
+ * ISSUE-004: 视觉与一级 Tab 统一：选中=红字加粗 + 红色下划线，未选中=黑字。
+ * 不再用红底白字胶囊，与首页一级 Tab 保持同一套语义。
  */
 @Composable
 fun NovelRankingTabs(
@@ -229,23 +232,31 @@ fun NovelRankingTabs(
         modifier = modifier
             .fillMaxWidth()
             .background(Color.White)
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         tabs.forEachIndexed { idx, tab ->
             val selected = idx == selectedIndex
-            Box(
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (selected) RedMain else Color(0xFFF5F5F5))
                     .clickable { onTabSelected(idx) }
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = tab,
-                    color = if (selected) Color.White else Color(0xFF666666),
-                    fontSize = 12.sp,
+                    color = if (selected) RedMain else Color(0xFF1A1A1A),
+                    fontSize = if (selected) 15.sp else 14.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                )
+                Spacer(Modifier.height(4.dp))
+                // 红色下划线
+                Box(
+                    modifier = Modifier
+                        .width(20.dp)
+                        .height(if (selected) 2.dp else 0.dp)
+                        .background(RedMain),
                 )
             }
         }
@@ -272,15 +283,22 @@ fun NovelRankItem(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.Top,
     ) {
+        // ISSUE-005: 1/2/3 排名颜色按行业惯例（深红/橙/黄），4+ 灰
+        val rankColor = when (rank) {
+            1 -> Color(0xFFFF3B30)
+            2 -> Color(0xFFFFA940)
+            3 -> Color(0xFFFAAD14)
+            else -> Color(0xFF999999)
+        }
         Text(
             text = rank.toString(),
-            color = if (rank <= 3) RedMain else Color(0xFF999999),
+            color = rankColor,
             fontSize = 14.sp,
             fontWeight = if (rank <= 3) FontWeight.Bold else FontWeight.Normal,
             modifier = Modifier.width(20.dp),
         )
         Spacer(Modifier.width(4.dp))
-        // PM 审查 ISSUE-003: 加载 coverUrl，失败降级到灰底占位
+        // ISSUE-003: 统一占位尺寸 48x64（高度与底部对齐），失败/无图都展示灰底 emoji 兜底
         Box(
             modifier = Modifier
                 .size(width = 48.dp, height = 64.dp)
@@ -312,10 +330,21 @@ fun NovelRankItem(
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
+            // ISSUE-003: 加作者行（"作者 · 分类"），无作者时只显示分类
+            val authorAndCategory = if (book.author.isNotBlank()) {
+                "${book.author} · ${book.category}"
+            } else {
+                book.category
+            }
             Text(
-                text = listOf(book.category, book.heat).filter { it.isNotEmpty() }.joinToString(" "),
+                text = listOfNotNull(
+                    authorAndCategory.takeIf { it.isNotBlank() },
+                    book.heat.takeIf { it.isNotBlank() },
+                ).joinToString("  "),
                 color = Color(0xFF999999),
                 fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -403,6 +432,7 @@ data class NovelBook(
     val id: String,
     val title: String,
     val tag: String = "为你推荐",
+    val author: String = "",
     val category: String = "",
     val heat: String = "",
     val coverUrl: String = "",

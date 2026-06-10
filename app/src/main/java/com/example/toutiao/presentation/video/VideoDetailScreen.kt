@@ -1,5 +1,8 @@
 package com.example.toutiao.presentation.video
 
+import android.view.ViewGroup
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.background
@@ -44,16 +47,15 @@ import com.example.toutiao.ui.theme.RedMain
 import timber.log.Timber
 
 // =============================================================================
-// VideoDetailScreen — 视频详情页（全屏播放 + 标题 + 描述）
+// VideoDetailScreen — 视频详情页
 //
-// 设计：
-//  - 顶部 16:9 视频播放区（AndroidView + 系统 VideoView）
-//  - 下方标题 + 作者 + 视频说明
-//  - VideoView 自带 MediaController（播放/暂停/进度条）
-//  - 进入页面自动播放，离开页面 release 释放 MediaPlayer
+// 播放器选型：
+//  - url 包含 bilibili.com/video/BVxxx → WebView 加载
+//    https://player.bilibili.com/player.html?bvid=BVxxx&page=1&high_quality=1
+//    （官方 HTML5 播放器，跨平台支持好）
+//  - 其他 URL → 兜底用 AndroidView + 系统 VideoView
 //
-// 注意：videoUrl 字段当前指向 bilibili 详情页（不可热链接播放），
-//      MockDataSource.mapRealToDto 已把它转成可播放的样例 mp4 URL。
+// 视频信息：标题 + 作者 + 播放次数 + 发布时间
 // =============================================================================
 @Composable
 fun VideoDetailScreen(
@@ -61,8 +63,8 @@ fun VideoDetailScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    var isPrepared by remember { mutableStateOf(false) }
-    var hasError by remember { mutableStateOf<String?>(null) }
+    val bvid = remember(video.videoUrl) { extractBvid(video.videoUrl) }
+    val useWebView = bvid != null
 
     Column(
         modifier = Modifier
@@ -94,75 +96,24 @@ fun VideoDetailScreen(
             )
         }
 
-        // 视频播放器
+        // 视频播放器：16:9 黑色背景
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .background(Color.Black),
         ) {
-            AndroidView(
-                factory = { ctx ->
-                    VideoView(ctx).apply {
-                        setMediaController(MediaController(ctx))
-                        setOnPreparedListener { mp ->
-                            isPrepared = true
-                            // 循环播放（sample.mp4 是 10s 测试视频，循环避免用户看到结束）
-                            mp.isLooping = true
-                            start()
-                            Timber.d("VideoDetailScreen — prepared, auto-play, looping")
-                        }
-                        setOnErrorListener { _, what, extra ->
-                            // sample.mp4 是 10s 测试视频，-1004 = MEDIA_ERROR_IO (正常结束)
-                            // 短 mp4 循环播放时偶尔会触发，这里仅记录
-                            Timber.w("VideoDetailScreen — what=$what extra=$extra (短 mp4 结束可能触发)")
-                            true
-                        }
-                    }
-                },
-                update = { view ->
-                    val url = video.videoUrl
-                    if (!url.isNullOrBlank()) {
-                        Timber.d("VideoDetailScreen — setVideoURI $url")
-                        // setVideoURI 由 factory 里 setOnPreparedListener 触发自动 start()，
-                        // 这里不重复 start()，避免每次重组时重启播放
-                        view.setVideoURI(android.net.Uri.parse(url))
-                    } else {
-                        hasError = "视频地址为空"
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            // 加载状态 / 错误态覆盖层
-            if (!isPrepared && hasError == null) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = RedMain)
-                }
-            }
-            hasError?.let { err ->
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayCircle,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.size(48.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = err,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                        )
-                    }
-                }
+            if (useWebView) {
+                BilibiliWebPlayer(
+                    bvid = bvid!!,
+                    page = 1,
+                    highQuality = 1,
+                )
+            } else {
+                FallbackVideoPlayer(
+                    videoUrl = video.videoUrl,
+                    onError = { /* ignore, log in fallback */ },
+                )
             }
         }
 
@@ -206,11 +157,137 @@ fun VideoDetailScreen(
             }
         }
     }
+}
 
-    // 页面销毁时释放 VideoView
-    DisposableEffect(Unit) {
-        onDispose {
-            Timber.d("VideoDetailScreen — disposed")
+// -----------------------------------------------------------------------------
+// Bilibili Web Player — 用 WebView 加载官方 HTML5 播放器
+//
+// URL: https://player.bilibili.com/player.html?bvid=BVxxx&page=1&high_quality=1
+// 高 quality=1 优先清晰度高码率
+// -----------------------------------------------------------------------------
+@Composable
+private fun BilibiliWebPlayer(
+    bvid: String,
+    page: Int,
+    highQuality: Int,
+) {
+    var isLoading by remember { mutableStateOf(true) }
+
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    // B 站播放器页面是 HTTPS，但内部可能用 mixed content
+                    mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    mediaPlaybackRequiresUserGesture = false
+                    loadWithOverviewMode = true
+                    useWideViewPort = true
+                }
+                webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        isLoading = true
+                        Timber.d("BilibiliWebPlayer — pageStarted: $url")
+                    }
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        isLoading = false
+                        Timber.d("BilibiliWebPlayer — pageFinished: $url")
+                    }
+                }
+                val playerUrl = "https://player.bilibili.com/player.html?bvid=$bvid&page=$page&high_quality=$highQuality"
+                Timber.d("BilibiliWebPlayer — loadUrl: $playerUrl")
+                loadUrl(playerUrl)
+            }
+        },
+        update = { /* 不重复 load */ },
+        modifier = Modifier.fillMaxSize(),
+    )
+
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(color = RedMain)
         }
     }
+}
+
+// -----------------------------------------------------------------------------
+// Fallback VideoView 兜底
+// -----------------------------------------------------------------------------
+@Composable
+private fun FallbackVideoPlayer(
+    videoUrl: String?,
+    onError: () -> Unit,
+) {
+    var hasError by remember { mutableStateOf<String?>(null) }
+
+    AndroidView(
+        factory = { ctx ->
+            VideoView(ctx).apply {
+                setMediaController(MediaController(ctx))
+                setOnPreparedListener { mp ->
+                    mp.isLooping = true
+                    start()
+                    Timber.d("FallbackVideoPlayer — prepared, auto-play, looping")
+                }
+                setOnErrorListener { _, what, extra ->
+                    Timber.w("FallbackVideoPlayer — what=$what extra=$extra")
+                    hasError = "播放失败 (code=$what)"
+                    true
+                }
+            }
+        },
+        update = { view ->
+            if (!videoUrl.isNullOrBlank()) {
+                Timber.d("FallbackVideoPlayer — setVideoURI $videoUrl")
+                view.setVideoURI(android.net.Uri.parse(videoUrl))
+            } else {
+                hasError = "视频地址为空"
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    )
+
+    hasError?.let { err ->
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Filled.PlayCircle,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.5f),
+                    modifier = Modifier.size(48.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = err,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                )
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// 提取 B 站 BV 号
+// 支持 url 形式：
+//  - https://www.bilibili.com/video/BV1xx411c7mD
+//  - https://www.bilibili.com/video/BV1xx411c7mD?p=1
+//  - https://m.bilibili.com/video/BV1xx
+//  - 已是 BV1xx 字符串
+// -----------------------------------------------------------------------------
+private fun extractBvid(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    val regex = Regex("""BV([0-9A-Za-z]{8,})""")
+    return regex.find(url)?.value
 }

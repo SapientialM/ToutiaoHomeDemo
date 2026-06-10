@@ -145,6 +145,7 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     viewModel: HomeViewModel,
     onCardClick: (FeedCard) -> Unit = {},
+    onQuickActionClick: (com.example.toutiao.domain.model.HotQuickAction) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
@@ -166,6 +167,7 @@ fun HomeScreen(
         feedPagingData = viewModel.feedPagingData,
         onEvent = viewModel::onEvent,
         onCardClick = onCardClickLogged,
+        onQuickActionClick = onQuickActionClick,
     )
 }
 
@@ -179,6 +181,7 @@ private fun HomeScreenContent(
     feedPagingData: Flow<PagingData<FeedCard>>,
     onEvent: (HomeUiEvent) -> Unit,
     onCardClick: (FeedCard) -> Unit,
+    onQuickActionClick: (com.example.toutiao.domain.model.HotQuickAction) -> Unit,
 ) {
     val successState = uiState as? HomeUiState.Success
     val isSearching = successState?.isSearching ?: false
@@ -235,8 +238,8 @@ private fun HomeScreenContent(
                             quickActions = successState.hotQuickActions,
                             onItemClick = { onEvent(HomeUiEvent.OnCardClick(it.id)) },
                             onQuickActionClick = { action ->
-                                // MVPTask #4: 顶部快捷入口是新分页按钮 — 模拟点击进入子分页
-                                Timber.d("Hot quick action clicked: ${action.title} → 子分页")
+                                // 顶部快捷入口是子分页按钮 → 委托 MainActivity 打开 HotTopicScreen
+                                onQuickActionClick(action)
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -714,12 +717,12 @@ private fun PagingFeedList(
                             )
                         }
                         val rankItems = listOf(
-                            NovelBook("r1", "都在等起义,我杀穿河工营先反了", tag = "", category = "历史脑洞", heat = "2273万热度", coverUrl = "https://picsum.photos/seed/rank1/120/160"),
-                            NovelBook("r2", "开局无限分身,我一人包围全...", tag = "", category = "玄幻脑洞", heat = "1813万热度", coverUrl = "https://picsum.photos/seed/rank2/120/160"),
-                            NovelBook("r3", "名义:家父赵德汉,我冒充成...", tag = "", category = "男频", heat = "1659万热度", coverUrl = "https://picsum.photos/seed/rank3/120/160"),
-                            NovelBook("r4", "开局召唤策...灾,横推修...", tag = "", category = "玄幻脑洞", heat = "1200万热度", coverUrl = "https://picsum.photos/seed/rank4/120/160"),
-                            NovelBook("r5", "万倍返还...圣母,逆袭...", tag = "", category = "玄幻脑洞", heat = "980万热度", coverUrl = "https://picsum.photos/seed/rank5/120/160"),
-                            NovelBook("r6", "苟到成仙,报把修仙界...", tag = "", category = "玄幻脑洞", heat = "750万热度", coverUrl = "https://picsum.photos/seed/rank6/120/160"),
+                            NovelBook("r1", "都在等起义,我杀穿河工营先反了", tag = "", author = "历史系之狼", category = "历史脑洞", heat = "2273万热度", coverUrl = "https://picsum.photos/seed/rank1/120/160"),
+                            NovelBook("r2", "开局无限分身,我一人包围全...", tag = "", author = "中原五百", category = "玄幻脑洞", heat = "1813万热度", coverUrl = "https://picsum.photos/seed/rank2/120/160"),
+                            NovelBook("r3", "名义:家父赵德汉,我冒充成...", tag = "", author = "萌俊", category = "男频", heat = "1659万热度", coverUrl = "https://picsum.photos/seed/rank3/120/160"),
+                            NovelBook("r4", "开局召唤策...灾,横推修...", tag = "", author = "天云空", category = "玄幻脑洞", heat = "1200万热度", coverUrl = "https://picsum.photos/seed/rank4/120/160"),
+                            NovelBook("r5", "万倍返还...圣母,逆袭...", tag = "", author = "锦鲤先生", category = "玄幻脑洞", heat = "980万热度", coverUrl = "https://picsum.photos/seed/rank5/120/160"),
+                            NovelBook("r6", "苟到成仙,报把修仙界...", tag = "", author = "南风知我意", category = "玄幻脑洞", heat = "750万热度", coverUrl = "https://picsum.photos/seed/rank6/120/160"),
                         )
                         items(
                             count = rankItems.size,
@@ -1350,6 +1353,7 @@ private fun HomeScreenSuccessPreview() {
                 feedPagingData = flow,
                 onEvent = {},
                 onCardClick = {},
+                onQuickActionClick = {},
             )
         }
     }

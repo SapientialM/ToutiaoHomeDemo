@@ -203,10 +203,8 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
         val type = determineRealType(raw, channel, index)
         val now = LocalDateTime.now()
         val generatedDateTime = now.minusMinutes(index.toLong() * 7L)
-        // video 类型的 videoUrl：news_data/视频.json 的 url 都是 B 站详情页（不可热链接播放），
-        // 这里改用 Google 公开测试 mp4，保证 VideoView 能直接播。原始 url 仍保留在 sourceUrl
-        // 字段，点击跳转新闻详情页时使用。
-        val resolvedVideoUrl = if (type == "video") pickPlayableVideoUrl(index) else null
+        // video 类型的 videoUrl 直接用真实 B 站 URL（VideoDetailScreen 用 WebView + bilibili player.html 解析播放）
+        val resolvedVideoUrl = if (type == "video") raw.url.takeIf { it.isNotBlank() } else null
         return NewsItemDto(
             id = "${channel}_${index}_${raw.title.hashCode()}",
             type = type,

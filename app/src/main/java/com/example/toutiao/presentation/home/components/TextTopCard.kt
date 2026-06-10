@@ -31,30 +31,30 @@ fun TextTopCard(card: FeedCard.TextTop, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.White)
-                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (card.isTop) {
                     Box(
                         modifier = Modifier
-                            .background(TopBadgeRed, shape = RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                            .background(TopBadgeRed, shape = RoundedCornerShape(3.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
                     ) {
-                        Text("置顶", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("置顶", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                 }
                 Text(
                     text = card.title,
-                    fontSize = 18.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     color = TextPrimary,
-                    lineHeight = 26.sp,
+                    lineHeight = 22.sp,
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             BottomInfoRow(card.source, card.commentCount, card.publishTime, isTop = card.isTop)
         }
         Box(
