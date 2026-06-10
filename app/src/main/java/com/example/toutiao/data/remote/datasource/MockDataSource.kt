@@ -203,6 +203,10 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
         val type = determineRealType(raw, channel, index)
         val now = LocalDateTime.now()
         val generatedDateTime = now.minusMinutes(index.toLong() * 7L)
+        // video 类型的 videoUrl：news_data/视频.json 的 url 都是 B 站详情页（不可热链接播放），
+        // 这里改用 Google 公开测试 mp4，保证 VideoView 能直接播。原始 url 仍保留在 sourceUrl
+        // 字段，点击跳转新闻详情页时使用。
+        val resolvedVideoUrl = if (type == "video") pickPlayableVideoUrl(index) else null
         return NewsItemDto(
             id = "${channel}_${index}_${raw.title.hashCode()}",
             type = type,
@@ -210,7 +214,7 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
             source = resolvedSource,
             commentCount = generateCommentCountFromScore(raw.hotScore),
             imageUrl = resolvedImageUrl,
-            videoUrl = if (type == "video") raw.url.takeIf { it.isNotBlank() } else null,
+            videoUrl = resolvedVideoUrl,
             duration = if (type == "video") formatVideoDuration(raw.hotScore) else null,
             publishTime = formatRelativeTime(generatedDateTime.format(datetimeFormatter)),
             isTop = false,
@@ -218,6 +222,21 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
             sourceUrl = raw.url.takeIf { it.isNotBlank() },
         )
     }
+
+    /**
+     * 从本地 assets 资源中轮转选择 sample.mp4。
+     * 使用 asset:/// URI 路径（Android 原生 ContentResolver 支持），
+     * 避免外网 HTTP 超时问题。
+     */
+    private fun pickPlayableVideoUrl(index: Int): String =
+        "android.resource://" + PLAYABLE_PACKAGE + "/" +
+            PLAYABLE_RAW_IDS[index.absoluteValue % PLAYABLE_RAW_IDS.size]
+
+    private val PLAYABLE_PACKAGE = "com.example.toutiao"
+    private val PLAYABLE_RAW_IDS: List<Int> = listOf(
+        // res/raw/sample.mp4
+        com.example.toutiao.R.raw.sample,
+    )
 
     /**
      * 真实数据的卡片类型：

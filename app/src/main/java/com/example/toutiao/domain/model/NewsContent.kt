@@ -1,6 +1,7 @@
 package com.example.toutiao.domain.model
 
 import androidx.compose.runtime.Immutable
+import kotlinx.serialization.Serializable
 
 /**
  * 新闻详情页内容
@@ -13,8 +14,11 @@ import androidx.compose.runtime.Immutable
  *  - 配图列表（嵌入段落之间）
  *  - 视频（可选）
  *  - 标签（可选，话题 / 关键词）
+ *
+ * @Serializable：NewsContent 持久化到 Room（news_content_cache 表）需要 JSON 序列化
  */
 @Immutable
+@Serializable
 data class NewsContent(
     val title: String,
     val source: String,
@@ -35,13 +39,19 @@ data class NewsContent(
     val sourceUrl: String,
 )
 
+@Serializable
 sealed class NewsParagraph {
+    @Serializable
     data class Text(val text: String) : NewsParagraph()
+    @Serializable
     data class Image(val url: String, val caption: String? = null) : NewsParagraph()
+    @Serializable
     data class Quote(val text: String, val source: String? = null) : NewsParagraph()
+    @Serializable
     data class Video(val url: String, val posterUrl: String? = null, val duration: String? = null) : NewsParagraph()
 }
 
+@Serializable
 enum class ParseStrategy {
     /** Jsoup 手动解析（HTML 标签启发式提取） */
     Manual,

@@ -61,6 +61,7 @@ import timber.log.Timber
 @Composable
 fun VideoScreen(
     viewModel: VideoViewModel = hiltViewModel(),
+    onVideoClick: (FeedCard.Video) -> Unit = {},
 ) {
     var videos by remember { mutableStateOf(listOf<FeedCard.Video>()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -85,7 +86,7 @@ fun VideoScreen(
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
             items(videos) { video ->
-                VideoCardItem(video = video)
+                VideoCardItem(video = video, onClick = { onVideoClick(video) })
             }
 
             if (isLoading) {
@@ -233,11 +234,13 @@ private fun VideoTopBar(currentTab: Int = 3, onTabSelected: (Int) -> Unit = {}) 
 fun VideoCardItem(
     video: FeedCard.Video,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(Color.White)
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         // 视频封面

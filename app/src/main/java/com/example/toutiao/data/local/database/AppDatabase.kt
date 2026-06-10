@@ -4,18 +4,25 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import com.example.toutiao.data.local.dao.FeedDao
+import com.example.toutiao.data.local.dao.NewsContentCacheDao
 import com.example.toutiao.data.local.dao.RemoteKeyDao
 import com.example.toutiao.data.local.entity.FeedItemEntity
+import com.example.toutiao.data.local.entity.NewsContentCacheEntity
 import com.example.toutiao.data.local.entity.RemoteKeyEntity
 
 @Database(
-    entities = [FeedItemEntity::class, RemoteKeyEntity::class],
-    version = 4,
+    entities = [
+        FeedItemEntity::class,
+        RemoteKeyEntity::class,
+        NewsContentCacheEntity::class,
+    ],
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun feedDao(): FeedDao
     abstract fun remoteKeyDao(): RemoteKeyDao
+    abstract fun newsContentCacheDao(): NewsContentCacheDao
 
     /**
      * 跨 DAO 原子事务：同时替换 feed_items 和 remote_keys，确保数据一致性。

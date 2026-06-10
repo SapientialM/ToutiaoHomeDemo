@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.toutiao.data.local.dao.FeedDao
+import com.example.toutiao.data.local.dao.NewsContentCacheDao
 import com.example.toutiao.data.local.dao.RemoteKeyDao
 import com.example.toutiao.data.local.database.AppDatabase
 import dagger.Module
@@ -47,6 +48,22 @@ object DatabaseModule {
         }
     }
 
+    // v4 → v5: 新增 news_content_cache 表（LLM 解析结果持久化）
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS news_content_cache (
+                    source_url TEXT NOT NULL,
+                    content_json TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY(source_url)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -56,7 +73,7 @@ object DatabaseModule {
             "toutiao.db",
         )
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(MIGRATION_1_2, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_3_4, MIGRATION_4_5)
             .fallbackToDestructiveMigration()
             .build()
     }
@@ -71,5 +88,11 @@ object DatabaseModule {
     @Singleton
     fun provideRemoteKeyDao(database: AppDatabase): RemoteKeyDao {
         return database.remoteKeyDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideNewsContentCacheDao(database: AppDatabase): NewsContentCacheDao {
+        return database.newsContentCacheDao()
     }
 }

@@ -39,6 +39,28 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    // 视频/音频资源不压缩，否则 AssetFileDescriptor 读取会失败
+    androidResources {
+        noCompress += listOf("mp4", "webm", "ogg", "mp3", "wav")
+    }
+
+    defaultConfig {
+        // LLM API Key for NewsContentRepository (NewsDetailScreen)
+        // 优先级：local.properties > 环境变量 > 空字符串
+        val localProps = rootProject.file("local.properties")
+        fun readProp(key: String): String = if (localProps.exists()) {
+            localProps.readLines()
+                .firstOrNull { it.startsWith("$key=") }
+                ?.substringAfter("$key=")
+                ?.trim()
+                ?: ""
+        } else ""
+        buildConfigField("String", "LLM_API_KEY", "\"${readProp("LLM_API_KEY")}\"")
+        buildConfigField("String", "LLM_BASE_URL", "\"${readProp("LLM_BASE_URL").ifBlank { "https://api.minimaxi.com/v1" }}\"")
+        buildConfigField("String", "LLM_MODEL", "\"${readProp("LLM_MODEL").ifBlank { "MiniMax-M3" }}\"")
     }
 }
 

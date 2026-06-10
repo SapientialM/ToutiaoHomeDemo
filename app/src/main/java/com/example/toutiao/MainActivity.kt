@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import com.example.toutiao.ui.theme.RedMain
 import com.example.toutiao.presentation.common.AppBottomNav
+import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.detail.NewsDetailScreen
 import com.example.toutiao.presentation.earn.EarnScreen
 import com.example.toutiao.presentation.home.HomeScreen
@@ -45,6 +46,7 @@ import com.example.toutiao.presentation.tools.AllFunctionsScreen
 import com.example.toutiao.presentation.tools.BookshelfScreen
 import com.example.toutiao.presentation.tools.CreatorCenterScreen
 import com.example.toutiao.presentation.tools.HistoryScreen
+import com.example.toutiao.presentation.video.VideoDetailScreen
 import com.example.toutiao.presentation.video.VideoScreen
 import com.example.toutiao.presentation.wallet.WalletScreen
 import com.example.toutiao.ui.theme.ToutiaoFeedDemoTheme
@@ -96,8 +98,12 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
     var subPage by rememberSaveable(stateSaver = SubPage.Saver) {
         mutableStateOf<SubPage?>(null)
     }
+    // 视频详情页目标：null = 不显示。携带完整 FeedCard.Video 数据以便播放。
+    var videoTarget by rememberSaveable(stateSaver = VideoTarget.Saver) {
+        mutableStateOf<VideoTarget?>(null)
+    }
 
-    val isOverlayOpen = detailTarget != null || subPage != null
+    val isOverlayOpen = detailTarget != null || subPage != null || videoTarget != null
 
     Scaffold(
         // MVPTask #1: 让 Scaffold 不强行插入 statusBar inset，让 HomeScreen 内的
@@ -127,16 +133,25 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                     0 -> HomeScreen(
                         viewModel = homeViewModel,
                         onCardClick = { feedCard ->
-                            Timber.d("MainActivity onCardClick — title=${feedCard.title.take(20)}, sourceUrl=${feedCard.sourceUrl}")
-                            feedCard.sourceUrl?.let { url ->
-                                detailTarget = DetailTarget(
-                                    sourceUrl = url,
-                                    fallbackTitle = feedCard.title,
-                                )
-                            } ?: Timber.w("MainActivity onCardClick — no sourceUrl, skip")
+                            Timber.d("MainActivity onCardClick — title=${feedCard.title.take(20)}, sourceUrl=${feedCard.sourceUrl}, type=${feedCard::class.simpleName}")
+                            // video 类型跳视频详情页，其它跳新闻详情页
+                            if (feedCard is FeedCard.Video) {
+                                videoTarget = VideoTarget.fromVideo(feedCard)
+                            } else {
+                                feedCard.sourceUrl?.let { url ->
+                                    detailTarget = DetailTarget(
+                                        sourceUrl = url,
+                                        fallbackTitle = feedCard.title,
+                                    )
+                                } ?: Timber.w("MainActivity onCardClick — no sourceUrl, skip")
+                            }
                         },
                     )
-                    1 -> VideoScreen()
+                    1 -> VideoScreen(
+                        onVideoClick = { video ->
+                            videoTarget = VideoTarget.fromVideo(video)
+                        },
+                    )
                     2 -> EarnScreen()
                     3 -> MallScreen(
                         onOrderClick = { subPage = SubPage.OrderList },
@@ -162,6 +177,14 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                     sourceUrl = target.sourceUrl,
                     fallbackTitle = target.fallbackTitle,
                     onBack = { detailTarget = null },
+                )
+            }
+
+            // 视频详情页层（覆盖在主页之上）
+            videoTarget?.let { target ->
+                VideoDetailScreen(
+                    video = target.toFeedCardVideo(),
+                    onBack = { videoTarget = null },
                 )
             }
 
@@ -217,6 +240,73 @@ data class DetailTarget(
                 else DetailTarget(
                     sourceUrl = it[0] as String,
                     fallbackTitle = (it[1] as String).takeIf { s -> s.isNotEmpty() },
+                )
+            },
+        )
+    }
+}
+
+/**
+ * 视频详情页跳转参数（持久化 FeedCard.Video 关键字段，Activity 重建后能恢复播放状态）
+ */
+data class VideoTarget(
+    val id: String,
+    val title: String,
+    val author: String,
+    val imageUrl: String,
+    val videoUrl: String?,
+    val duration: String?,
+    val publishTime: String,
+    val commentCount: Int,
+) {
+    fun toFeedCardVideo(): FeedCard.Video = FeedCard.Video(
+        id = id,
+        title = title,
+        source = author,
+        commentCount = commentCount,
+        publishTime = publishTime,
+        imageUrl = imageUrl,
+        videoUrl = videoUrl,
+        duration = duration,
+    )
+
+    companion object {
+        fun fromVideo(v: FeedCard.Video): VideoTarget = VideoTarget(
+            id = v.id,
+            title = v.title,
+            author = v.source,
+            imageUrl = v.imageUrl,
+            videoUrl = v.videoUrl,
+            duration = v.duration,
+            publishTime = v.publishTime,
+            commentCount = v.commentCount,
+        )
+
+        val Saver: Saver<VideoTarget?, Any> = listSaver(
+            save = { target ->
+                if (target == null) emptyList()
+                else listOf(
+                    target.id,
+                    target.title,
+                    target.author,
+                    target.imageUrl,
+                    target.videoUrl ?: "",
+                    target.duration ?: "",
+                    target.publishTime,
+                    target.commentCount,
+                )
+            },
+            restore = { list ->
+                if (list.isEmpty()) null
+                else VideoTarget(
+                    id = list[0] as String,
+                    title = list[1] as String,
+                    author = list[2] as String,
+                    imageUrl = list[3] as String,
+                    videoUrl = (list[4] as String).takeIf { it.isNotEmpty() },
+                    duration = (list[5] as String).takeIf { it.isNotEmpty() },
+                    publishTime = list[6] as String,
+                    commentCount = (list[7] as Number).toInt(),
                 )
             },
         )
