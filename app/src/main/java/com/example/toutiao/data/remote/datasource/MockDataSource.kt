@@ -189,12 +189,12 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
         val hasMore = (page + 1) < REAL_MAX_PAGES || endIndex < totalSize
         Timber.d("MockDataSource(real) — channel=$channel, page=$page, total=$totalSize, returned=${pageItems.size}, cycleOffset=$cycleOffset, hasMore=$hasMore")
         val dtoList = pageItems.mapIndexed { index, raw ->
-            mapRealToDto(raw, channel, offset + index)
+            mapRealToDto(raw, channel, page, offset + index)
         }
         return NewsFeedResponse(code = 0, data = NewsFeedData(list = dtoList, hasMore = hasMore))
     }
 
-    private fun mapRealToDto(raw: RawRealNewsItem, channel: String, index: Int): NewsItemDto {
+    private fun mapRealToDto(raw: RawRealNewsItem, channel: String, page: Int, index: Int): NewsItemDto {
         val resolvedImageUrl = if (raw.coverUrl.isNotBlank()) {
             raw.coverUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
         } else null
@@ -206,7 +206,9 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
         // video 类型的 videoUrl 直接用真实 B 站 URL（VideoDetailScreen 用 WebView + bilibili player.html 解析播放）
         val resolvedVideoUrl = if (type == "video") raw.url.takeIf { it.isNotBlank() } else null
         return NewsItemDto(
-            id = "${channel}_${index}_${raw.title.hashCode()}",
+            // id 拼接 page+offset 让循环复用的 item 也不重 id
+            // （LazyColumn items(key = { it.id }) 跳重 id 不显示，必须唯一）
+            id = "${channel}_p${page}_${index}_${raw.title.hashCode()}",
             type = type,
             title = raw.title,
             source = resolvedSource,
@@ -272,7 +274,9 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     companion object {
         // 真实数据循环复用上限：每个频道最多加载 50 页 = 1000 条，
         // 避免 Room 表无限增长。下拉刷新触发 REFRESH 重新加载。
-        private const val REAL_MAX_PAGES = 50
+        // 真实数据循环复用上限：每个频道最多加载 1000 页 = 20000 条
+        // （足够滑几十分钟；下拉刷新触发 REFRESH 重新加载）
+        private const val REAL_MAX_PAGES = 1000
     }
 
     // ── JSON 加载 ──────────────────────────────────────────────────────────────

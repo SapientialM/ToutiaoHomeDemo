@@ -7,7 +7,6 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.MediaController
-import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -53,6 +52,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.example.toutiao.data.remote.datasource.CommentDataSource
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.comment.CommentSection
+import com.example.toutiao.presentation.common.LocalAppToastHost
 import com.example.toutiao.ui.theme.RedMain
 import timber.log.Timber
 
@@ -74,15 +74,16 @@ fun VideoDetailScreen(
     commentDataSource: CommentDataSource? = null,
 ) {
     val context = LocalContext.current
+    val toast = LocalAppToastHost.current
     val bvid = remember(video.videoUrl) { extractBvid(video.videoUrl) }
     val useWebView = bvid != null
     var isFullScreen by remember { mutableStateOf(false) }
     var videoError by remember { mutableStateOf<String?>(null) }
 
-    // 错误时 toast 提示
+    // 错误时 toast 提示（ToC 化文案）
     LaunchedEffect(videoError) {
         videoError?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            toast.showError("视频暂时无法播放，请检查网络或稍后再试")
             videoError = null
         }
     }

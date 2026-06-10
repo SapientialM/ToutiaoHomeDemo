@@ -62,10 +62,10 @@ class NewsRepositoryImpl @Inject constructor(
         Timber.d("getFeedPagingData — creating Pager for channel=$channel")
         return Pager(
             config = PagingConfig(
-                pageSize = 20,
-                prefetchDistance = 5,
+                pageSize = 100,                 // 一次加载整批（每频道 100 条正好）
+                prefetchDistance = 20,          // 距底 20 条触发
                 enablePlaceholders = false,
-                initialLoadSize = 40,
+                initialLoadSize = 100,          // 首次加载 100 条
             ),
             remoteMediator = NewsRemoteMediator(
                 channel = channel,

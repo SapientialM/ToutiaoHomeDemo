@@ -70,11 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.widget.Toast
 import coil.compose.AsyncImage
 import com.example.toutiao.domain.model.NewsContent
 import com.example.toutiao.domain.model.NewsParagraph
 import com.example.toutiao.domain.repository.NewsContentRepository
+import com.example.toutiao.presentation.common.LocalAppToastHost
 import com.example.toutiao.presentation.common.rememberImageError
 import com.example.toutiao.presentation.common.rememberImagePlaceholder
 import com.example.toutiao.ui.theme.RedMain
@@ -163,6 +163,7 @@ private fun ContentState(
     var isFavorited by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val toast = LocalAppToastHost.current
 
     val comments by commentDataSource.observe(content.sourceUrl)
         .collectAsState(initial = commentDataSource.get(content.sourceUrl))
@@ -312,7 +313,7 @@ private fun ContentState(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(Color(0xFFFFE0DC))
-                                .clickable { Toast.makeText(context, "已参与", Toast.LENGTH_SHORT).show() }
+                                .clickable { toast.showInfo("已加入讨论") }
                                 .padding(horizontal = 12.dp, vertical = 6.dp),
                         ) {
                             Text("去发布", color = RedMain, fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -349,7 +350,7 @@ private fun ContentState(
                     comment = comment,
                     onLikeClick = {
                         commentDataSource.likeComment(content.sourceUrl, comment.id)
-                        Toast.makeText(context, "👍 感谢支持", Toast.LENGTH_SHORT).show()
+                        toast.showSuccess("感谢支持你的精彩评论")
                     },
                 )
             }
@@ -385,29 +386,21 @@ private fun ContentState(
             onCommentClick = {
                 val text = inputText.trim()
                 if (text.isBlank()) {
-                    Toast.makeText(context, "请先输入评论内容", Toast.LENGTH_SHORT).show()
+                    toast.showWarning("写点什么再发布吧")
                 } else {
                     commentDataSource.addComment(content.sourceUrl, text)
                     inputText = ""
-                    Toast.makeText(context, "发布成功", Toast.LENGTH_SHORT).show()
+                    toast.showSuccess("评论发布成功")
                 }
             },
             onLikeClick = {
                 isLiked = !isLiked
-                Toast.makeText(
-                    context,
-                    if (isLiked) "已点赞" else "已取消点赞",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                toast.showInfo(if (isLiked) "已点赞，感谢你的支持" else "已取消点赞")
             },
-            onShareClick = { Toast.makeText(context, "分享功能开发中", Toast.LENGTH_SHORT).show() },
+            onShareClick = { toast.showInfo("分享功能正在完善中，先收藏一下吧") },
             onFavoriteClick = {
                 isFavorited = !isFavorited
-                Toast.makeText(
-                    context,
-                    if (isFavorited) "已收藏" else "已取消收藏",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                toast.showInfo(if (isFavorited) "已收藏，可在「我的」查看" else "已取消收藏")
             },
         )
     }
@@ -499,6 +492,7 @@ private fun ParagraphView(
 @Composable
 private fun DetailTopBar(onBack: () -> Unit, byLlm: Boolean) {
     val context = LocalContext.current
+    val toast = LocalAppToastHost.current
     var showMoreMenu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -540,9 +534,9 @@ private fun DetailTopBar(onBack: () -> Unit, byLlm: Boolean) {
             }
             Spacer(Modifier.width(8.dp))
         }
-        // 分享按钮：弹 toast 模拟分享
+        // 分享按钮：弹 toast 提示（开发中）
         IconButton(
-            onClick = { Toast.makeText(context, "分享功能开发中", Toast.LENGTH_SHORT).show() },
+            onClick = { toast.showInfo("分享功能正在完善中，先收藏一下吧") },
             modifier = Modifier.size(40.dp),
         ) {
             Icon(
@@ -572,7 +566,7 @@ private fun DetailTopBar(onBack: () -> Unit, byLlm: Boolean) {
                     leadingIcon = { Icon(Icons.Filled.Bookmark, null) },
                     onClick = {
                         showMoreMenu = false
-                        Toast.makeText(context, "已收藏", Toast.LENGTH_SHORT).show()
+                        toast.showSuccess("已收藏，可在「我的」查看")
                     },
                 )
                 DropdownMenuItem(
@@ -580,7 +574,7 @@ private fun DetailTopBar(onBack: () -> Unit, byLlm: Boolean) {
                     leadingIcon = { Icon(Icons.Outlined.Link, null) },
                     onClick = {
                         showMoreMenu = false
-                        Toast.makeText(context, "链接已复制", Toast.LENGTH_SHORT).show()
+                        toast.showSuccess("链接已复制到剪贴板")
                     },
                 )
                 DropdownMenuItem(
@@ -588,7 +582,7 @@ private fun DetailTopBar(onBack: () -> Unit, byLlm: Boolean) {
                     leadingIcon = { Icon(Icons.Outlined.NoFood, null) },
                     onClick = {
                         showMoreMenu = false
-                        Toast.makeText(context, "已减少此类推荐", Toast.LENGTH_SHORT).show()
+                        toast.showInfo("已为你减少此类推荐")
                     },
                 )
                 DropdownMenuItem(
@@ -596,7 +590,7 @@ private fun DetailTopBar(onBack: () -> Unit, byLlm: Boolean) {
                     leadingIcon = { Icon(Icons.Outlined.VisibilityOff, null) },
                     onClick = {
                         showMoreMenu = false
-                        Toast.makeText(context, "已屏蔽该作者", Toast.LENGTH_SHORT).show()
+                        toast.showInfo("已屏蔽该作者的内容")
                     },
                 )
                 DropdownMenuItem(
@@ -604,7 +598,7 @@ private fun DetailTopBar(onBack: () -> Unit, byLlm: Boolean) {
                     leadingIcon = { Icon(Icons.Outlined.Report, null) },
                     onClick = {
                         showMoreMenu = false
-                        Toast.makeText(context, "举报已提交", Toast.LENGTH_SHORT).show()
+                        toast.showSuccess("感谢反馈，我们会尽快处理")
                     },
                 )
             }
@@ -839,9 +833,10 @@ private fun ErrorState(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    // 错误 toast 提示
+    val toast = LocalAppToastHost.current
+    // 错误 toast 提示（ToC 化文案）
     LaunchedEffect(message) {
-        Toast.makeText(context, "内容加载失败：$message", Toast.LENGTH_LONG).show()
+        toast.showError("内容加载失败，请检查网络后重试")
     }
     Column(
         modifier = Modifier

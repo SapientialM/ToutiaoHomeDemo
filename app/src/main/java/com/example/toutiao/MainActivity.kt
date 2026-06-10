@@ -65,6 +65,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var commentDataSource: com.example.toutiao.data.remote.datasource.CommentDataSource
 
+    // 全局 Toast 总线（CommentDataSource 同生命周期，比 ViewModel 持久）
+    private val appToastHost by lazy { com.example.toutiao.presentation.common.AppToastHost() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // MVPTask #1: 让红色 topbar 铺到状态栏
@@ -83,7 +86,11 @@ class MainActivity : ComponentActivity() {
         window.decorView.fitsSystemWindows = false
         setContent {
             ToutiaoFeedDemoTheme {
-                AppRoot(homeViewModel = viewModel, commentDataSource = commentDataSource)
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.example.toutiao.presentation.common.LocalAppToastHost provides appToastHost
+                ) {
+                    AppRoot(homeViewModel = viewModel, commentDataSource = commentDataSource)
+                }
             }
         }
     }
@@ -131,6 +138,8 @@ private fun AppRoot(homeViewModel: HomeViewModel, commentDataSource: com.example
         containerColor = Color(0xFFF5F5F5),
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            // 全局 Toast 覆盖层（顶部条幅）
+            com.example.toutiao.presentation.common.ToastHost()
             // 主页面层
             AnimatedContent(
                 targetState = selectedBottomNav,

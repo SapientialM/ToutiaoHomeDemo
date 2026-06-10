@@ -50,6 +50,7 @@ class NewsRemoteMediator(
         loadType: LoadType,
         state: PagingState<Int, FeedItemEntity>,
     ): MediatorResult {
+        val pageSize = state.config.pageSize  // 用 Pager 实际配置的 pageSize
         val page = when (loadType) {
             LoadType.REFRESH -> 0
             LoadType.PREPEND -> {
@@ -64,7 +65,7 @@ class NewsRemoteMediator(
 
         try {
             Timber.d("NewsRemoteMediator.load — loadType=$loadType, channel=$channel, page=$page")
-            val response = remoteDataSource.getNewsFeed(channel = channel, page = page)
+            val response = remoteDataSource.getNewsFeed(channel = channel, page = page, size = pageSize)
             Timber.d("NewsRemoteMediator.load — response code=${response.code}, items=${response.data.list.size}, hasMore=${response.data.hasMore}")
 
             if (response.code != 0) {

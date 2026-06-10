@@ -1,6 +1,5 @@
 package com.example.toutiao.presentation.comment
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.toutiao.data.remote.datasource.Comment
 import com.example.toutiao.data.remote.datasource.CommentDataSource
+import com.example.toutiao.presentation.common.LocalAppToastHost
 import com.example.toutiao.ui.theme.RedMain
 import kotlinx.coroutines.flow.collectLatest
 
@@ -65,6 +65,7 @@ fun CommentSection(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val toast = LocalAppToastHost.current
     val comments by commentDataSource.observe(newsId).collectAsState(initial = commentDataSource.get(newsId))
     var inputText by remember { mutableStateOf("") }
     var inputExpanded by remember { mutableStateOf(false) }
@@ -114,7 +115,7 @@ fun CommentSection(
                         comment = comment,
                         onLikeClick = {
                             commentDataSource.likeComment(newsId, comment.id)
-                            Toast.makeText(context, "👍 感谢支持", Toast.LENGTH_SHORT).show()
+                            toast.showSuccess("感谢支持你的精彩评论")
                         },
                     )
                 }
@@ -131,12 +132,12 @@ fun CommentSection(
             onSend = {
                 val text = inputText.trim()
                 if (text.isBlank()) {
-                    Toast.makeText(context, "评论内容不能为空", Toast.LENGTH_SHORT).show()
+                    toast.showWarning("写点什么再发布吧")
                 } else {
                     commentDataSource.addComment(newsId, text)
                     inputText = ""
                     inputExpanded = false
-                    Toast.makeText(context, "发布成功", Toast.LENGTH_SHORT).show()
+                    toast.showSuccess("评论发布成功")
                 }
             },
         )
