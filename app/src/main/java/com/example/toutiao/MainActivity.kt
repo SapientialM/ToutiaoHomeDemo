@@ -5,6 +5,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import javax.inject.Inject
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
@@ -32,6 +33,7 @@ import com.example.toutiao.ui.theme.RedMain
 import com.example.toutiao.presentation.common.AppBottomNav
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.detail.NewsDetailScreen
+import com.example.toutiao.data.remote.datasource.CommentDataSource
 import com.example.toutiao.presentation.earn.EarnScreen
 import com.example.toutiao.presentation.home.HomeScreen
 import com.example.toutiao.presentation.home.HomeUiState
@@ -60,6 +62,9 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: HomeViewModel by viewModels()
 
+    @Inject
+    lateinit var commentDataSource: com.example.toutiao.data.remote.datasource.CommentDataSource
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // MVPTask #1: 让红色 topbar 铺到状态栏
@@ -78,7 +83,7 @@ class MainActivity : ComponentActivity() {
         window.decorView.fitsSystemWindows = false
         setContent {
             ToutiaoFeedDemoTheme {
-                AppRoot(homeViewModel = viewModel)
+                AppRoot(homeViewModel = viewModel, commentDataSource = commentDataSource)
             }
         }
     }
@@ -90,7 +95,7 @@ class MainActivity : ComponentActivity() {
  * subPage 当前支持: 消息中心 (从我的页 消息图标进入)
  */
 @Composable
-private fun AppRoot(homeViewModel: HomeViewModel) {
+private fun AppRoot(homeViewModel: HomeViewModel, commentDataSource: com.example.toutiao.data.remote.datasource.CommentDataSource) {
     var selectedBottomNav by rememberSaveable { mutableIntStateOf(0) }
     // 新闻详情页状态：null = 不显示详情页
     var detailTarget by rememberSaveable(stateSaver = DetailTarget.Saver) {
@@ -195,6 +200,7 @@ private fun AppRoot(homeViewModel: HomeViewModel) {
                 VideoDetailScreen(
                     video = target.toFeedCardVideo(),
                     onBack = { videoTarget = null },
+                    commentDataSource = commentDataSource,
                 )
             }
 

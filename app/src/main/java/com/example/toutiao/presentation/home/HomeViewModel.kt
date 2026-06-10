@@ -94,7 +94,17 @@ class HomeViewModel @Inject constructor(
         when (event) {
             is HomeUiEvent.OnTabSelected -> switchTab(event.tab)
             is HomeUiEvent.OnRefresh -> {
-                Timber.d("OnRefresh — will be handled by UI layer (lazyPagingItems.refresh())")
+                // 假刷新：1.5s loading 状态后自动结束
+                Timber.d("OnRefresh — fake refresh 1.5s")
+                viewModelScope.launch {
+                    _uiState.update {
+                        if (it is HomeUiState.Success) it.copy(isRefreshing = true) else it
+                    }
+                    kotlinx.coroutines.delay(1500L)
+                    _uiState.update {
+                        if (it is HomeUiState.Success) it.copy(isRefreshing = false) else it
+                    }
+                }
             }
             is HomeUiEvent.OnLoadMore -> {
                 Timber.d("OnLoadMore — handled automatically by Paging3")

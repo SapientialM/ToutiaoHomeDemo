@@ -3,6 +3,7 @@ package com.example.toutiao.presentation.detail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.toutiao.data.remote.datasource.CommentDataSource
 import com.example.toutiao.domain.model.NewsContent
 import com.example.toutiao.domain.repository.NewsContentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +25,7 @@ import javax.inject.Inject
 @HiltViewModel
 class NewsDetailViewModel @Inject constructor(
     private val newsContentRepository: NewsContentRepository,
+    val commentDataSource: CommentDataSource,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 

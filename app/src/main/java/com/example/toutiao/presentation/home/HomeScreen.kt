@@ -282,6 +282,7 @@ private fun HomeScreenContent(
                                 onScrollProgressChange = { visibleCount ->
                                     scrolledPastFirstCard = visibleCount >= 2
                                 },
+                                fakeRefreshing = successState?.isRefreshing == true,
                                 modifier = Modifier.fillMaxSize(),
                             )
                             }
@@ -320,11 +321,14 @@ private fun PagingFeedList(
     onCardClick: (FeedCard) -> Unit,
     channelKey: String,
     onScrollProgressChange: (Int) -> Unit = {},
+    fakeRefreshing: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val refreshLoadState = lazyPagingItems.loadState.refresh
-    val isRefreshing = refreshLoadState is LoadState.Loading && lazyPagingItems.itemCount > 0
-    val isInitialLoading = refreshLoadState is LoadState.Loading && lazyPagingItems.itemCount == 0
+    // isRefreshing 合并：Paging 真实刷新 + 假刷新
+    val pagingRefreshing = refreshLoadState is LoadState.Loading && lazyPagingItems.itemCount > 0
+    val isRefreshing = pagingRefreshing || fakeRefreshing
+    val isInitialLoading = !fakeRefreshing && refreshLoadState is LoadState.Loading && lazyPagingItems.itemCount == 0
     val isEmpty = refreshLoadState is LoadState.NotLoading && lazyPagingItems.itemCount == 0
     val isError = refreshLoadState is LoadState.Error && lazyPagingItems.itemCount == 0
     val errorMessage = (refreshLoadState as? LoadState.Error)?.error?.message ?: "加载失败"
@@ -435,7 +439,9 @@ private fun PagingFeedList(
         else -> {
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
-                onRefresh = { lazyPagingItems.refresh() },
+                // Task 7: 假刷新 — 仅触发 OnRefresh 事件（ViewModel 内 1.5s loading 状态），
+                // 不实际调 lazyPagingItems.refresh()，避免每次下拉都重新拉数据
+                onRefresh = { onEvent(HomeUiEvent.OnRefresh) },
                 modifier = modifier,
             ) {
                 LazyColumn(
@@ -856,8 +862,23 @@ private fun PagingFeedList(
                             }
                         }
                         // MVPTask #3: 资讯速递卡片（蓝色水滴 + 标题 + 大图）
+                        // 点击进入详情页：跳到 2026 高考搜索页（todo 后续接真实 articleId）
                         item(key = "recommend_flash") {
-                            RecommendFlashCard()
+                            RecommendFlashCard(
+                                onClick = {
+                                    onCardClick(
+                                        FeedCard.LeftTextRightImage(
+                                            id = "flash_gaokao_2026",
+                                            title = "速递！2026 高考作文题来了，专家在线深度拆解",
+                                            source = "今日头条热榜",
+                                            commentCount = 1203,
+                                            publishTime = "1小时前",
+                                            imageUrl = "https://p3-sign.toutiaoimg.com/pgc-image/04ca3b2c5d6c4f6d2a8a6f7c4d1b9e7a~noop.image",
+                                            sourceUrl = "https://so.toutiao.com/search?keyword=2026高考作文题",
+                                        )
+                                    )
+                                },
+                            )
                         }
                     }
                     // 顶部 header 区域：MVPTask #5 「上次看到这里」断点续读
