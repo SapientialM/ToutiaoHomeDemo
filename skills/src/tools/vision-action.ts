@@ -34,7 +34,7 @@ interface StepResult {
 
 let cachedScreen: { width: number; height: number } | null = null;
 
-async function getScreenSize(): Promise<{ width: number; height: number }> {
+export async function getScreenSize(): Promise<{ width: number; height: number }> {
   if (cachedScreen) return cachedScreen;
   try {
     const { stdout } = await execAsyncWithTimeout("adb shell wm size", { timeout: 5000 });

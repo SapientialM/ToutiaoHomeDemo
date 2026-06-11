@@ -27,6 +27,16 @@ import { handleApkMetadata } from "./tools/apk-metadata.js";
 import { handleScreenshotRegion } from "./tools/screenshot-region.js";
 import { handleSetOrientation, handleSetGps, handleAnimationScale } from "./tools/device-control.js";
 import { handleExtractDesignSpec, handleExtractDesignTokens, handleExtractComponents, handleListDesignFiles, handleDesignToCompose } from "./tools/design-spec.js";
+import {
+  handlePmReview,
+  handlePmExplore,
+  handlePmCompareWithDesign,
+  handlePmMarkFixed,
+  handleDumpUi,
+  handlePmDiscuss,
+  handlePmCheck,
+  handlePmGetMemory,
+} from "./tools/pm.js";
 import { log, error } from "./utils/logger.js";
 
 const server = new Server(
@@ -717,6 +727,106 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["imagePath"],
         },
       },
+
+      // ════════════════════════════════════════════════════════════
+      // PM Agent 工具（AI 产品经理协作）
+      // ════════════════════════════════════════════════════════════
+      {
+        name: "pm_review",
+        description: "单次截图 + VLM 审查，产出结构化 issue 报告。适合快速审查单个页面。返回 JSON: {success, review_id, overall_rating, summary, thinking_process, issues[], positives[], next_priorities[]}。耗时 slow (10-30s)。示例：pm_review({ target: '首页推荐' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            target: { type: "string", description: "可选。审查目标页面名称，默认'首页列表'" },
+            focus: { type: "array", items: { type: "string" }, description: "可选。重点关注维度字符串数组" },
+            screenshotPath: { type: "string", description: "可选。已有截图路径，省略则自动截图" },
+          },
+        },
+      },
+      {
+        name: "pm_explore",
+        description: "多步自主探索（6-12 步），PM 自主调度设备操作工具，逐个页面审查后汇总。适合深度审查。返回 JSON: {success, explore_id, overall_rating, summary, thinking_process, issues[], positives[], steps_taken, elapsed_ms}。耗时 slow (1-5 分钟)。示例：pm_explore({ goal: '审查首页财经频道', maxSteps: 8 })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            goal: { type: "string", description: "可选。探索目标描述，默认'审查当前页面的可用性和设计'" },
+            maxSteps: { type: "number", description: "可选。最大步数 1-12，默认 6" },
+          },
+        },
+      },
+      {
+        name: "pm_compare_with_design",
+        description: "设计稿 vs 实现的像素 diff + LLM 分析。需要 MINIMAX_API_KEY。返回 JSON: {success, design, impl, pixel_diff, llm_analysis}。耗时 slow (5-20s)。示例：pm_compare_with_design({ designPath: 'design/首页-推荐.jpg' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            designPath: { type: "string", description: "Required. 设计稿路径" },
+            implScreenshotPath: { type: "string", description: "可选。当前实现截图路径，省略则自动截图" },
+          },
+          required: ["designPath"],
+        },
+      },
+      {
+        name: "pm_mark_fixed",
+        description: "标记 issue 修复状态（fixed/ignored/reopen）。同步更新 .pm_memory.json 和 .pm_state.json。返回 JSON: {success, action, issue_id, fixed_count, ignored_count}。示例：pm_mark_fixed({ issueId: 'ISSUE-001', action: 'fixed', note: '已修复 Tab padding' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            issueId: { type: "string", description: "Required. Issue ID" },
+            action: { type: "string", enum: ["fixed", "ignored", "reopen"], description: "可选。操作类型，默认 fixed" },
+            note: { type: "string", description: "可选。备注说明" },
+          },
+          required: ["issueId"],
+        },
+      },
+      {
+        name: "pm_discuss",
+        description: "与项目 PM 讨论产品问题、设计规范或修复方案。PM 拥有完整的项目记忆（历史审查记录、已修复问题、设计稿规范、对话上下文），能基于多轮上下文给出具体可执行的建议。适合在收到 pm_review / pm_explore 报告后追问细节，或在开发过程中随时咨询设计规范。返回 JSON: {success, answer, memory_summary}。示例：pm_discuss({ question: 'ISSUE-001 应该怎么修？', context: '正在修改 HomeScreen.kt' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            question: { type: "string", description: "Required. 你的问题" },
+            context: { type: "string", description: "可选。当前开发上下文" },
+            include_history: { type: "boolean", description: "是否携带最近对话历史，默认 true", default: true },
+            include_screenshot: { type: "boolean", description: "是否让 PM 先截图当前页面再回答，默认 false", default: false },
+          },
+          required: ["question"],
+        },
+      },
+      {
+        name: "pm_check",
+        description: "验证指定 issue 是否已修复。PM 会截图当前页面，对比该 issue 的原始描述，判断是否仍存在。若修复成功，自动更新 pm_memory.json 中的 issue 状态。适合在 Claude Code 修改代码后快速验证。返回 JSON: {success, issue_id, fixed, confidence, note, remaining_concerns, auto_marked}。示例：pm_check({ issue_id: 'ISSUE-001' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            issue_id: { type: "string", description: "Required. 要验证的 issue ID" },
+            target: { type: "string", description: "可选。当前页面名称" },
+            auto_mark_fixed: { type: "boolean", description: "验证通过后是否自动标记为 fixed，默认 true", default: true },
+          },
+          required: ["issue_id"],
+        },
+      },
+      {
+        name: "pm_get_memory",
+        description: "查询 PM 的项目记忆。可获取历史审查记录、当前 open issues、已修复问题、设计规范摘要等。适合在开始新任务前了解项目当前状态。返回 JSON: {success, scope, ...}。示例：pm_get_memory({ scope: 'overview' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            scope: { type: "string", enum: ["overview", "open_issues", "fixed_issues", "design_specs", "last_review", "discussions"], description: "查询范围，默认 overview", default: "overview" },
+            channel: { type: "string", description: "可选。按频道过滤" },
+          },
+        },
+      },
+      {
+        name: "dump_ui",
+        description: "UI 层级结构化导出（JSON 格式），含 type/text/resource-id/bounds/clickable 等。返回 JSON: {success, dump_path, node_count, nodes[]}。耗时 fast (~800ms)。示例：dump_ui({})",
+        inputSchema: {
+          type: "object",
+          properties: {
+            savePath: { type: "string", description: "可选。保存路径" },
+          },
+        },
+      },
     ],
   };
 });
@@ -857,6 +967,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "design_to_compose":
         return handleDesignToCompose(args as Record<string, unknown>);
 
+      // PM Agent 工具
+      case "pm_review":
+        return handlePmReview(args as Record<string, unknown>);
+      case "pm_explore":
+        return handlePmExplore(args as Record<string, unknown>);
+      case "pm_compare_with_design":
+        return handlePmCompareWithDesign(args as Record<string, unknown>);
+      case "pm_mark_fixed":
+        return handlePmMarkFixed(args as Record<string, unknown>);
+      case "pm_discuss":
+        return handlePmDiscuss(args as Record<string, unknown>);
+      case "pm_check":
+        return handlePmCheck(args as Record<string, unknown>);
+      case "pm_get_memory":
+        return handlePmGetMemory(args as Record<string, unknown>);
+      case "dump_ui":
+        return handleDumpUi(args as Record<string, unknown>);
+
       default:
         error(`Unknown tool: ${name}`);
         return {
@@ -878,7 +1006,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   log("AndroidDev-Assist MCP Server v3.1.0 running on stdio");
-  log("Capabilities: 49 tools across 16 categories: screenshot/interaction/hierarchy/build/deploy/verify/vision/logs/device/apps/performance/control/quality/test/report/design");
+  log("Capabilities: 56 tools across 17 categories: screenshot/interaction/hierarchy/build/deploy/verify/vision/logs/device/apps/performance/control/quality/test/report/design/pm-agent");
 
   const shutdown = async (signal: string) => {
     log(`Received ${signal}, shutting down gracefully...`);

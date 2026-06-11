@@ -1,0 +1,110 @@
+{
+  "$schema": "./pm_memory_schema.json",
+  "project": {
+    "name": "ToutiaoFeedDemo",
+    "package_name": "com.example.toutiao",
+    "main_activity": "MainActivity",
+    "version": "1.0.0"
+  },
+  "design_specs": {
+    "sources": [
+      "design/首页-推荐.jpg",
+      "design/首页-财经.jpg",
+      "design/首页-视频.jpg",
+      "design/视频-精选.jpg",
+      "design/商城界面.jpg",
+      "design/详情页评论01.jpg",
+      "design/详情页评论02.jpg",
+      "design/详情页评论03.jpg"
+    ],
+    "tokens": {
+      "tab_indicator_padding": "6dp",
+      "tab_selected_font": "16sp Bold",
+      "tab_unselected_font": "15sp Regular",
+      "tab_selected_color": "#FFD81E06",
+      "card_spacing": "8dp",
+      "title_font_large": "17sp Medium",
+      "title_font_normal": "16sp Regular",
+      "stock_index_number_font": "22sp Bold",
+      "bottom_nav_height": "56dp"
+    }
+  },
+  "reviews": [
+    {
+      "review_id": "rev-migrated-1781147141478",
+      "timestamp": "2026-06-11T03:05:41.479Z",
+      "tool": "migration",
+      "target": "历史修复记录",
+      "overall_rating": "B",
+      "issues": [
+        {
+          "issue_id": "MIGRATED-001",
+          "severity": "medium",
+          "category": "ui_bug",
+          "description": "修 MockDataSource.filterByChannel：novel 频道类别从【小说/文学/文化/读书/故事】扩展为加【推荐/娱乐/科技】，适配新数据源 2400+ 条 mock；shenzhen/discover/changting 同样加宽兜底。重启后小说频道正常显示书架 + 排行榜 + 猜你喜欢",
+          "location": "",
+          "design_ref": "",
+          "status": "fixed",
+          "fixed_at": "2026-06-08T16:01:28.987Z",
+          "verified_by": "migration",
+          "verified_at": "2026-06-11T03:05:41.478Z"
+        },
+        {
+          "issue_id": "ISSUE-003-tab-truncation",
+          "severity": "medium",
+          "category": "ui_bug",
+          "description": "HomeScreen.kt 的 ScrollableTabRow 用 Modifier.drawWithContent 加 28dp 右边缘白色渐变，提示 Tab 可向右滚动",
+          "location": "",
+          "design_ref": "",
+          "status": "fixed",
+          "fixed_at": "2026-06-08T16:01:42.011Z",
+          "verified_by": "migration",
+          "verified_at": "2026-06-11T03:05:41.479Z"
+        },
+        {
+          "issue_id": "ISSUE-001-author-row-fade",
+          "severity": "medium",
+          "category": "ui_bug",
+          "description": "HotAuthorsRow.kt 的 LazyRow 用 Modifier.drawWithContent 加 28dp 右边缘白色渐变，仅 canScrollForward=true 时显示",
+          "location": "",
+          "design_ref": "",
+          "status": "fixed",
+          "fixed_at": "2026-06-08T16:01:42.187Z",
+          "verified_by": "migration",
+          "verified_at": "2026-06-11T03:05:41.479Z"
+        },
+        {
+          "issue_id": "ISSUE-002-meta-format",
+          "severity": "medium",
+          "category": "ui_bug",
+          "description": "新增 presentation/common/Formatters.kt，compactCount (<10K 千分逗号 / >=10K X.X万) + relativeTime (刚刚/X分钟前/X小时前) + metaLine 三件套，HotAuthorsRow 用 Formatters.metaLine 统一来源·时间·评论数格式",
+          "location": "",
+          "design_ref": "",
+          "status": "fixed",
+          "fixed_at": "2026-06-08T16:12:12.076Z",
+          "verified_by": "migration",
+          "verified_at": "2026-06-11T03:05:41.479Z"
+        },
+        {
+          "issue_id": "ISSUE-004-chevron",
+          "severity": "medium",
+          "category": "ui_bug",
+          "description": "HotAuthorsRow 头部「查看全部」加 Row 包裹 + KeyboardArrowRight chevron + 浅红 #FF7B7B 文字色，提高可点击性视觉暗示",
+          "location": "",
+          "design_ref": "",
+          "status": "fixed",
+          "fixed_at": "2026-06-08T16:12:12.256Z",
+          "verified_by": "migration",
+          "verified_at": "2026-06-11T03:05:41.479Z"
+        }
+      ],
+      "positives": []
+    }
+  ],
+  "issue_counter": 5,
+  "current_focus": {
+    "channel": "recommend",
+    "page": "首页推荐",
+    "last_review_id": null
+  }
+}

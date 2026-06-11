@@ -1,3 +1,21 @@
+import {
+  activeProvider,
+  callVisionLlm,
+  designToComposeSkeleton,
+  encodeImageAsDataUrl,
+  error,
+  execAsyncWithTimeout,
+  extractColorTokens,
+  extractComponents,
+  extractDesignSpec,
+  fileExists,
+  getActiveProvider,
+  log,
+  makeInsecureFetch,
+  smartResizeForVision,
+  spawnCommand
+} from "./chunk-JRWUD5FU.js";
+
 // src/server.ts
 import { config as loadEnv } from "dotenv";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -9,17 +27,6 @@ import { exec as execCb, spawn as spawnCb } from "child_process";
 import { promisify } from "util";
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname } from "path";
-
-// src/utils/logger.ts
-var LOG_PREFIX = "[android-dev-assist]";
-function log(...args) {
-  console.error(LOG_PREFIX, ...args);
-}
-function error(...args) {
-  console.error(LOG_PREFIX, "[ERROR]", ...args);
-}
-
-// src/utils/adb.ts
 var execAsync = promisify(execCb);
 var SCREENSHOT_DIR = process.env.SCREENSHOT_DIR || "./screenshots";
 var deviceChecked = false;
@@ -163,79 +170,6 @@ async function handleScreenshot(args) {
       content: [{ type: "text", text: JSON.stringify({ success: false, error: String(err) }) }]
     };
   }
-}
-
-// src/utils/exec.ts
-import { exec as execCb2 } from "child_process";
-import { promisify as promisify2 } from "util";
-import { existsSync } from "fs";
-var execAsync2 = promisify2(execCb2);
-async function fileExists(path4) {
-  return existsSync(path4);
-}
-async function execAsyncWithTimeout(command, options = {}) {
-  const timeout = options.timeout || 3e4;
-  log(`exec: ${command} (timeout: ${timeout}ms)`);
-  try {
-    const result = await execAsync2(command, {
-      cwd: options.cwd,
-      timeout,
-      maxBuffer: 1024 * 1024
-      // 1MB buffer
-    });
-    return {
-      stdout: result.stdout || "",
-      stderr: result.stderr || ""
-    };
-  } catch (e) {
-    const err = e;
-    if (err.killed) {
-      throw new Error(`Command timed out after ${timeout}ms: ${command}`);
-    }
-    return {
-      stdout: err.stdout || "",
-      stderr: err.stderr || err.message || ""
-    };
-  }
-}
-async function spawnCommand(command, args, options = {}) {
-  const { spawn } = await import("child_process");
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: options.cwd,
-      shell: true
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      reject(new Error(`Command timed out after ${options.timeout || 3e4}ms`));
-    }, options.timeout || 3e4);
-    child.stdout?.on("data", (data) => {
-      stdout += data.toString();
-    });
-    child.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (!timedOut) {
-        resolve({
-          stdout,
-          stderr,
-          exitCode: code || 0
-        });
-      }
-    });
-    child.on("error", (err) => {
-      clearTimeout(timeout);
-      if (!timedOut) {
-        reject(err);
-      }
-    });
-  });
 }
 
 // src/utils/adb-enhanced.ts
@@ -876,576 +810,14 @@ async function handleClearLogs(args) {
 }
 
 // src/tools/analyze.ts
-import path2 from "path";
+import path from "path";
 import { fileURLToPath } from "url";
 
 // src/tools/vision-analyze.ts
-import OpenAI2 from "openai";
-import fs3 from "fs";
-
-// src/utils/design-extractor.ts
 import OpenAI from "openai";
-import https from "https";
-import { URL } from "url";
 import fs2 from "fs";
-import path from "path";
-import { statSync } from "fs";
-var PROVIDERS = {
-  minimax: {
-    provider: "minimax",
-    baseURL: "https://api.minimaxi.com/v1",
-    apiKeyEnv: "MINIMAX_API_KEY",
-    defaultModel: "MiniMax-M3",
-    availableModels: [
-      { id: "MiniMax-M3", tps: 60, thinking: true, description: "\u6700\u65B0 M \u7CFB\u5217\uFF0C1M \u4E0A\u4E0B\u6587\uFF0C\u53EF\u5173 thinking \u52A0\u901F" },
-      { id: "MiniMax-M2.7", tps: 60, thinking: true, description: "M2.7\uFF0C\u5F00\u542F self-iteration\uFF0Cthinking \u4E0D\u80FD\u5173" },
-      { id: "MiniMax-M2.7-highspeed", tps: 100, thinking: true, description: "M2.7 \u6781\u901F\u7248\uFF08100 TPS\uFF09\uFF0Cthinking \u4E0D\u80FD\u5173" },
-      { id: "MiniMax-M2.5-highspeed", tps: 100, thinking: true, description: "M2.5 \u6781\u901F\u7248\uFF08100 TPS\uFF09" }
-    ],
-    insecureEnvVar: "MINIMAX_INSECURE_TLS"
-  }
-};
-function activeProvider() {
-  const p = process.env.VISION_PROVIDER || "minimax";
-  if (!PROVIDERS[p]) {
-    throw new Error(`Unknown VISION_PROVIDER: ${p}. Available: ${Object.keys(PROVIDERS).join(", ")}`);
-  }
-  return { ...PROVIDERS[p], insecureTLS: process.env[PROVIDERS[p].insecureEnvVar] === "1" };
-}
-function getActiveProvider() {
-  const cfg = activeProvider();
-  return { provider: cfg.provider, baseURL: cfg.baseURL, defaultModel: cfg.defaultModel, apiKeyEnv: cfg.apiKeyEnv };
-}
-function makeInsecureFetch() {
-  return (input, init = {}) => {
-    return new Promise((resolve, reject) => {
-      const url = typeof input === "string" ? new URL(input) : new URL(input.url);
-      const body = init?.body;
-      const headers = {};
-      if (init?.headers) {
-        if (init.headers instanceof Headers) {
-          init.headers.forEach((v, k) => {
-            headers[k] = v;
-          });
-        } else if (Array.isArray(init.headers)) {
-          for (const [k, v] of init.headers) headers[k] = v;
-        } else {
-          Object.assign(headers, init.headers);
-        }
-      }
-      headers["host"] = url.host;
-      if (body && !headers["content-length"] && typeof body === "string") {
-        headers["content-length"] = Buffer.byteLength(body);
-      }
-      const req = https.request(
-        {
-          hostname: url.hostname,
-          port: url.port || 443,
-          path: url.pathname + url.search,
-          method: init?.method || "GET",
-          headers,
-          rejectUnauthorized: false
-        },
-        (res) => {
-          const chunks = [];
-          res.on("data", (c) => chunks.push(c));
-          res.on("end", () => {
-            const respBody = Buffer.concat(chunks);
-            const respHeaders = {};
-            for (const [k, v] of Object.entries(res.headers)) {
-              if (Array.isArray(v)) respHeaders[k] = v.join(", ");
-              else if (v != null) respHeaders[k] = String(v);
-            }
-            resolve(new Response(respBody, {
-              status: res.statusCode || 0,
-              statusText: res.statusMessage || "",
-              headers: respHeaders
-            }));
-          });
-        }
-      );
-      req.on("error", reject);
-      if (body) {
-        if (typeof body === "string" || Buffer.isBuffer(body)) req.write(body);
-        else if (body instanceof Uint8Array) req.write(Buffer.from(body));
-        else if (typeof body.pipe === "function") body.pipe(req);
-        else reject(new Error("Unsupported fetch body type"));
-      }
-      req.end();
-    });
-  };
-}
-var client = null;
-var clientKey = "";
-function getClient() {
-  const cfg = activeProvider();
-  const cacheKey = `${cfg.provider}|${cfg.apiKeyEnv}|${cfg.insecureTLS}`;
-  if (client && clientKey === cacheKey) return client;
-  const apiKey = process.env[cfg.apiKeyEnv];
-  if (!apiKey) {
-    throw new Error(`${cfg.apiKeyEnv} not set. Required for provider '${cfg.provider}' (${cfg.baseURL})`);
-  }
-  if (cfg.insecureTLS) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  client = new OpenAI({
-    apiKey,
-    baseURL: cfg.baseURL,
-    ...cfg.insecureTLS ? { fetch: makeInsecureFetch() } : {}
-  });
-  clientKey = cacheKey;
-  log(`vision client: provider=${cfg.provider} baseURL=${cfg.baseURL} insecureTLS=${cfg.insecureTLS}`);
-  return client;
-}
-var SKIP_RESIZE_THRESHOLD_BYTES = 80 * 1024;
-var MAX_DIMENSION_FOR_API = 768;
-async function resizeForApiAsync(imagePath) {
-  try {
-    const size = statSync(imagePath).size;
-    if (size < SKIP_RESIZE_THRESHOLD_BYTES) return imagePath;
-  } catch {
-    return imagePath;
-  }
-  const resizedPath = imagePath.replace(/\.(png|jpg|jpeg)$/, "_resized.$1");
-  try {
-    const cmd = `python3 -c "
-from PIL import Image
-img = Image.open('${imagePath}')
-w, h = img.size
-if max(w, h) > ${MAX_DIMENSION_FOR_API}:
-    ratio = ${MAX_DIMENSION_FOR_API} / max(w, h)
-    img = img.resize((int(w*ratio), int(h*ratio)), Image.LANCZOS)
-    img.save('${resizedPath}', quality=85, optimize=True)
-"`;
-    await execAsyncWithTimeout(cmd, { timeout: 1e4 });
-    return fs2.existsSync(resizedPath) ? resizedPath : imagePath;
-  } catch {
-    return imagePath;
-  }
-}
-async function smartResizeForVision(imagePath) {
-  return resizeForApiAsync(imagePath);
-}
-function cleanupResizedFile(resizedPath, originalPath) {
-  if (resizedPath !== originalPath) {
-    try {
-      fs2.unlinkSync(resizedPath);
-    } catch {
-    }
-  }
-}
-function encodeAsDataUrl(p) {
-  const buf = fs2.readFileSync(p);
-  const ext = path.extname(p).slice(1) || "png";
-  const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
-  return `data:${mime};base64,${buf.toString("base64")}`;
-}
-function encodeImageAsDataUrl(p) {
-  return encodeAsDataUrl(p);
-}
-var JSON_SYSTEM_PROMPT = `You are a senior Android UI/UX engineer specializing in Jetpack Compose and Material 3. You analyze mobile app screenshots and produce machine-readable design specifications.
-
-## Output rules
-- Output a single JSON object only. No markdown fences, no commentary, no code blocks.
-- All color values must be exact hex (e.g. "#FF5757"), never "red" / "blue".
-- Coordinates use the screenshot's pixel space. Width and height must reflect the image.
-- All visible text (including Chinese) must be transcribed EXACTLY as shown.
-- Estimate dp values: assume 1080px wide \u2192 360dp (3x density).
-- Identify the page type from the bottom navigation and top bar context.
-- For each card / item, identify the visual type and structure.
-
-## JSON schema
-{
-  "page": {
-    "name": "string (e.g. '\u9996\u9875-\u63A8\u8350')",
-    "type": "home | video | profile | shop | detail | task | earn | other",
-    "dimensions": { "width": number, "height": number },
-    "description": "1-2 sentence summary of what this page is for"
-  },
-  "colorTokens": {
-    "primary": "#hex (\u54C1\u724C\u4E3B\u8272)",
-    "onPrimary": "#hex (\u4E3B\u8272\u4E0A\u7684\u6587\u5B57)",
-    "background": "#hex (\u9875\u9762\u80CC\u666F)",
-    "surface": "#hex (\u5361\u7247/\u8868\u9762)",
-    "onSurface": "#hex (\u4E3B\u6587\u5B57)",
-    "onSurfaceVariant": "#hex (\u6B21\u6587\u5B57)",
-    "outline": "#hex (\u5206\u5272\u7EBF/\u8FB9\u6846)",
-    "error": "#hex",
-    "accent": "#hex (\u9AD8\u4EAE/\u7EA2\u70B9/\u6570\u5B57)"
-  },
-  "typography": {
-    "titleLarge": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "titleMedium": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "bodyLarge": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "bodyMedium": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number },
-    "labelSmall": { "size": number, "weight": "Bold|Medium|Regular", "color": "#hex", "dp": number }
-  },
-  "layout": {
-    "type": "scaffold",
-    "sections": [
-      { "id": "top-bar", "kind": "TopAppBar|StatusBar|TabRow|SearchBar|Banner|List|FAB|BottomNav", "bounds": {"x":0,"y":0,"width":number,"height":number}, "background": "#hex" }
-    ]
-  },
-  "components": [
-    {
-      "id": "card-1",
-      "kind": "TextTopCard|LeftTextRightImageCard|LargeImageCard|VideoCard|ImageOnlyCard|AvatarBlock|ActionRow|StatBlock|PromoBanner|CategoryGrid|Comment",
-      "bounds": { "x": number, "y": number, "width": number, "height": number },
-      "text": { "title": "string", "subtitle": "string?", "source": "string?", "time": "string?", "count": "string?" },
-      "hasImage": boolean,
-      "imagePosition": "top|bottom|right|left|none",
-      "isClickable": true
-    }
-  ],
-  "bottomNav": {
-    "items": [
-      { "label": "string", "iconHint": "home|video|money|shop|profile", "isSelected": boolean, "color": "#hex" }
-    ]
-  },
-  "textContent": {
-    "titles": ["array of visible page/card titles"],
-    "labels": ["array of button/tab labels"],
-    "placeholders": ["array of input placeholders"],
-    "hotKeywords": ["array of search hot words / news keywords if visible"]
-  },
-  "interactions": [
-    "Tap card \u2192 navigate to detail page",
-    "Swipe down \u2192 refresh feed",
-    "Tap tab in top bar \u2192 switch channel"
-  ],
-  "notes": "any anomalies, red badges (with text), live indicators, special states"
-}
-
-Be exhaustive. Capture EVERY card / text / icon you can see. Do not skip elements.`;
-var MARKDOWN_SYSTEM_PROMPT = `\u4F60\u662F\u8D44\u6DF1 Android UI \u5DE5\u7A0B\u5E08\uFF0C\u4E13\u6CE8 Jetpack Compose + Material 3\u3002\u5206\u6790\u79FB\u52A8\u7AEF App \u622A\u56FE\uFF0C\u8F93\u51FA\u4E00\u4EFD Markdown \u683C\u5F0F\u7684\u8BBE\u8BA1\u89C4\u8303\u6587\u6863\uFF0C\u4FBF\u4E8E\u5F00\u53D1\u8005\u636E\u6B64\u5B9E\u73B0 UI\u3002
-
-## \u8F93\u51FA\u7ED3\u6784\uFF08\u4E25\u683C\u6309\u987A\u5E8F\uFF09
-# [\u9875\u9762\u540D]
-> 1-2 \u53E5\u8BDD\u63CF\u8FF0\u8FD9\u4E2A\u9875\u9762\u7684\u529F\u80FD
-
-## \u9875\u9762\u5143\u4FE1\u606F
-- \u7C7B\u578B\uFF1Ahome / video / profile / shop / detail / task / earn / other
-- \u8BBE\u8BA1\u7A3F\u5C3A\u5BF8\uFF1AWxH px\uFF08\u5BF9\u5E94 W/3 \xD7 H/3 dp\uFF09
-- \u6574\u4F53\u914D\u8272\uFF1A\u4E3B\u8272 / \u80CC\u666F / \u5361\u7247 / \u4E3B\u6587\u5B57 / \u6B21\u6587\u5B57
-
-## \u989C\u8272 Token
-| Token | \u989C\u8272 | \u7528\u9014 |
-|-------|------|------|
-| primary | #FF5757 | \u54C1\u724C\u4E3B\u8272\u3001\u6309\u94AE |
-| ... | ... | ... |
-
-## \u5B57\u4F53\u89C4\u8303
-| \u7B49\u7EA7 | size | weight | \u989C\u8272 | \u7528\u9014 |
-|------|------|--------|------|------|
-| titleLarge | 22sp | Bold | #1A1A1A | \u9875\u9762\u6807\u9898 |
-| ... | ... | ... | ... | ... |
-
-## \u5E03\u5C40\u7ED3\u6784
-\u6309\u4ECE\u4E0A\u5230\u4E0B\u987A\u5E8F\u63CF\u8FF0\u6BCF\u4E2A section\uFF1A
-1. **StatusBar**\uFF08\u72B6\u6001\u680F\uFF09\uFF1A\u9AD8\u5EA6 24dp\uFF0C\u80CC\u666F #F5F5F5\uFF0C\u663E\u793A\u65F6\u95F4/\u7535\u91CF
-2. **TopBar**\uFF08\u9876\u90E8\u680F\uFF09\uFF1A\u9AD8\u5EA6 56dp\uFF0C\u7EA2\u5E95\u767D\u5B57
-3. ...
-
-## \u7EC4\u4EF6\u5217\u8868
-\u6309\u51FA\u73B0\u987A\u5E8F\uFF08\u4ECE\u4E0A\u5230\u4E0B\u3001\u4ECE\u5DE6\u5230\u53F3\uFF09\u5217\u51FA\u6BCF\u4E2A\u7EC4\u4EF6\uFF1A
-### \u7EC4\u4EF6 1: LeftTextRightImageCard
-- \u4F4D\u7F6E\uFF1Ax=0, y=800, \u5BBD=1080, \u9AD8=240
-- \u6807\u9898\uFF1A\u300Cxxx\u300D
-- \u526F\u6807\u9898\uFF08\u6765\u6E90\uFF09\uFF1A\u300Cxxx \xB7 2\u5C0F\u65F6\u524D\u300D
-- \u56FE\u7247\uFF1A\u53F3\u4FA7 200x200 \u7F29\u7565\u56FE
-- \u5907\u6CE8\uFF1A8dp \u8FB9\u8DDD\uFF0C\u5706\u89D2 4dp
-
-### \u7EC4\u4EF6 2: ...
-\uFF08\u91CD\u590D\u76F4\u5230\u6240\u6709\u5361\u7247\u5217\u5B8C\uFF09
-
-## \u5E95\u90E8\u5BFC\u822A
-| \u987A\u5E8F | \u6807\u7B7E | \u56FE\u6807 | \u9009\u4E2D\u6001\u989C\u8272 |
-|------|------|------|-----------|
-| 1 | \u9996\u9875 | home | #FF5757 |
-| ... | ... | ... | ... |
-
-## \u6587\u5B57\u5185\u5BB9
-- \u6807\u9898\uFF1Axxx, xxx
-- \u6309\u94AE\uFF1Axxx, xxx
-- \u5360\u4F4D\u7B26\uFF1Axxx
-- \u70ED\u641C\u8BCD\uFF1Axxx, xxx
-
-## \u4EA4\u4E92\u884C\u4E3A
-- \u70B9\u51FB\u5361\u7247 \u2192 \u8DF3\u8F6C\u5230\u8BE6\u60C5\u9875
-- \u4E0B\u62C9 \u2192 \u5237\u65B0\u5217\u8868
-- ...
-
-## \u5907\u6CE8
-- \u7EA2\u8272\u5C0F\u5706\u70B9\u663E\u793A\u5728\u300C\u6211\u7684\u300D\u56FE\u6807\u53F3\u4E0A\u89D2\uFF0C\u6570\u5B57 3
-- \u300C\u76F4\u64AD\u4E2D\u300D\u7EA2\u8272\u5FBD\u6807\u5728\u7B2C\u4E00\u4E2A\u5361\u7247\u5DE6\u4E0A
-
-\u8981\u6C42\uFF1A
-- \u5B8C\u6574\u5217\u51FA\u6240\u6709\u53EF\u89C1\u5143\u7D20\uFF0C\u4E0D\u8981\u7701\u7565
-- \u4E2D\u6587\u6587\u672C\u5FC5\u987B\u539F\u6837\u4FDD\u7559
-- \u989C\u8272\u5FC5\u987B\u7528 hex \u683C\u5F0F
-- \u6807\u6CE8\u6240\u6709\u7279\u6B8A\u72B6\u6001\uFF08\u7EA2\u70B9\u3001\u5FBD\u6807\u3001\u76F4\u64AD\u4E2D\u3001\u7F6E\u9876\u7B49\uFF09`;
-async function extractDesignSpec(imagePath, options) {
-  if (!fs2.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync(imagePath);
-  const imageUrl = encodeAsDataUrl(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (options.provider) process.env.VISION_PROVIDER = options.provider;
-  let json = void 0;
-  let markdown = void 0;
-  let raw = "";
-  let usedModel = "";
-  try {
-    const cfg = activeProvider();
-    const model = options.model || cfg.defaultModel;
-    usedModel = model;
-    if (options.format === "json" || options.format === "both") {
-      const userPrompt = options.pageHint ? `Analyze this Android app screenshot. The page name hint is: "${options.pageHint}". Output a single JSON object per the schema.` : `Analyze this Android app screenshot. Output a single JSON object per the schema.`;
-      const content = await callVision(model, JSON_SYSTEM_PROMPT, userPrompt, imageUrl);
-      raw = content;
-      json = parseJsonFromVision(content);
-    }
-    if (options.format === "markdown" || options.format === "both") {
-      const userPrompt = options.pageHint ? `Analyze this Android app screenshot (page: "${options.pageHint}"). Output a single Markdown document.` : `Analyze this Android app screenshot. Output a single Markdown document.`;
-      const content = await callVision(model, MARKDOWN_SYSTEM_PROMPT, userPrompt, imageUrl);
-      if (!raw) raw = content;
-      markdown = content.trim();
-    }
-    return {
-      success: true,
-      format: options.format,
-      source: imagePath,
-      json,
-      markdown,
-      raw,
-      model: usedModel
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client = null;
-    clientKey = "";
-    cleanupResizedFile(resizedPath, imagePath);
-  }
-}
-async function extractColorTokens(imagePath, modelId, provider) {
-  if (!fs2.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync(imagePath);
-  const imageUrl = encodeAsDataUrl(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (provider) process.env.VISION_PROVIDER = provider;
-  const systemPrompt = `You are a design system engineer. Analyze this mobile UI screenshot and output a JSON object listing all color tokens used in the design.
-
-Output format (JSON only, no markdown):
-{
-  "tokens": {
-    "primary": { "hex": "#FF5757", "usage": "brand red, used in top bar and selected tab", "pixelPct": 12.5 },
-    "background": { "hex": "#F5F5F5", "usage": "page background", "pixelPct": 45.0 },
-    ...
-  }
-}
-
-Rules:
-- pixelPct: estimated coverage of this color in the screenshot (rough percentage)
-- Focus on the 5-10 most prominent colors only
-- hex values must be exact
-- If unsure, omit the token rather than guess`;
-  try {
-    const content = await callVision(
-      modelId || "",
-      systemPrompt,
-      "Extract the color tokens from this Android UI screenshot. Output JSON only.",
-      imageUrl
-    );
-    const parsed = parseJsonFromVision(content);
-    const cfg = activeProvider();
-    return {
-      success: true,
-      source: imagePath,
-      model: modelId || cfg.defaultModel,
-      tokens: parsed.tokens || {}
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client = null;
-    clientKey = "";
-    cleanupResizedFile(resizedPath, imagePath);
-  }
-}
-async function extractComponents(imagePath, pageHint, modelId, provider) {
-  if (!fs2.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync(imagePath);
-  const imageUrl = encodeAsDataUrl(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (provider) process.env.VISION_PROVIDER = provider;
-  const systemPrompt = `You are an Android UI engineer. Analyze this screenshot and extract every visible UI component as a list.
-
-Output (JSON only):
-{
-  "components": [
-    {
-      "id": "card-1",
-      "kind": "TextTopCard|LeftTextRightImageCard|LargeImageCard|VideoCard|Avatar|Button|Text|SearchBar|Tab|Icon|BottomNavItem",
-      "bounds": { "x": number, "y": number, "width": number, "height": number },
-      "title": "string?",
-      "text": "string?",
-      "source": "string? (publisher/source name)",
-      "time": "string? (time text)",
-      "hasImage": boolean
-    }
-  ]
-}
-
-Rules:
-- Coordinates in pixel space
-- Be exhaustive: list every component (cards, buttons, text labels, icons, tabs, etc.)
-- Skip invisible/background elements
-- Chinese text must be preserved exactly
-- Order by Y coordinate (top to bottom)`;
-  try {
-    const prompt = pageHint ? `Extract all UI components from this Android screenshot (page: "${pageHint}"). JSON only.` : `Extract all UI components from this Android screenshot. JSON only.`;
-    const content = await callVision(modelId || "", systemPrompt, prompt, imageUrl);
-    const parsed = parseJsonFromVision(content);
-    const cfg = activeProvider();
-    return {
-      success: true,
-      source: imagePath,
-      model: modelId || cfg.defaultModel,
-      components: parsed.components || []
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client = null;
-    clientKey = "";
-    cleanupResizedFile(resizedPath, imagePath);
-  }
-}
-async function designToComposeSkeleton(imagePath, packageName, modelId, provider) {
-  if (!fs2.existsSync(imagePath)) {
-    throw new Error(`Image not found: ${imagePath}`);
-  }
-  const resizedPath = await resizeForApiAsync(imagePath);
-  const imageUrl = encodeAsDataUrl(resizedPath);
-  const prevProvider = process.env.VISION_PROVIDER;
-  if (provider) process.env.VISION_PROVIDER = provider;
-  const systemPrompt = `\u4F60\u662F Jetpack Compose \u9AD8\u7EA7\u5DE5\u7A0B\u5E08\u3002\u7ED9\u5B9A\u79FB\u52A8\u7AEF UI \u622A\u56FE\uFF0C\u8F93\u51FA\u4E00\u4EFD\u53EF\u76F4\u63A5\u843D\u5230 /app/src/main/java/<package>/presentation/<page>/<Page>Screen.kt \u7684 Compose \u4EE3\u7801\u9AA8\u67B6\u3002
-
-\u8981\u6C42\uFF1A
-- \u4EC5\u8F93\u51FA\u4EE3\u7801\uFF0C\u4E0D\u8981 markdown \u5305\u88F9\uFF0C\u4E0D\u8981\u89E3\u91CA
-- \u7528 Material3 + Compose
-- \u5305\u542B Scaffold\u3001TopAppBar\u3001BottomNavigationBar\uFF08\u5982\u6709\uFF09\u3001TabRow\uFF08\u5982\u6709\uFF09\u3001LazyColumn\uFF08\u5982\u6709\u5361\u7247\uFF09
-- \u7EC4\u4EF6\u6309\u622A\u56FE\u7ED3\u6784\u4ECE\u4E0A\u5230\u4E0B
-- \u5173\u952E\u6587\u5B57\u5185\u5BB9\u4FDD\u7559\u539F\u6837
-- \u989C\u8272\u7528 Color(0xFF...) \u5F62\u5F0F
-- \u4E0D\u5B9E\u73B0\u5177\u4F53\u4E1A\u52A1\u903B\u8F91\uFF1A\u7528 TODO() \u6807\u6CE8\u9700\u8981\u586B\u5145\u7684\u5730\u65B9
-- \u5B57\u4F53\u5927\u5C0F\u7528 .sp\uFF0C\u8DDD\u79BB\u7528 .dp
-- \u5361\u7247\u7528 Card \u5305\u88F9\uFF0C\u6807\u9898/\u526F\u6807\u9898/\u56FE\u7247/\u6765\u6E90/\u65F6\u95F4\u7528 Column/Row \u6392\u7248
-- \u6587\u672B\u52A0\u6CE8\u91CA "/* === TODO NOTES === */" \u5217\u51FA\u8FD9\u4E2A\u9AA8\u67B6\u672A\u5B9E\u73B0\u7684\u90E8\u5206`;
-  try {
-    const userHint = packageName ? `Package: ${packageName}` : "";
-    const content = await callVision(
-      modelId || "",
-      systemPrompt,
-      `\u751F\u6210\u6B64\u9875\u9762\u7684 Compose \u9AA8\u67B6\u4EE3\u7801\u3002${userHint}`.trim(),
-      imageUrl
-    );
-    const { code, notes } = splitCodeAndNotes(content);
-    const cfg = activeProvider();
-    return {
-      success: true,
-      source: imagePath,
-      model: modelId || cfg.defaultModel,
-      kotlin: code,
-      notes
-    };
-  } finally {
-    if (prevProvider === void 0) delete process.env.VISION_PROVIDER;
-    else process.env.VISION_PROVIDER = prevProvider;
-    client = null;
-    clientKey = "";
-    cleanupResizedFile(resizedPath, imagePath);
-  }
-}
-async function callVision(modelId, systemPrompt, userPrompt, imageUrl) {
-  const cfg = activeProvider();
-  const model = modelId || cfg.defaultModel;
-  const t0 = Date.now();
-  log(`vision call: provider=${cfg.provider} model=${model} promptLen=${userPrompt.length}`);
-  const messages = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: [
-        { type: "image_url", image_url: { url: imageUrl } },
-        { type: "text", text: userPrompt }
-      ]
-    }
-  ];
-  const requestOpts = {
-    model,
-    messages,
-    max_tokens: 4e3,
-    temperature: 1
-  };
-  if (model === "MiniMax-M3") {
-    requestOpts.extra_body = { thinking: { type: "disabled" } };
-  }
-  const response = await getClient().chat.completions.create(requestOpts, { timeout: 12e4 });
-  const msg = response.choices[0]?.message;
-  let content = msg?.content;
-  let source = "content";
-  if (!content && msg?.reasoning_content) {
-    content = msg.reasoning_content;
-    source = "reasoning_content";
-  }
-  if (!content) {
-    log(`vision: empty response. msg keys: ${Object.keys(msg || {}).join(",")}`);
-    throw new Error("Vision model returned empty response");
-  }
-  log(`vision done: ${Date.now() - t0}ms, source=${source}, content=${content.length} chars`);
-  return content;
-}
-async function callVisionLlm(modelId, systemPrompt, userPrompt, imageUrl) {
-  return callVision(modelId, systemPrompt, userPrompt, imageUrl);
-}
-function parseJsonFromVision(raw) {
-  let text = raw.trim();
-  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (fenced) text = fenced[1].trim();
-  const a = text.indexOf("{");
-  const b = text.lastIndexOf("}");
-  if (a !== -1 && b > a) text = text.slice(a, b + 1);
-  try {
-    return JSON.parse(text);
-  } catch {
-  }
-  const fixed = text.replace(/,(\s*[}\]])/g, "$1").replace(/([{,]\s*)([A-Za-z_][\w$]*)(\s*:)/g, '$1"$2"$3');
-  try {
-    return JSON.parse(fixed);
-  } catch (e) {
-    error("Failed to parse vision JSON:", e);
-    error("Raw text preview:", text.slice(0, 500));
-    return {};
-  }
-}
-function splitCodeAndNotes(content) {
-  const markerMatch = content.match(/\/\*\s*===\s*TODO NOTES\s*===\s*\*\/([\s\S]*)$/);
-  if (markerMatch) {
-    const code = content.slice(0, markerMatch.index).trim();
-    const notes = markerMatch[1].trim();
-    return { code, notes };
-  }
-  return { code: content.replace(/^```(?:kotlin)?\n?/m, "").replace(/```\s*$/m, "").trim(), notes: "" };
-}
-
-// src/tools/vision-analyze.ts
 async function analyzeWithVision(imagePath, prompt, systemPrompt) {
-  if (!fs3.existsSync(imagePath)) {
+  if (!fs2.existsSync(imagePath)) {
     throw new Error(`File not found: ${imagePath}`);
   }
   const cfg = getActiveProvider();
@@ -1490,15 +862,15 @@ Be very specific and quantitative. Measure approximate padding/margins using the
   } finally {
     if (resizedPath !== imagePath) {
       try {
-        fs3.unlinkSync(resizedPath);
+        fs2.unlinkSync(resizedPath);
       } catch {
       }
     }
   }
 }
 async function compareWithVision(baselinePath, currentPath, prompt) {
-  if (!fs3.existsSync(baselinePath)) throw new Error(`Baseline not found: ${baselinePath}`);
-  if (!fs3.existsSync(currentPath)) throw new Error(`Current not found: ${currentPath}`);
+  if (!fs2.existsSync(baselinePath)) throw new Error(`Baseline not found: ${baselinePath}`);
+  if (!fs2.existsSync(currentPath)) throw new Error(`Current not found: ${currentPath}`);
   const cfg = getActiveProvider();
   const modelId = process.env.VISION_MODEL || cfg.defaultModel;
   const [bResized, cResized] = await Promise.all([
@@ -1532,13 +904,13 @@ For each difference, state whether it's acceptable or needs fixing, and suggest 
   } finally {
     if (bResized !== baselinePath) {
       try {
-        fs3.unlinkSync(bResized);
+        fs2.unlinkSync(bResized);
       } catch {
       }
     }
     if (cResized !== currentPath) {
       try {
-        fs3.unlinkSync(cResized);
+        fs2.unlinkSync(cResized);
       } catch {
       }
     }
@@ -1553,7 +925,7 @@ function getMultiClient() {
   const apiKey = process.env[cfg.apiKeyEnv];
   if (!apiKey) throw new Error(`${cfg.apiKeyEnv} not set`);
   if (cfg.insecureTLS) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  multiClient = new OpenAI2({
+  multiClient = new OpenAI({
     apiKey,
     baseURL: cfg.baseURL,
     ...cfg.insecureTLS ? { fetch: makeInsecureFetch() } : {}
@@ -1595,12 +967,12 @@ async function callVisionLlmMultiContent(modelId, systemPrompt, userContent) {
 // src/tools/analyze.ts
 import { execSync } from "child_process";
 function getPythonScriptPath() {
-  const currentDir = path2.dirname(fileURLToPath(import.meta.url));
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path2.resolve(currentDir, "..", "src", "tools", "analyze_image.py"),
-    path2.resolve(currentDir, "..", "..", "src", "tools", "analyze_image.py"),
-    path2.resolve(process.cwd(), "src", "tools", "analyze_image.py"),
-    path2.resolve(process.cwd(), "skills", "src", "tools", "analyze_image.py")
+    path.resolve(currentDir, "..", "src", "tools", "analyze_image.py"),
+    path.resolve(currentDir, "..", "..", "src", "tools", "analyze_image.py"),
+    path.resolve(process.cwd(), "src", "tools", "analyze_image.py"),
+    path.resolve(process.cwd(), "skills", "src", "tools", "analyze_image.py")
   ];
   for (const c of candidates) {
     try {
@@ -1610,7 +982,7 @@ function getPythonScriptPath() {
       continue;
     }
   }
-  return path2.resolve(currentDir, "..", "src", "tools", "analyze_image.py");
+  return path.resolve(currentDir, "..", "src", "tools", "analyze_image.py");
 }
 var scriptPath = getPythonScriptPath();
 async function handleAnalyzeScreenshot(args) {
@@ -3232,7 +2604,7 @@ async function handleNetworkDebug(args, action) {
 }
 
 // src/tools/vision-action.ts
-import fs4 from "fs";
+import fs3 from "fs";
 var cachedScreen = null;
 async function getScreenSize() {
   if (cachedScreen) return cachedScreen;
@@ -3299,7 +2671,7 @@ function parseVisionAction(raw, width, height) {
   return r;
 }
 async function executeVisionStep(instruction, beforeScreenshotPath) {
-  const beforePath = beforeScreenshotPath && fs4.existsSync(beforeScreenshotPath) ? beforeScreenshotPath : (await screenshot()).path;
+  const beforePath = beforeScreenshotPath && fs3.existsSync(beforeScreenshotPath) ? beforeScreenshotPath : (await screenshot()).path;
   const { width, height } = await getScreenSize();
   log(`Vision: ${instruction}`);
   const t0 = Date.now();
@@ -4190,8 +3562,8 @@ async function handleAnimationScale(args) {
 }
 
 // src/tools/design-spec.ts
-import fs5 from "fs";
-import path3 from "path";
+import fs4 from "fs";
+import path2 from "path";
 var DESIGN_DIR = process.env.DESIGN_DIR || "./design";
 async function handleExtractDesignSpec(args) {
   try {
@@ -4269,18 +3641,18 @@ async function handleExtractComponents(args) {
 async function handleListDesignFiles(args) {
   try {
     const dir = args.dir || DESIGN_DIR;
-    if (!fs5.existsSync(dir)) {
+    if (!fs4.existsSync(dir)) {
       return { isError: true, content: [{ type: "text", text: JSON.stringify({
         success: false,
         error: `Directory not found: ${dir}`,
         hint: `Set DESIGN_DIR env or pass dir= argument`
       }) }] };
     }
-    const entries = fs5.readdirSync(dir, { withFileTypes: true });
+    const entries = fs4.readdirSync(dir, { withFileTypes: true });
     const imageExts = /* @__PURE__ */ new Set([".png", ".jpg", ".jpeg", ".webp"]);
-    const files = entries.filter((e) => e.isFile() && imageExts.has(path3.extname(e.name).toLowerCase())).map((e) => {
-      const full = path3.join(dir, e.name);
-      const stat = fs5.statSync(full);
+    const files = entries.filter((e) => e.isFile() && imageExts.has(path2.extname(e.name).toLowerCase())).map((e) => {
+      const full = path2.join(dir, e.name);
+      const stat = fs4.statSync(full);
       return {
         name: e.name,
         path: full,
@@ -4333,23 +3705,1169 @@ function resolveImagePath(input) {
   if (!input) {
     throw new Error("imagePath is required. Use list_design_files to discover available designs.");
   }
-  if (fs5.existsSync(input)) return path3.resolve(input);
-  const inDesign = path3.join(DESIGN_DIR, input);
-  if (fs5.existsSync(inDesign)) return path3.resolve(inDesign);
-  if (fs5.existsSync(inDesign + ".jpg")) return path3.resolve(inDesign + ".jpg");
-  if (fs5.existsSync(inDesign + ".png")) return path3.resolve(inDesign + ".png");
+  if (fs4.existsSync(input)) return path2.resolve(input);
+  const inDesign = path2.join(DESIGN_DIR, input);
+  if (fs4.existsSync(inDesign)) return path2.resolve(inDesign);
+  if (fs4.existsSync(inDesign + ".jpg")) return path2.resolve(inDesign + ".jpg");
+  if (fs4.existsSync(inDesign + ".png")) return path2.resolve(inDesign + ".png");
   throw new Error(`Image not found: ${input} (also tried ${inDesign}{.jpg,.png})`);
 }
 function fileNameToPageHint(filename) {
-  return path3.basename(filename, path3.extname(filename));
+  return path2.basename(filename, path2.extname(filename));
 }
 function derivePageHint(imagePath) {
   return fileNameToPageHint(imagePath);
 }
 function deriveScreenFileName(imagePath) {
-  const base = path3.basename(imagePath, path3.extname(imagePath));
+  const base = path2.basename(imagePath, path2.extname(imagePath));
   const safe = base.replace(/[^\w一-龥-]/g, "");
   return `${safe}Screen.kt`;
+}
+
+// src/tools/pm.ts
+import fs5 from "fs";
+import path3 from "path";
+var PM_TOOL_REGISTRY = {
+  // 设备操作
+  tap: handleTap,
+  swipe: handleSwipe,
+  input_text: handleInputText,
+  press_key: handlePressKey,
+  // 应用生命周期
+  // 项目专属默认：build 必须在含 gradlew 的目录跑，install_and_launch 必须带 packageName+activity
+  // （handler 自身没有合理的兜底，所以 PM registry 这层补上）
+  build: (args) => handleBuild({ ...args, projectPath: args.projectPath || _findProjectRoot() }),
+  install_and_launch: (args) => handleInstallAndLaunch({
+    packageName: "com.example.toutiao",
+    activity: "MainActivity",
+    ...args
+  }),
+  stop_app: (args) => handleAppManagement({ packageName: "com.example.toutiao", ...args }, "stop_app"),
+  clear_app_data: (args) => handleAppManagement({ packageName: "com.example.toutiao", ...args }, "clear_app_data"),
+  list_apps: (args) => handleAppManagement(args, "list_apps"),
+  app_info: (args) => handleAppManagement({ packageName: "com.example.toutiao", ...args }, "app_info"),
+  // 诊断
+  get_logs: handleGetLogs,
+  shell_command: (args) => handleDeviceManagement(args, "shell_command"),
+  performance_metrics: handlePerformanceMonitor,
+  measure_app_launch: handleMeasureAppLaunch,
+  clear_logs: handleClearLogs,
+  // 视觉智能
+  vision_action: handleVisionAction,
+  find_element: handleFindElement,
+  wait_for_element: handleWaitForElement,
+  analyze_screenshot: handleAnalyzeScreenshot,
+  compare_screenshots: handleCompareScreenshots,
+  verify_ui: handleVerifyUI,
+  dump_hierarchy: handleDumpHierarchy,
+  dump_ui: handleDumpUi,
+  // 截图/录屏
+  screenshot: handleScreenshot,
+  screenshot_region: handleScreenshotRegion,
+  record_screen: (args) => handleDeviceManagement(args, "record_screen"),
+  // 设备控制
+  set_orientation: handleSetOrientation,
+  set_gps: handleSetGps,
+  set_animation_scale: handleAnimationScale,
+  set_network: (args) => handleNetworkDebug(args, "set_state")
+};
+var INTERACTIVE_TOOLS = /* @__PURE__ */ new Set([
+  "tap",
+  "swipe",
+  "input_text",
+  "press_key",
+  "vision_action",
+  "wait_for_element"
+]);
+var SETTLING_TOOLS = /* @__PURE__ */ new Set([
+  "build",
+  "install_and_launch",
+  "stop_app",
+  "clear_app_data",
+  "list_apps",
+  "app_info",
+  "get_logs",
+  "performance_metrics",
+  "measure_app_launch",
+  "shell_command",
+  "clear_logs",
+  "find_element",
+  "analyze_screenshot",
+  "compare_screenshots",
+  "verify_ui",
+  "dump_hierarchy",
+  "dump_ui",
+  "screenshot",
+  "screenshot_region",
+  "record_screen",
+  "set_orientation",
+  "set_gps",
+  "set_animation_scale",
+  "set_network"
+]);
+var REVIEW_DIR = process.env.PM_REVIEW_DIR || "./pm_reviews";
+var CHECKLIST_PATH = process.env.PM_CHECKLIST_PATH || "./pm_checklist_toutiao.md";
+var PROMPT_TEMPLATE_PATH = process.env.PM_PROMPT_PATH || "./skills/prompts/pm_review.txt";
+var PROMPT_EXPLORE_PATH = process.env.PM_EXPLORE_PROMPT_PATH || "./skills/prompts/pm_explore_step.txt";
+var DEFAULT_FOCUS = [
+  "ui_bug: \u770B\u8D77\u6765\u5BF9\u3001\u5176\u5B9E\u6709\u89C6\u89C9/\u4EA4\u4E92\u95EE\u9898\u7684\u5730\u65B9",
+  "ux: \u7528\u6237\u5B9E\u9645\u4F7F\u7528\u65F6\u53EF\u80FD\u5361\u58F3\u7684\u5730\u65B9",
+  "performance: \u6027\u80FD\u3001\u6D41\u7545\u5EA6"
+];
+async function _takeScreenshot(savePath) {
+  const out = savePath || `/tmp/pm_screenshot_${Date.now()}.png`;
+  await screenshot(out);
+  return out;
+}
+function _loadChecklist() {
+  const candidates = [
+    CHECKLIST_PATH,
+    path3.resolve(process.cwd(), CHECKLIST_PATH),
+    path3.resolve(process.cwd(), "..", CHECKLIST_PATH)
+  ];
+  for (const p of candidates) {
+    if (fs5.existsSync(p)) return fs5.readFileSync(p, "utf-8");
+  }
+  return "(checklist \u4E0D\u53EF\u7528\uFF0C\u6309\u901A\u7528 Android \u6700\u4F73\u5B9E\u8DF5\u5BA1\u67E5)";
+}
+function _loadPromptTemplate() {
+  const candidates = [
+    PROMPT_TEMPLATE_PATH,
+    path3.resolve(process.cwd(), PROMPT_TEMPLATE_PATH),
+    path3.resolve(process.cwd(), "..", PROMPT_TEMPLATE_PATH)
+  ];
+  for (const p of candidates) {
+    if (fs5.existsSync(p)) return fs5.readFileSync(p, "utf-8");
+  }
+  throw new Error(`PM \u63D0\u793A\u8BCD\u6A21\u677F\u4E0D\u5B58\u5728: ${PROMPT_TEMPLATE_PATH}`);
+}
+function _fillPromptTemplate(tpl, vars) {
+  return tpl.replace("${target}", vars.target).replace("${focus_or_default}", vars.focus).replace("${checklist}", vars.checklist).replace("${ui_dump_summary}", vars.uiDumpSummary);
+}
+function _summaryFromDump(elements) {
+  const texts = elements.map((e) => e.text).filter((t) => Boolean(t));
+  const uniqueTexts = Array.from(new Set(texts));
+  const clickableCount = elements.filter((e) => e.clickable).length;
+  const top = uniqueTexts.slice(0, 30).join(" | ");
+  return [
+    `\u8282\u70B9\u603B\u6570: ${elements.length}`,
+    `\u53EF\u70B9\u51FB\u8282\u70B9\u6570: ${clickableCount}`,
+    `\u53EF\u89C1\u6587\u672C\uFF08\u524D 30 \u6761\u53BB\u91CD\uFF09: ${top || "(\u65E0)"}`
+  ].join("\n");
+}
+function _parseJsonFromVision(raw) {
+  let text = raw.trim();
+  text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  if (text.startsWith("<think>")) {
+    const firstBrace = text.indexOf("{");
+    if (firstBrace > 0) text = text.slice(firstBrace);
+  }
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenced) text = fenced[1].trim();
+  const a = text.indexOf("{");
+  const b = text.lastIndexOf("}");
+  if (a !== -1 && b > a) text = text.slice(a, b + 1);
+  try {
+    return JSON.parse(text);
+  } catch {
+    const fixed = text.replace(/,(\s*[}\]])/g, "$1").replace(/([{,]\s*)([A-Za-z_][\w$]*)(\s*:)/g, '$1"$2"$3');
+    try {
+      return JSON.parse(fixed);
+    } catch {
+      return { _parseError: true, _raw: raw.slice(0, 2e3) };
+    }
+  }
+}
+async function _callVision(imagePath, systemPrompt, userPrompt, maxTokens = 4e3) {
+  const cfg = getActiveProvider();
+  const modelId = process.env.VISION_MODEL || cfg.defaultModel;
+  const resizedPath = await smartResizeForVision(imagePath);
+  try {
+    const imageUrl = encodeImageAsDataUrl(resizedPath);
+    return await callVisionLlmWithTokens(modelId, systemPrompt, userPrompt, imageUrl, maxTokens);
+  } finally {
+    if (resizedPath !== imagePath) {
+      try {
+        fs5.unlinkSync(resizedPath);
+      } catch {
+      }
+    }
+  }
+}
+async function callVisionLlmWithTokens(modelId, systemPrompt, userPrompt, imageUrl, maxTokens) {
+  const { activeProvider: activeProvider2, makeInsecureFetch: makeInsecureFetch2 } = await import("./design-extractor-Q6J6UBIL.js");
+  const { default: OpenAI2 } = await import("openai");
+  const cfg = activeProvider2();
+  const model = modelId || cfg.defaultModel;
+  const apiKey = process.env[cfg.apiKeyEnv];
+  if (!apiKey) throw new Error(`${cfg.apiKeyEnv} not set`);
+  const clientOpts = { apiKey, baseURL: cfg.baseURL };
+  if (cfg.insecureTLS) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    clientOpts.fetch = makeInsecureFetch2();
+  }
+  const client = new OpenAI2(clientOpts);
+  const requestOpts = {
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "text", text: userPrompt }
+        ]
+      }
+    ],
+    max_tokens: maxTokens,
+    temperature: 1
+  };
+  if (model === "MiniMax-M3") {
+    requestOpts.extra_body = { thinking: { type: "disabled" } };
+  }
+  const response = await client.chat.completions.create(requestOpts, { timeout: 12e4 });
+  const msg = response.choices[0]?.message;
+  let content = msg?.content;
+  if (!content && msg?.reasoning_content) content = msg.reasoning_content;
+  if (!content) throw new Error("Vision model returned empty response");
+  return content;
+}
+function _serializeDumpNode(el) {
+  return {
+    class: el.type,
+    text: el.text,
+    resource_id: el.resourceId,
+    content_desc: el.contentDesc,
+    bounds: `[${el.bounds.x},${el.bounds.y}][${el.bounds.x + el.bounds.width},${el.bounds.y + el.bounds.height}]`,
+    clickable: el.clickable,
+    enabled: el.enabled ?? true
+  };
+}
+async function _dumpUiInternal(savePath) {
+  const localPath = savePath || `/tmp/ui_dump_${Date.now()}.xml`;
+  let xml = "";
+  try {
+    const { stdout } = await execAsyncWithTimeout(
+      'adb exec-out "uiautomator dump /dev/tty"',
+      { timeout: 15e3 }
+    );
+    xml = stdout;
+  } catch {
+    await execAsyncWithTimeout(
+      'adb shell "uiautomator dump /sdcard/window_dump.xml"',
+      { timeout: 15e3 }
+    );
+    const { stdout } = await execAsyncWithTimeout(
+      'adb shell "cat /sdcard/window_dump.xml"',
+      { timeout: 1e4 }
+    );
+    xml = stdout;
+  }
+  fs5.writeFileSync(localPath, xml, "utf-8");
+  const baseNodes = await getUIHierarchy();
+  const enriched = baseNodes.map((el) => ({
+    ...el,
+    contentDesc: void 0,
+    enabled: true
+  }));
+  const nodeRegex = /<node\b([^>]*?)\/?>/g;
+  const extras = /* @__PURE__ */ new Map();
+  let m;
+  while ((m = nodeRegex.exec(xml)) !== null) {
+    const attrs = m[1];
+    const textMatch = attrs.match(/text="([^"]*)"/);
+    const text = textMatch ? textMatch[1] : "";
+    const contentDesc = attrs.match(/content-desc="([^"]*)"/)?.[1] || void 0;
+    const enabledMatch = attrs.match(/enabled="([^"]*)"/);
+    const enabled = enabledMatch ? enabledMatch[1] === "true" : void 0;
+    const classMatch = attrs.match(/class="([^"]*)"/)?.[1];
+    if (text) extras.set(text, { contentDesc, enabled, fullClass: classMatch });
+  }
+  for (const el of enriched) {
+    const ex = el.text ? extras.get(el.text) : void 0;
+    el.contentDesc = ex?.contentDesc;
+    el.enabled = ex?.enabled;
+    if (ex?.fullClass) el.type = ex.fullClass;
+  }
+  return { nodes: enriched.map(_serializeDumpNode), rawPath: localPath };
+}
+async function handleDumpUi(args) {
+  try {
+    const savePath = args.savePath;
+    const { nodes, rawPath } = await _dumpUiInternal(savePath);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          dump_path: rawPath,
+          node_count: nodes.length,
+          nodes,
+          hint: "Use find_element to locate a specific node by text/resource-id. Pass dump_path to PM tools for full UI context."
+        }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("dump_ui failed:", err);
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+async function handlePmReview(args) {
+  const sessionId = `sess-${Date.now()}`;
+  try {
+    const target = args.target || "\u9996\u9875\u5217\u8868";
+    const focus = args.focus || DEFAULT_FOCUS;
+    const screenshotPath = args.screenshotPath || void 0;
+    logTrace({ type: "tool_call", tool: "pm_review", args: { target, focus }, session_id: sessionId });
+    const shot = screenshotPath || await _takeScreenshot();
+    const { nodes: dumpNodes } = await _dumpUiInternal();
+    const tpl = _loadPromptTemplate();
+    const checklist = _loadChecklist();
+    const filled = _fillPromptTemplate(tpl, {
+      target,
+      focus: focus.join("\n- "),
+      checklist,
+      uiDumpSummary: _summaryFromDump(dumpNodes)
+    });
+    const systemPrompt = "\u4F60\u662F Android \u4EA7\u54C1\u7ECF\u7406\u3002\u4E25\u683C\u6309\u7528\u6237\u7ED9\u51FA\u7684 JSON Schema \u8F93\u51FA\uFF1A\n1) \u552F\u4E00\u8F93\u51FA\uFF1A\u4E00\u4E2A JSON \u5BF9\u8C61\uFF0C\u4ECE { \u5F00\u59CB\u5230 } \u7ED3\u675F\n2) \u7981\u6B62\uFF1A```json``` \u56F4\u680F\u3001<think> \u5757\u3001\u4EFB\u4F55 markdown\u3001\u4EFB\u4F55\u89E3\u91CA\u6027\u6587\u5B57\u3001\u4EFB\u4F55\u524D\u540E\u7F00\n3) thinking_process \u5B57\u6BB5\u662F JSON \u5185\u7684\u5B57\u7B26\u4E32\u503C\uFF0C\u53EF\u4EE5\u5305\u542B\u6362\u884C\uFF0C\u4F46\u8981\u4F5C\u4E3A\u5B57\u7B26\u4E32\u5B57\u9762\u91CF\u8F93\u51FA";
+    const raw = await _callVision(shot, systemPrompt, filled, 8e3);
+    const parsed = _parseJsonFromVision(raw);
+    const reviewId = `rev-${Date.now()}`;
+    fs5.mkdirSync(REVIEW_DIR, { recursive: true });
+    const review = {
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      target,
+      focus,
+      screenshot: shot,
+      ui_dump_summary: {
+        node_count: dumpNodes.length,
+        texts: dumpNodes.map((n) => n.text).filter(Boolean).slice(0, 50)
+      },
+      ...parsed,
+      review_id: reviewId
+    };
+    const reviewFile = path3.join(REVIEW_DIR, `${reviewId}.json`);
+    fs5.writeFileSync(reviewFile, JSON.stringify(review, null, 2), "utf-8");
+    const { review_id: _ignoredReviewId, ...reviewForReturn } = review;
+    const memory = _loadPmMemory();
+    _updateMemoryFromReview(memory, {
+      review_id: reviewId,
+      timestamp: review.timestamp,
+      tool: "pm_review",
+      target,
+      overall_rating: String(review.overall_rating || "C"),
+      issues: (Array.isArray(review.issues) ? review.issues : []).map((issue, idx) => ({
+        issue_id: issue.id || _generateIssueId(memory),
+        severity: issue.severity || "medium",
+        category: issue.category || "ui_bug",
+        description: `${issue.location || ""}: ${issue.current_state || ""} \u2192 ${issue.expected_state || ""}`,
+        location: issue.location || "",
+        design_ref: issue.design_ref || "",
+        status: "open"
+      })),
+      positives: Array.isArray(review.positives) ? review.positives : []
+    });
+    logTrace({ type: "done", tool: "pm_review", overall_rating: String(review.overall_rating || "C"), issues_found: Array.isArray(review.issues) ? review.issues.length : 0, elapsed_ms: Date.now() - Date.parse(review.timestamp), session_id: sessionId });
+    logTrace({ type: "memory_update", action: "append_review", review_id: reviewId, session_id: sessionId });
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          review_id: reviewId,
+          review_file: reviewFile,
+          ...reviewForReturn
+        }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("pm_review failed:", err);
+    logTrace({ type: "error", tool: "pm_review", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+async function _pixelDiff(designPath, implPath) {
+  const sharp3 = (await import("sharp")).default;
+  const { default: pixelmatch2 } = await import("pixelmatch");
+  const { PNG: PNG2 } = await import("pngjs");
+  const [dBuf, iBuf] = await Promise.all([
+    sharp3(designPath).raw().toBuffer({ resolveWithObject: true }),
+    sharp3(implPath).raw().toBuffer({ resolveWithObject: true })
+  ]);
+  const w = Math.min(dBuf.info.width, iBuf.info.width);
+  const h = Math.min(dBuf.info.height, iBuf.info.height);
+  const dCrop = await sharp3(designPath).resize(w, h).raw().toBuffer();
+  const iCrop = await sharp3(implPath).resize(w, h).raw().toBuffer();
+  const channels = Math.min(dBuf.info.channels, iBuf.info.channels);
+  const diff = new PNG2({ width: w, height: h });
+  const mismatched = pixelmatch2(
+    Buffer.from(dCrop),
+    Buffer.from(iCrop),
+    diff.data,
+    w,
+    h,
+    { threshold: 0.1 }
+  );
+  const diffImagePath = `/tmp/pm_diff_${Date.now()}.png`;
+  const outChannels = channels === 3 || channels === 4 ? channels : 4;
+  await sharp3(Buffer.from(diff.data), { raw: { width: w, height: h, channels: outChannels } }).png().toFile(diffImagePath);
+  return {
+    mismatched,
+    total: w * h,
+    ratio: mismatched / (w * h),
+    diffImagePath
+  };
+}
+async function handlePmCompareWithDesign(args) {
+  try {
+    const designPath = args.designPath;
+    const implScreenshotPath = args.implScreenshotPath || void 0;
+    if (!designPath) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: "designPath required" }) }] };
+    }
+    if (!await fileExists(designPath)) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: `Design not found: ${designPath}` }) }] };
+    }
+    const impl = implScreenshotPath || await _takeScreenshot();
+    let diff = { mismatched: 0, total: 0, ratio: 0, diffImagePath: null };
+    try {
+      diff = await _pixelDiff(designPath, impl);
+    } catch (e) {
+      diff = { error: e.message };
+    }
+    const ratioPct = "ratio" in diff ? (diff.ratio * 100).toFixed(1) : "?";
+    const systemPrompt = "\u4F60\u662F\u4E00\u4F4D\u8D44\u6DF1 Android \u4EA7\u54C1\u7ECF\u7406\uFF0C\u64C5\u957F\u628A\u8BBE\u8BA1\u7A3F\u548C\u5B9E\u73B0\u8FDB\u884C\u5BF9\u6BD4\uFF0C\u6307\u51FA\u53EF\u63A5\u53D7\u7684\u5DEE\u5F02\u548C\u9700\u8981\u4FEE\u590D\u7684\u5DEE\u5F02\u3002";
+    const userPrompt = `\u8BBE\u8BA1\u7A3F: ${designPath}
+\u5F53\u524D\u5B9E\u73B0\u622A\u56FE: ${impl}
+\u50CF\u7D20 diff \u6BD4\u4F8B: ${ratioPct}%\uFF08\u7528 pixelmatch \u8BA1\u7B97\uFF0Cthreshold=0.1\uFF09
+
+\u8BF7\u5206\u6790\uFF1A
+1. \u54EA\u4E9B\u5DEE\u5F02\u662F critical\uFF08\u5F71\u54CD\u529F\u80FD\u6216\u89C6\u89C9\u4E00\u81F4\u6027\uFF09\u2014 \u5217\u51FA 2-5 \u6761
+2. \u54EA\u4E9B\u5DEE\u5F02\u662F acceptable\uFF08\u5B9E\u73B0\u5408\u7406\u3001\u53EF\u4E0D\u6539\uFF09\u2014 \u7B80\u77ED\u5217\u51FA
+3. \u7ED9\u51FA\u4FEE\u590D\u4F18\u5148\u7EA7\uFF08\u5148\u6539\u54EA\u4E2A\u3001\u540E\u6539\u54EA\u4E2A\uFF09
+
+\u8F93\u51FA JSON\uFF1A
+{
+  "critical_issues": [{"location": "...", "diff": "...", "fix_priority": 1}],
+  "acceptable_diffs": ["..."],
+  "fix_order": ["critical_issues[0]", "critical_issues[1]"],
+  "summary": "\u4E00\u53E5\u8BDD"
+}`;
+    const raw = await _callVision(impl, systemPrompt, userPrompt);
+    const llm = _parseJsonFromVision(raw);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ success: true, design: designPath, impl, pixel_diff: diff, llm_analysis: llm }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("pm_compare_with_design failed:", err);
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+var PM_STATE_PATH = process.env.PM_STATE_PATH || "./.pm_state.json";
+var TRACE_PATH = process.env.PM_TRACE_PATH || "./pm_trace.jsonl";
+var PM_MEMORY_PATH = process.env.PM_MEMORY_PATH || "./.pm_memory.json";
+var PM_DISCUSSION_PATH = process.env.PM_DISCUSSION_PATH || "./.pm_discussions.json";
+var MAX_DISCUSSION_HISTORY = 10;
+function _loadPmState() {
+  if (!fs5.existsSync(PM_STATE_PATH)) return { fixed: [], ignored: [] };
+  try {
+    return JSON.parse(fs5.readFileSync(PM_STATE_PATH, "utf-8"));
+  } catch {
+    return { fixed: [], ignored: [] };
+  }
+}
+function _savePmState(state) {
+  fs5.writeFileSync(PM_STATE_PATH, JSON.stringify(state, null, 2), "utf-8");
+}
+function logTrace(event) {
+  try {
+    const line = JSON.stringify({ ...event, ts: (/* @__PURE__ */ new Date()).toISOString() });
+    fs5.appendFileSync(TRACE_PATH, line + "\n");
+  } catch {
+  }
+}
+function _loadPmMemory() {
+  if (!fs5.existsSync(PM_MEMORY_PATH)) {
+    return {
+      project: { name: "ToutiaoFeedDemo", package_name: "com.example.toutiao", main_activity: "MainActivity", version: "1.0.0" },
+      design_specs: { sources: [], tokens: {} },
+      reviews: [],
+      issue_counter: 0,
+      current_focus: { channel: "recommend", page: "\u9996\u9875\u63A8\u8350", last_review_id: null }
+    };
+  }
+  try {
+    return JSON.parse(fs5.readFileSync(PM_MEMORY_PATH, "utf-8"));
+  } catch {
+    return {
+      project: { name: "ToutiaoFeedDemo", package_name: "com.example.toutiao", main_activity: "MainActivity", version: "1.0.0" },
+      design_specs: { sources: [], tokens: {} },
+      reviews: [],
+      issue_counter: 0,
+      current_focus: { channel: "recommend", page: "\u9996\u9875\u63A8\u8350", last_review_id: null }
+    };
+  }
+}
+function _savePmMemory(memory) {
+  fs5.writeFileSync(PM_MEMORY_PATH, JSON.stringify(memory, null, 2), "utf-8");
+}
+function _generateIssueId(memory) {
+  memory.issue_counter += 1;
+  return `ISSUE-${String(memory.issue_counter).padStart(3, "0")}`;
+}
+function _updateMemoryFromReview(memory, review) {
+  memory.reviews.push(review);
+  memory.current_focus.last_review_id = review.review_id;
+  memory.current_focus.page = review.target;
+  if (review.channel) memory.current_focus.channel = review.channel;
+  for (const issue of review.issues) {
+    if (!issue.status) issue.status = "open";
+  }
+  _savePmMemory(memory);
+}
+function _loadDiscussionHistory() {
+  if (!fs5.existsSync(PM_DISCUSSION_PATH)) return { sessions: [] };
+  try {
+    return JSON.parse(fs5.readFileSync(PM_DISCUSSION_PATH, "utf-8"));
+  } catch {
+    return { sessions: [] };
+  }
+}
+function _saveDiscussionHistory(history) {
+  fs5.writeFileSync(PM_DISCUSSION_PATH, JSON.stringify(history, null, 2), "utf-8");
+}
+function _appendDiscussion(question, answer, tool, resultSummary) {
+  const history = _loadDiscussionHistory();
+  let session = history.sessions[history.sessions.length - 1];
+  if (!session) {
+    session = {
+      session_id: `sess-${Date.now()}`,
+      started_at: (/* @__PURE__ */ new Date()).toISOString(),
+      context: {},
+      messages: []
+    };
+    history.sessions.push(session);
+  }
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (tool) {
+    session.messages.push({ role: "pm_tool", tool, result_summary: resultSummary || "", time: now });
+  }
+  session.messages.push({ role: "claude", content: question, time: now });
+  session.messages.push({ role: "pm", content: answer, time: now });
+  if (session.messages.length > MAX_DISCUSSION_HISTORY * 2 + 4) {
+    session.messages = session.messages.slice(-MAX_DISCUSSION_HISTORY * 2);
+  }
+  _saveDiscussionHistory(history);
+}
+function _formatDiscussionHistory(limit = MAX_DISCUSSION_HISTORY) {
+  const history = _loadDiscussionHistory();
+  const session = history.sessions[history.sessions.length - 1];
+  if (!session || session.messages.length === 0) return "(\u65E0\u5386\u53F2\u5BF9\u8BDD)";
+  const recent = session.messages.slice(-limit * 2);
+  return recent.map((m) => {
+    const time = m.time ? new Date(m.time).toLocaleTimeString("zh-CN") : "";
+    if (m.role === "pm_tool") return `[${time}] Tool: ${m.tool} \u2192 ${m.result_summary}`;
+    if (m.role === "claude") return `[${time}] Claude: ${m.content?.slice(0, 100) || ""}`;
+    return `[${time}] PM: ${m.content?.slice(0, 200) || ""}`;
+  }).join("\n");
+}
+function _formatMemorySummary(memory) {
+  const openIssues = memory.reviews.flatMap((r) => r.issues).filter((i) => i.status === "open");
+  const fixedIssues = memory.reviews.flatMap((r) => r.issues).filter((i) => i.status === "fixed");
+  const lines = [
+    `\u9879\u76EE: ${memory.project.name} (${memory.project.package_name})`,
+    `\u8BBE\u8BA1\u7A3F: ${memory.design_specs.sources.length} \u5F20`,
+    `\u5BA1\u67E5\u8BB0\u5F55: ${memory.reviews.length} \u6B21`,
+    `Open Issues: ${openIssues.length} \u4E2A`,
+    `Fixed Issues: ${fixedIssues.length} \u4E2A`,
+    `\u5F53\u524D\u7126\u70B9: ${memory.current_focus.page} (${memory.current_focus.channel})`
+  ];
+  if (openIssues.length > 0) {
+    lines.push("\u672A\u4FEE\u590D\u95EE\u9898:");
+    for (const issue of openIssues.slice(0, 5)) {
+      lines.push(`  - ${issue.issue_id} [${issue.severity}] ${issue.description}`);
+    }
+  }
+  if (Object.keys(memory.design_specs.tokens).length > 0) {
+    lines.push("\u8BBE\u8BA1 Token:");
+    for (const [k, v] of Object.entries(memory.design_specs.tokens).slice(0, 5)) {
+      lines.push(`  - ${k}: ${v}`);
+    }
+  }
+  return lines.join("\n");
+}
+async function _callTextLlm(systemPrompt, userPrompt, maxTokens = 4e3) {
+  const { getActiveProvider: getActiveProvider2, makeInsecureFetch: makeInsecureFetch2 } = await import("./design-extractor-Q6J6UBIL.js");
+  const { default: OpenAI2 } = await import("openai");
+  const cfg = getActiveProvider2();
+  const model = process.env.TEXT_MODEL || "MiniMax-M2.7";
+  const apiKey = process.env[cfg.apiKeyEnv];
+  if (!apiKey) throw new Error(`${cfg.apiKeyEnv} not set`);
+  const clientOpts = { apiKey, baseURL: cfg.baseURL };
+  if (cfg.insecureTLS) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    clientOpts.fetch = makeInsecureFetch2();
+  }
+  const client = new OpenAI2(clientOpts);
+  const requestOpts = {
+    model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    max_tokens: maxTokens,
+    temperature: 0.7
+  };
+  if (model === "MiniMax-M3") {
+    requestOpts.extra_body = { thinking: { type: "disabled" } };
+  }
+  const response = await client.chat.completions.create(requestOpts, { timeout: 6e4 });
+  const msg = response.choices[0]?.message;
+  let content = msg?.content;
+  if (!content && msg?.reasoning_content) content = msg.reasoning_content;
+  if (!content) throw new Error("Text model returned empty response");
+  return content;
+}
+async function handlePmMarkFixed(args) {
+  const sessionId = `sess-${Date.now()}`;
+  try {
+    const issueId = args.issueId;
+    logTrace({ type: "tool_call", tool: "pm_mark_fixed", args: { issueId }, session_id: sessionId });
+    const note = args.note || "";
+    const action = args.action || "fixed";
+    if (!issueId) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: "issueId required" }) }] };
+    }
+    const state = _loadPmState();
+    if (action === "fixed") {
+      state.fixed.push({ issue_id: issueId, note, fixed_at: (/* @__PURE__ */ new Date()).toISOString() });
+    } else if (action === "ignored") {
+      state.ignored.push({ issue_id: issueId, note, ignored_at: (/* @__PURE__ */ new Date()).toISOString() });
+    } else if (action === "reopen") {
+      state.fixed = state.fixed.filter((f) => f.issue_id !== issueId);
+    } else {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: `Unknown action: ${action}` }) }] };
+    }
+    _savePmState(state);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          action,
+          issue_id: issueId,
+          state_file: PM_STATE_PATH,
+          fixed_count: state.fixed.length,
+          ignored_count: state.ignored.length,
+          open_issues_hint: "\u4E0B\u6B21 pm_review \u65F6\u4ECD\u4F1A\u91CD\u65B0\u53D1\u73B0\u5168\u90E8 issue\uFF1Bpm_mark_fixed \u4E3B\u8981\u7528\u4E8E\u72B6\u6001\u8BB0\u5F55\u4E0E\u89C6\u9891\u6F14\u793A\u8FFD\u8E2A"
+        }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("pm_mark_fixed failed:", err);
+    logTrace({ type: "error", tool: "pm_mark_fixed", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+function _clampNum(v, max) {
+  const n = Number(v);
+  if (isNaN(n)) return void 0;
+  return Math.max(0, Math.min(max, Math.round(n)));
+}
+function _clampCoordinates(tool, args, screen) {
+  const minY = 150;
+  const maxY = 2280;
+  const clampY = (v) => {
+    const n = _clampNum(v, screen.height);
+    return n === void 0 ? void 0 : Math.max(minY, Math.min(maxY, n));
+  };
+  if (tool === "tap") {
+    return { ...args, x: _clampNum(args.x, screen.width), y: clampY(args.y) };
+  }
+  if (tool === "swipe") {
+    return {
+      ...args,
+      x1: _clampNum(args.x1, screen.width),
+      y1: clampY(args.y1),
+      x2: _clampNum(args.x2, screen.width),
+      y2: clampY(args.y2)
+    };
+  }
+  if (tool === "screenshot_region" || tool === "verify_ui") {
+    return { ...args, x: _clampNum(args.x, screen.width), y: _clampNum(args.y, screen.height) };
+  }
+  return args;
+}
+function _isLauncherState(texts) {
+  const launcherMarkers = ["Play Store", "Gmail", "Photos", "YouTube", "Phone", "Messages", "Chrome", "Google"];
+  const toutiaoMarkers = ["ToutiaoFeedDemo", "\u70ED\u641C", "Tab", "\u63A8\u8350", "\u5173\u6CE8", "\u9996\u9875", "video", "\u5546\u57CE"];
+  const hasLauncher = launcherMarkers.filter((m) => texts.includes(m)).length >= 3;
+  const hasToutiao = toutiaoMarkers.filter((m) => texts.includes(m)).length >= 2;
+  return hasLauncher && !hasToutiao;
+}
+function _parseToolCall(raw) {
+  let text = raw.trim();
+  text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenced) text = fenced[1].trim();
+  const a = text.indexOf("{");
+  const b = text.lastIndexOf("}");
+  if (a !== -1 && b > a) text = text.slice(a, b + 1);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const fixed = text.replace(/,(\s*[}\]])/g, "$1").replace(/([{,]\s*)([A-Za-z_][\w$]*)(\s*:)/g, '$1"$2"$3');
+    try {
+      parsed = JSON.parse(fixed);
+    } catch {
+      return { tool: "tap", args: {}, note: "JSON \u89E3\u6790\u5931\u8D25\uFF08fallback\uFF09" };
+    }
+  }
+  const tool = String(parsed.tool || "").trim();
+  const args = parsed.args && typeof parsed.args === "object" && !Array.isArray(parsed.args) ? parsed.args : {};
+  const note = String(parsed.note || "");
+  if (!tool) {
+    return { tool: "tap", args: {}, note: "\u7F3A\u5C11 tool \u5B57\u6BB5" };
+  }
+  const r = { tool, args, note };
+  if (tool === "done") {
+    r.overall_rating = String(parsed.overall_rating || args.overall_rating || "C");
+    r.summary = String(parsed.summary || args.summary || "");
+    r.thinking_process = String(parsed.thinking_process || args.thinking_process || "");
+    r.issues = Array.isArray(parsed.issues) ? parsed.issues : Array.isArray(args.issues) ? args.issues : [];
+    r.positives = Array.isArray(parsed.positives) ? parsed.positives : Array.isArray(args.positives) ? args.positives : [];
+  }
+  return r;
+}
+async function _dispatch(tool, args, screen) {
+  const handler = PM_TOOL_REGISTRY[tool];
+  if (!handler) {
+    const known = Object.keys(PM_TOOL_REGISTRY).sort().join(", ");
+    return { ok: false, error: `\u672A\u77E5\u5DE5\u5177 "${tool}"\u3002\u53EF\u7528: ${known}` };
+  }
+  try {
+    const clamped = _clampCoordinates(tool, args, screen);
+    const res = await handler(clamped);
+    if ("isError" in res && res.isError) {
+      const text2 = res.content[0]?.text || "(handler \u9519\u8BEF\u4F46\u65E0\u6587\u672C)";
+      return { ok: false, error: text2.slice(0, 500) };
+    }
+    const text = res.content[0]?.text || "(\u65E0\u8F93\u51FA)";
+    return { ok: true, info: text.slice(0, 1500) };
+  } catch (e) {
+    return { ok: false, error: e.message.slice(0, 500) };
+  }
+}
+function _loadExplorePromptTemplate() {
+  const candidates = [
+    PROMPT_EXPLORE_PATH,
+    path3.resolve(process.cwd(), PROMPT_EXPLORE_PATH),
+    path3.resolve(process.cwd(), "..", PROMPT_EXPLORE_PATH)
+  ];
+  for (const p of candidates) {
+    if (fs5.existsSync(p)) return fs5.readFileSync(p, "utf-8");
+  }
+  throw new Error(`pm_explore prompt template not found: ${PROMPT_EXPLORE_PATH}`);
+}
+var _cachedProjectRoot = null;
+function _findProjectRoot() {
+  if (_cachedProjectRoot) return _cachedProjectRoot;
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    if (fs5.existsSync(path3.join(dir, "settings.gradle.kts")) || fs5.existsSync(path3.join(dir, "settings.gradle"))) {
+      _cachedProjectRoot = dir;
+      return dir;
+    }
+    const parent = path3.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  _cachedProjectRoot = path3.resolve(process.cwd(), "..");
+  return _cachedProjectRoot;
+}
+async function handlePmExplore(args) {
+  const sessionId = `sess-${Date.now()}`;
+  try {
+    const goal = args.goal || "\u5BA1\u67E5\u5F53\u524D\u9875\u9762\u7684\u53EF\u7528\u6027\u548C\u8BBE\u8BA1";
+    const maxSteps = Math.min(Math.max(args.maxSteps ?? 6, 1), 12);
+    logTrace({ type: "tool_call", tool: "pm_explore", args: { goal, maxSteps }, session_id: sessionId });
+    const exploreId = `explore-${Date.now()}`;
+    const traceDir = path3.join(REVIEW_DIR, exploreId);
+    fs5.mkdirSync(traceDir, { recursive: true });
+    const tpl = _loadExplorePromptTemplate();
+    const screen = await getScreenSize();
+    const checklist = _loadChecklist();
+    const systemPrompt = '\u4F60\u662F Android \u4EA7\u54C1\u7ECF\u7406\uFF0C\u6B63\u5728\u81EA\u4E3B\u5BA1\u67E5 APP\u3002\u6BCF\u6B65\u4E25\u683C\u6309 JSON Schema \u8F93\u51FA 1 \u4E2A\u5DE5\u5177\u8C03\u7528\uFF1A\n1) \u552F\u4E00\u8F93\u51FA\uFF1A\u4E00\u4E2A JSON \u5BF9\u8C61\uFF0C\u4ECE { \u5F00\u59CB\u5230 } \u7ED3\u675F\n2) \u5DE5\u5177\u540D\u5FC5\u987B\u4E25\u683C\u5339\u914D\u53EF\u7528\u5217\u8868\uFF08registry \u91CC\u6709\u7684\uFF09\n3) \u7981\u6B62\uFF1A```json``` \u56F4\u680F\u3001<think> \u5757\u3001\u4EFB\u4F55 markdown\u3001\u4EFB\u4F55\u89E3\u91CA\u6027\u6587\u5B57\n4) \u5B57\u7B26\u4E32\u91CC\u7684\u53CC\u5F15\u53F7\u5FC5\u987B\u7528 \\" \u8F6C\u4E49\n5) done \u662F\u7279\u6B8A\u5DE5\u5177\uFF1Aargs \u5B57\u6BB5\u542B overall_rating/summary/thinking_process/issues/positives\n\nPM \u5BA1\u67E5\u6807\u51C6\u5E93\uFF08\u53C2\u8003\uFF09\uFF1A\n' + checklist;
+    const history = [];
+    const trace = [];
+    let finalResult = null;
+    let stuckCount = 0;
+    let lastDumpText = "";
+    let lastResult = "(\u65E0)";
+    let lastToolWasSettling = true;
+    let effectiveInteractiveSteps = 0;
+    let tStart = Date.now();
+    for (let step = 1; step <= maxSteps; step++) {
+      log(`pm_explore \u2014 step ${step}/${maxSteps} (goal: ${goal})`);
+      logTrace({ type: "step", step, total_steps: maxSteps, action: "screenshot", detail: `dump=${dumpNodes.length} nodes`, session_id: sessionId });
+      const shotPath = path3.join(traceDir, `step-${step}.png`);
+      const shot = await _takeScreenshot(shotPath);
+      const { nodes: dumpNodes } = await _dumpUiInternal();
+      const texts = dumpNodes.map((n) => n.text).filter(Boolean).join(" | ");
+      const dumpSummary = texts.length > 0 ? texts.slice(0, 400) : "(\u9875\u9762\u65E0\u6587\u672C\u8282\u70B9)";
+      if (_isLauncherState(texts)) {
+        const hint = "\u26A0\uFE0F \u5F53\u524D\u5C4F\u5E55\u662F Android launcher\uFF08Play Store / Gmail \u7B49\uFF09\uFF0C\u4E0D\u662F Toutiao app\uFF01\u5FC5\u987B\u5148\u8C03 `install_and_launch({})` \u624D\u80FD\u7EE7\u7EED";
+        lastResult = hint;
+        log(`pm_explore \u2014 detected launcher state at step ${step}, forcing hint`);
+      }
+      const filled = tpl.replace("${goal}", goal).replace("${history}", history.length > 0 ? history.join("\n") : "(\u65E0\uFF0C\u5DF2\u662F\u7B2C 1 \u6B65)").replace("${last_result}", lastResult).replace("${ui_dump_summary}", dumpSummary).replace("${screen_width}", String(screen.width)).replace("${screen_height}", String(screen.height));
+      const tVlm = Date.now();
+      const raw = await _callVision(shot, systemPrompt, filled, 4e3);
+      log(`pm_explore \u2014 step ${step} VLM ${Date.now() - tVlm}ms`);
+      logTrace({ type: "vlm_think", step, thought: call.note || call.tool, model: process.env.VISION_MODEL || "MiniMax-M3", latency_ms: Date.now() - tVlm, session_id: sessionId });
+      const call = _parseToolCall(raw);
+      const isInteractive = INTERACTIVE_TOOLS.has(call.tool);
+      if (texts === lastDumpText) {
+        if (SETTLING_TOOLS.has(call.tool)) {
+          stuckCount = 0;
+        } else if (lastToolWasSettling) {
+          stuckCount = 1;
+        } else {
+          stuckCount++;
+        }
+      } else {
+        stuckCount = 0;
+        if (isInteractive) effectiveInteractiveSteps++;
+      }
+      lastDumpText = texts;
+      if (stuckCount >= 2) {
+        log(`pm_explore \u2014 stuck detected (UI unchanged ${stuckCount} interactive steps), force done`);
+        finalResult = {
+          _stuck: true,
+          _reason: "\u8FDE\u7EED 2 \u6B65\u4EA4\u4E92\u5DE5\u5177 UI \u6587\u672C\u672A\u53D8\uFF0CPM \u5361\u4F4F\u4E86",
+          overall_rating: "C",
+          summary: "PM \u81EA\u4E3B\u63A2\u7D22\u65F6\u5361\u4F4F\uFF08\u8FDE\u7EED 2 \u6B65 UI \u65E0\u53D8\u5316\uFF09\uFF0C\u53EF\u80FD\u76EE\u6807\u5143\u7D20\u4E0D\u5B58\u5728\u3001\u5750\u6807\u4E0D\u5BF9\u6216\u5C4F\u5E55\u5DF2\u9501\u6B7B",
+          thinking_process: "stale \u68C0\u6D4B\u89E6\u53D1\uFF0C\u5F3A\u5236 done",
+          issues: [],
+          positives: []
+        };
+        break;
+      }
+      if (call.tool === "done" && effectiveInteractiveSteps < 3) {
+        lastResult = `\u26A0\uFE0F done \u592A\u65E9\uFF1A\u624D\u8D70\u4E86 ${effectiveInteractiveSteps} \u6B65\u6709\u6548\u4EA4\u4E92\uFF08\u81F3\u5C11\u9700\u8981 3 \u6B65\uFF09\u3002\u8BF7\u7EE7\u7EED\uFF1A\u5148 install_and_launch\uFF0C\u518D\u5207 Tab/\u70B9\u5361\u7B49`;
+        log(`pm_explore \u2014 blocked premature done at step ${step} (only ${effectiveInteractiveSteps} interactive steps)`);
+        trace.push({
+          step,
+          tool: call.tool,
+          args: call.args,
+          note: "BLOCKED: premature done",
+          screenshot: shot,
+          ui_dump: dumpSummary,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        });
+        continue;
+      }
+      const histLine = call.tool === "done" ? `[step ${step}] done \u2014 ${call.summary?.slice(0, 50) || ""}` : `[step ${step}] ${call.tool}(${JSON.stringify(call.args).slice(0, 80)}) \u2014 ${call.note || ""}`;
+      history.unshift(histLine);
+      if (history.length > 12) history.length = 12;
+      trace.push({
+        step,
+        tool: call.tool,
+        args: call.args,
+        note: call.note,
+        screenshot: shot,
+        ui_dump: dumpSummary,
+        vlm_response: raw.slice(0, 300),
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      if (call.tool === "done") {
+        finalResult = {
+          overall_rating: call.overall_rating || "C",
+          summary: call.summary || "",
+          thinking_process: call.thinking_process || "",
+          issues: call.issues || [],
+          positives: call.positives || []
+        };
+        break;
+      }
+      const result = await _dispatch(call.tool, call.args, screen);
+      if (!result.ok) {
+        log(`pm_explore \u2014 step ${step} tool ${call.tool} failed: ${result.error}`);
+        trace[trace.length - 1].execution_error = result.error;
+        lastResult = `\u274C ${call.tool} \u5931\u8D25: ${result.error}`;
+      } else {
+        trace[trace.length - 1].execution_info = result.info;
+        lastResult = `\u2713 ${call.tool} \u2192 ${result.info || "(\u7A7A)"}`;
+      }
+      lastToolWasSettling = SETTLING_TOOLS.has(call.tool);
+      const settleMs = (/* @__PURE__ */ new Set(["build", "install_and_launch", "stop_app", "clear_app_data", "set_orientation"])).has(call.tool) ? 2500 : 800;
+      await new Promise((r) => setTimeout(r, settleMs));
+    }
+    if (!finalResult) {
+      finalResult = {
+        _maxStepsReached: true,
+        overall_rating: "C",
+        summary: `PM \u81EA\u4E3B\u63A2\u7D22\u8FBE\u5230 maxSteps=${maxSteps} \u4E0A\u9650\uFF0C\u672A\u8F93\u51FA done\u3002\u57FA\u4E8E\u5DF2\u89C2\u5BDF\u5230\u7684 ${trace.length} \u6B65\u52A8\u4F5C\uFF0C\u5EFA\u8BAE\u4EBA\u5DE5\u8DDF\u8FDB\u3002`,
+        thinking_process: history.join(" | "),
+        issues: [],
+        positives: []
+      };
+    }
+    if (finalResult && Array.isArray(finalResult.issues)) {
+      const memory = _loadPmMemory();
+      _updateMemoryFromReview(memory, {
+        review_id: exploreId,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        tool: "pm_explore",
+        target: goal,
+        overall_rating: String(finalResult.overall_rating || "C"),
+        issues: finalResult.issues.map((issue, idx) => ({
+          issue_id: issue.id || _generateIssueId(memory),
+          severity: issue.severity || "medium",
+          category: issue.category || "ui_bug",
+          description: `${issue.location || ""}: ${issue.current_state || ""} \u2192 ${issue.expected_state || ""}`,
+          location: issue.location || "",
+          design_ref: issue.design_ref || "",
+          status: "open"
+        })),
+        positives: Array.isArray(finalResult.positives) ? finalResult.positives : []
+      });
+      logTrace({ type: "memory_update", action: "append_review", review_id: exploreId, session_id: sessionId });
+    }
+    const traceFile = path3.join(REVIEW_DIR, `${exploreId}.json`);
+    const fullTrace = {
+      explore_id: exploreId,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      goal,
+      max_steps: maxSteps,
+      steps_taken: trace.length,
+      elapsed_ms: Date.now() - tStart,
+      history,
+      trace,
+      trace_dir: traceDir,
+      final_result: finalResult
+    };
+    fs5.writeFileSync(traceFile, JSON.stringify(fullTrace, null, 2), "utf-8");
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          explore_id: exploreId,
+          trace_file: traceFile,
+          trace_dir: traceDir,
+          steps_taken: trace.length,
+          elapsed_ms: Date.now() - tStart,
+          history,
+          ...finalResult
+        }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("pm_explore failed:", err);
+    logTrace({ type: "error", tool: "pm_explore", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+async function handlePmDiscuss(args) {
+  const sessionId = `sess-${Date.now()}`;
+  try {
+    const question = args.question || "";
+    const context = args.context || "";
+    const includeHistory = args.include_history !== false;
+    const includeScreenshot = args.include_screenshot === true;
+    if (!question) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: "question required" }) }] };
+    }
+    logTrace({ type: "discuss", tool: "pm_discuss", args: { question: question.slice(0, 100), context: context.slice(0, 100), includeHistory, includeScreenshot }, session_id: sessionId });
+    const memory = _loadPmMemory();
+    const memorySummary = _formatMemorySummary(memory);
+    const discussionHistory = includeHistory ? _formatDiscussionHistory() : "(\u5386\u53F2\u5DF2\u5FFD\u7565)";
+    let screenshotPath;
+    if (includeScreenshot) {
+      screenshotPath = await _takeScreenshot();
+    }
+    const tplPath = path3.resolve(process.cwd(), "./skills/prompts/pm_discuss.txt");
+    let tpl = fs5.existsSync(tplPath) ? fs5.readFileSync(tplPath, "utf-8") : "";
+    if (!tpl) {
+      tpl = `\u4F60\u662F ToutiaoFeedDemo \u7684 AI \u4EA7\u54C1\u7ECF\u7406\u3002\u57FA\u4E8E\u9879\u76EE\u8BB0\u5FC6\u548C\u5BF9\u8BDD\u5386\u53F2\u56DE\u7B54\u4EA7\u54C1\u95EE\u9898\u3002`;
+    }
+    const filled = tpl.replace("${pm_memory_summary}", memorySummary).replace("${discussion_history}", discussionHistory).replace("${context}", context || "(\u672A\u63D0\u4F9B)");
+    const systemPrompt = '\u4F60\u662F Android \u4EA7\u54C1\u7ECF\u7406\u3002\u56DE\u7B54\u7B80\u6D01\u3001\u5177\u4F53\u3001\u53EF\u6267\u884C\u3002\u4E0D\u786E\u5B9A\u65F6\u8BF4"\u9879\u76EE\u8BB0\u5FC6\u4E2D\u6CA1\u6709\u76F8\u5173\u4FE1\u606F"\u3002';
+    let answer;
+    if (includeScreenshot && screenshotPath) {
+      const userPrompt = filled + "\n\n\u7528\u6237\u95EE\u9898\uFF1A" + question + "\n\uFF08\u7528\u6237\u8981\u6C42 PM \u57FA\u4E8E\u5F53\u524D\u622A\u56FE\u56DE\u7B54\uFF09";
+      answer = await _callVision(screenshotPath, systemPrompt, userPrompt, 4e3);
+    } else {
+      answer = await _callTextLlm(systemPrompt, filled + "\n\n\u7528\u6237\u95EE\u9898\uFF1A" + question, 4e3);
+    }
+    _appendDiscussion(question, answer, "pm_discuss", "\u56DE\u7B54\u5B8C\u6210");
+    logTrace({ type: "discuss", tool: "pm_discuss", detail: "completed", session_id: sessionId });
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          answer,
+          memory_summary: memorySummary.slice(0, 500),
+          include_screenshot: includeScreenshot
+        }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("pm_discuss failed:", err);
+    logTrace({ type: "error", tool: "pm_discuss", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+async function handlePmCheck(args) {
+  const sessionId = `sess-${Date.now()}`;
+  try {
+    const issueId = args.issue_id;
+    const target = args.target || "";
+    const autoMarkFixed = args.auto_mark_fixed !== false;
+    if (!issueId) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: "issue_id required" }) }] };
+    }
+    logTrace({ type: "check", tool: "pm_check", args: { issue_id: issueId, target, autoMarkFixed }, session_id: sessionId });
+    const memory = _loadPmMemory();
+    const allIssues = memory.reviews.flatMap((r) => r.issues);
+    const issue = allIssues.find((i) => i.issue_id === issueId);
+    if (!issue) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: `Issue not found in memory: ${issueId}` }) }] };
+    }
+    const shot = await _takeScreenshot();
+    const tplPath = path3.resolve(process.cwd(), "./skills/prompts/pm_check.txt");
+    let tpl = fs5.existsSync(tplPath) ? fs5.readFileSync(tplPath, "utf-8") : "";
+    if (!tpl) {
+      tpl = "\u5224\u65AD\u4EE5\u4E0B issue \u662F\u5426\u5DF2\u4FEE\u590D\u3002\u8F93\u51FA JSON: {fixed: boolean, confidence: high/medium/low, note: string}";
+    }
+    const filled = tpl.replace("${issue_json}", JSON.stringify(issue, null, 2));
+    const systemPrompt = "\u4F60\u662F Android \u4EA7\u54C1\u7ECF\u7406\uFF0C\u6B63\u5728\u9A8C\u8BC1 issue \u4FEE\u590D\u72B6\u6001\u3002\u4E25\u683C\u6309 JSON \u683C\u5F0F\u8F93\u51FA\u3002";
+    const raw = await _callVision(shot, systemPrompt, filled, 2e3);
+    const parsed = _parseJsonFromVision(raw);
+    const fixed = parsed.fixed === true;
+    const confidence = String(parsed.confidence || "low");
+    const note = String(parsed.note || "");
+    const remainingConcerns = String(parsed.remaining_concerns || "");
+    if (fixed && autoMarkFixed) {
+      issue.status = "fixed";
+      issue.verified_by = "pm_check";
+      issue.verified_at = (/* @__PURE__ */ new Date()).toISOString();
+      _savePmMemory(memory);
+      const state = _loadPmState();
+      if (!state.fixed.find((f) => f.issue_id === issueId)) {
+        state.fixed.push({ issue_id: issueId, note: `Verified by pm_check: ${note}`, fixed_at: (/* @__PURE__ */ new Date()).toISOString() });
+        _savePmState(state);
+      }
+      logTrace({ type: "memory_update", action: "mark_fixed", detail: issueId, session_id: sessionId });
+    }
+    logTrace({ type: "check", tool: "pm_check", detail: fixed ? "fixed" : "not_fixed", session_id: sessionId });
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          issue_id: issueId,
+          fixed,
+          confidence,
+          note,
+          remaining_concerns: remainingConcerns,
+          auto_marked: fixed && autoMarkFixed
+        }, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("pm_check failed:", err);
+    logTrace({ type: "error", tool: "pm_check", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+async function handlePmGetMemory(args) {
+  try {
+    const scope = args.scope || "overview";
+    const channel = args.channel || "";
+    const memory = _loadPmMemory();
+    const allIssues = memory.reviews.flatMap((r) => r.issues);
+    const filteredIssues = channel ? allIssues.filter((i) => {
+      const review = memory.reviews.find((r) => r.issues.includes(i));
+      return review?.channel === channel;
+    }) : allIssues;
+    let result = { success: true, scope };
+    switch (scope) {
+      case "overview": {
+        result = {
+          ...result,
+          project: memory.project,
+          review_count: memory.reviews.length,
+          open_issues: filteredIssues.filter((i) => i.status === "open").length,
+          fixed_issues: filteredIssues.filter((i) => i.status === "fixed").length,
+          ignored_issues: filteredIssues.filter((i) => i.status === "ignored").length,
+          current_focus: memory.current_focus,
+          design_files: memory.design_specs.sources.length
+        };
+        break;
+      }
+      case "open_issues": {
+        result = {
+          ...result,
+          issues: filteredIssues.filter((i) => i.status === "open"),
+          count: filteredIssues.filter((i) => i.status === "open").length
+        };
+        break;
+      }
+      case "fixed_issues": {
+        result = {
+          ...result,
+          issues: filteredIssues.filter((i) => i.status === "fixed"),
+          count: filteredIssues.filter((i) => i.status === "fixed").length
+        };
+        break;
+      }
+      case "design_specs": {
+        result = {
+          ...result,
+          sources: memory.design_specs.sources,
+          tokens: memory.design_specs.tokens
+        };
+        break;
+      }
+      case "last_review": {
+        const last = memory.reviews[memory.reviews.length - 1];
+        result = { ...result, review: last || null };
+        break;
+      }
+      case "discussions": {
+        const history = _loadDiscussionHistory();
+        result = { ...result, sessions: history.sessions.length, last_session: history.sessions[history.sessions.length - 1] || null };
+        break;
+      }
+      default: {
+        result = { ...result, hint: `Unknown scope: ${scope}. Available: overview, open_issues, fixed_issues, design_specs, last_review, discussions` };
+      }
+    }
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(result, null, 2)
+      }]
+    };
+  } catch (e) {
+    const err = e;
+    error("pm_get_memory failed:", err);
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
 }
 
 // src/server.ts
@@ -5025,6 +5543,105 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["imagePath"]
         }
+      },
+      // ════════════════════════════════════════════════════════════
+      // PM Agent 工具（AI 产品经理协作）
+      // ════════════════════════════════════════════════════════════
+      {
+        name: "pm_review",
+        description: "\u5355\u6B21\u622A\u56FE + VLM \u5BA1\u67E5\uFF0C\u4EA7\u51FA\u7ED3\u6784\u5316 issue \u62A5\u544A\u3002\u9002\u5408\u5FEB\u901F\u5BA1\u67E5\u5355\u4E2A\u9875\u9762\u3002\u8FD4\u56DE JSON: {success, review_id, overall_rating, summary, thinking_process, issues[], positives[], next_priorities[]}\u3002\u8017\u65F6 slow (10-30s)\u3002\u793A\u4F8B\uFF1Apm_review({ target: '\u9996\u9875\u63A8\u8350' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            target: { type: "string", description: "\u53EF\u9009\u3002\u5BA1\u67E5\u76EE\u6807\u9875\u9762\u540D\u79F0\uFF0C\u9ED8\u8BA4'\u9996\u9875\u5217\u8868'" },
+            focus: { type: "array", items: { type: "string" }, description: "\u53EF\u9009\u3002\u91CD\u70B9\u5173\u6CE8\u7EF4\u5EA6\u5B57\u7B26\u4E32\u6570\u7EC4" },
+            screenshotPath: { type: "string", description: "\u53EF\u9009\u3002\u5DF2\u6709\u622A\u56FE\u8DEF\u5F84\uFF0C\u7701\u7565\u5219\u81EA\u52A8\u622A\u56FE" }
+          }
+        }
+      },
+      {
+        name: "pm_explore",
+        description: "\u591A\u6B65\u81EA\u4E3B\u63A2\u7D22\uFF086-12 \u6B65\uFF09\uFF0CPM \u81EA\u4E3B\u8C03\u5EA6\u8BBE\u5907\u64CD\u4F5C\u5DE5\u5177\uFF0C\u9010\u4E2A\u9875\u9762\u5BA1\u67E5\u540E\u6C47\u603B\u3002\u9002\u5408\u6DF1\u5EA6\u5BA1\u67E5\u3002\u8FD4\u56DE JSON: {success, explore_id, overall_rating, summary, thinking_process, issues[], positives[], steps_taken, elapsed_ms}\u3002\u8017\u65F6 slow (1-5 \u5206\u949F)\u3002\u793A\u4F8B\uFF1Apm_explore({ goal: '\u5BA1\u67E5\u9996\u9875\u8D22\u7ECF\u9891\u9053', maxSteps: 8 })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            goal: { type: "string", description: "\u53EF\u9009\u3002\u63A2\u7D22\u76EE\u6807\u63CF\u8FF0\uFF0C\u9ED8\u8BA4'\u5BA1\u67E5\u5F53\u524D\u9875\u9762\u7684\u53EF\u7528\u6027\u548C\u8BBE\u8BA1'" },
+            maxSteps: { type: "number", description: "\u53EF\u9009\u3002\u6700\u5927\u6B65\u6570 1-12\uFF0C\u9ED8\u8BA4 6" }
+          }
+        }
+      },
+      {
+        name: "pm_compare_with_design",
+        description: "\u8BBE\u8BA1\u7A3F vs \u5B9E\u73B0\u7684\u50CF\u7D20 diff + LLM \u5206\u6790\u3002\u9700\u8981 MINIMAX_API_KEY\u3002\u8FD4\u56DE JSON: {success, design, impl, pixel_diff, llm_analysis}\u3002\u8017\u65F6 slow (5-20s)\u3002\u793A\u4F8B\uFF1Apm_compare_with_design({ designPath: 'design/\u9996\u9875-\u63A8\u8350.jpg' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            designPath: { type: "string", description: "Required. \u8BBE\u8BA1\u7A3F\u8DEF\u5F84" },
+            implScreenshotPath: { type: "string", description: "\u53EF\u9009\u3002\u5F53\u524D\u5B9E\u73B0\u622A\u56FE\u8DEF\u5F84\uFF0C\u7701\u7565\u5219\u81EA\u52A8\u622A\u56FE" }
+          },
+          required: ["designPath"]
+        }
+      },
+      {
+        name: "pm_mark_fixed",
+        description: "\u6807\u8BB0 issue \u4FEE\u590D\u72B6\u6001\uFF08fixed/ignored/reopen\uFF09\u3002\u540C\u6B65\u66F4\u65B0 .pm_memory.json \u548C .pm_state.json\u3002\u8FD4\u56DE JSON: {success, action, issue_id, fixed_count, ignored_count}\u3002\u793A\u4F8B\uFF1Apm_mark_fixed({ issueId: 'ISSUE-001', action: 'fixed', note: '\u5DF2\u4FEE\u590D Tab padding' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            issueId: { type: "string", description: "Required. Issue ID" },
+            action: { type: "string", enum: ["fixed", "ignored", "reopen"], description: "\u53EF\u9009\u3002\u64CD\u4F5C\u7C7B\u578B\uFF0C\u9ED8\u8BA4 fixed" },
+            note: { type: "string", description: "\u53EF\u9009\u3002\u5907\u6CE8\u8BF4\u660E" }
+          },
+          required: ["issueId"]
+        }
+      },
+      {
+        name: "pm_discuss",
+        description: "\u4E0E\u9879\u76EE PM \u8BA8\u8BBA\u4EA7\u54C1\u95EE\u9898\u3001\u8BBE\u8BA1\u89C4\u8303\u6216\u4FEE\u590D\u65B9\u6848\u3002PM \u62E5\u6709\u5B8C\u6574\u7684\u9879\u76EE\u8BB0\u5FC6\uFF08\u5386\u53F2\u5BA1\u67E5\u8BB0\u5F55\u3001\u5DF2\u4FEE\u590D\u95EE\u9898\u3001\u8BBE\u8BA1\u7A3F\u89C4\u8303\u3001\u5BF9\u8BDD\u4E0A\u4E0B\u6587\uFF09\uFF0C\u80FD\u57FA\u4E8E\u591A\u8F6E\u4E0A\u4E0B\u6587\u7ED9\u51FA\u5177\u4F53\u53EF\u6267\u884C\u7684\u5EFA\u8BAE\u3002\u9002\u5408\u5728\u6536\u5230 pm_review / pm_explore \u62A5\u544A\u540E\u8FFD\u95EE\u7EC6\u8282\uFF0C\u6216\u5728\u5F00\u53D1\u8FC7\u7A0B\u4E2D\u968F\u65F6\u54A8\u8BE2\u8BBE\u8BA1\u89C4\u8303\u3002\u8FD4\u56DE JSON: {success, answer, memory_summary}\u3002\u793A\u4F8B\uFF1Apm_discuss({ question: 'ISSUE-001 \u5E94\u8BE5\u600E\u4E48\u4FEE\uFF1F', context: '\u6B63\u5728\u4FEE\u6539 HomeScreen.kt' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            question: { type: "string", description: "Required. \u4F60\u7684\u95EE\u9898" },
+            context: { type: "string", description: "\u53EF\u9009\u3002\u5F53\u524D\u5F00\u53D1\u4E0A\u4E0B\u6587" },
+            include_history: { type: "boolean", description: "\u662F\u5426\u643A\u5E26\u6700\u8FD1\u5BF9\u8BDD\u5386\u53F2\uFF0C\u9ED8\u8BA4 true", default: true },
+            include_screenshot: { type: "boolean", description: "\u662F\u5426\u8BA9 PM \u5148\u622A\u56FE\u5F53\u524D\u9875\u9762\u518D\u56DE\u7B54\uFF0C\u9ED8\u8BA4 false", default: false }
+          },
+          required: ["question"]
+        }
+      },
+      {
+        name: "pm_check",
+        description: "\u9A8C\u8BC1\u6307\u5B9A issue \u662F\u5426\u5DF2\u4FEE\u590D\u3002PM \u4F1A\u622A\u56FE\u5F53\u524D\u9875\u9762\uFF0C\u5BF9\u6BD4\u8BE5 issue \u7684\u539F\u59CB\u63CF\u8FF0\uFF0C\u5224\u65AD\u662F\u5426\u4ECD\u5B58\u5728\u3002\u82E5\u4FEE\u590D\u6210\u529F\uFF0C\u81EA\u52A8\u66F4\u65B0 pm_memory.json \u4E2D\u7684 issue \u72B6\u6001\u3002\u9002\u5408\u5728 Claude Code \u4FEE\u6539\u4EE3\u7801\u540E\u5FEB\u901F\u9A8C\u8BC1\u3002\u8FD4\u56DE JSON: {success, issue_id, fixed, confidence, note, remaining_concerns, auto_marked}\u3002\u793A\u4F8B\uFF1Apm_check({ issue_id: 'ISSUE-001' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            issue_id: { type: "string", description: "Required. \u8981\u9A8C\u8BC1\u7684 issue ID" },
+            target: { type: "string", description: "\u53EF\u9009\u3002\u5F53\u524D\u9875\u9762\u540D\u79F0" },
+            auto_mark_fixed: { type: "boolean", description: "\u9A8C\u8BC1\u901A\u8FC7\u540E\u662F\u5426\u81EA\u52A8\u6807\u8BB0\u4E3A fixed\uFF0C\u9ED8\u8BA4 true", default: true }
+          },
+          required: ["issue_id"]
+        }
+      },
+      {
+        name: "pm_get_memory",
+        description: "\u67E5\u8BE2 PM \u7684\u9879\u76EE\u8BB0\u5FC6\u3002\u53EF\u83B7\u53D6\u5386\u53F2\u5BA1\u67E5\u8BB0\u5F55\u3001\u5F53\u524D open issues\u3001\u5DF2\u4FEE\u590D\u95EE\u9898\u3001\u8BBE\u8BA1\u89C4\u8303\u6458\u8981\u7B49\u3002\u9002\u5408\u5728\u5F00\u59CB\u65B0\u4EFB\u52A1\u524D\u4E86\u89E3\u9879\u76EE\u5F53\u524D\u72B6\u6001\u3002\u8FD4\u56DE JSON: {success, scope, ...}\u3002\u793A\u4F8B\uFF1Apm_get_memory({ scope: 'overview' })",
+        inputSchema: {
+          type: "object",
+          properties: {
+            scope: { type: "string", enum: ["overview", "open_issues", "fixed_issues", "design_specs", "last_review", "discussions"], description: "\u67E5\u8BE2\u8303\u56F4\uFF0C\u9ED8\u8BA4 overview", default: "overview" },
+            channel: { type: "string", description: "\u53EF\u9009\u3002\u6309\u9891\u9053\u8FC7\u6EE4" }
+          }
+        }
+      },
+      {
+        name: "dump_ui",
+        description: "UI \u5C42\u7EA7\u7ED3\u6784\u5316\u5BFC\u51FA\uFF08JSON \u683C\u5F0F\uFF09\uFF0C\u542B type/text/resource-id/bounds/clickable \u7B49\u3002\u8FD4\u56DE JSON: {success, dump_path, node_count, nodes[]}\u3002\u8017\u65F6 fast (~800ms)\u3002\u793A\u4F8B\uFF1Adump_ui({})",
+        inputSchema: {
+          type: "object",
+          properties: {
+            savePath: { type: "string", description: "\u53EF\u9009\u3002\u4FDD\u5B58\u8DEF\u5F84" }
+          }
+        }
       }
     ]
   };
@@ -5148,6 +5765,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return handleExtractComponents(args);
       case "design_to_compose":
         return handleDesignToCompose(args);
+      // PM Agent 工具
+      case "pm_review":
+        return handlePmReview(args);
+      case "pm_explore":
+        return handlePmExplore(args);
+      case "pm_compare_with_design":
+        return handlePmCompareWithDesign(args);
+      case "pm_mark_fixed":
+        return handlePmMarkFixed(args);
+      case "pm_discuss":
+        return handlePmDiscuss(args);
+      case "pm_check":
+        return handlePmCheck(args);
+      case "pm_get_memory":
+        return handlePmGetMemory(args);
+      case "dump_ui":
+        return handleDumpUi(args);
       default:
         error(`Unknown tool: ${name}`);
         return {
@@ -5168,7 +5802,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   log("AndroidDev-Assist MCP Server v3.1.0 running on stdio");
-  log("Capabilities: 49 tools across 16 categories: screenshot/interaction/hierarchy/build/deploy/verify/vision/logs/device/apps/performance/control/quality/test/report/design");
+  log("Capabilities: 56 tools across 17 categories: screenshot/interaction/hierarchy/build/deploy/verify/vision/logs/device/apps/performance/control/quality/test/report/design/pm-agent");
   const shutdown = async (signal) => {
     log(`Received ${signal}, shutting down gracefully...`);
     try {

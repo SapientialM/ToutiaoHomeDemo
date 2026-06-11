@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:watch": "vitest",
-    "test:vision-bench": "vitest run src/test/vision-benchmark.test.ts"
+    "test:vision-bench": "vitest run src/test/vision-benchmark.test.ts",
+    "monitor": "cd monitor && python3 main.py",
+    "migrate": "node migrate-pm-state.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",

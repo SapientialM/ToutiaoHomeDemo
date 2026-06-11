@@ -391,10 +391,12 @@ export async function handleDumpUi(args: Record<string, unknown>) {
 // ────────────────────────────────────────────────────────────────────────
 
 export async function handlePmReview(args: Record<string, unknown>) {
+  const sessionId = `sess-${Date.now()}`;
   try {
     const target = (args.target as string) || "首页列表";
     const focus = (args.focus as string[] | undefined) || DEFAULT_FOCUS;
     const screenshotPath = (args.screenshotPath as string | undefined) || undefined;
+    logTrace({ type: "tool_call", tool: "pm_review", args: { target, focus }, session_id: sessionId });
 
     // Step 1: 收集证据
     const shot = screenshotPath || await _takeScreenshot();
@@ -440,6 +442,30 @@ export async function handlePmReview(args: Record<string, unknown>) {
     fs.writeFileSync(reviewFile, JSON.stringify(review, null, 2), "utf-8");
 
     const { review_id: _ignoredReviewId, ...reviewForReturn } = review;
+
+    // 更新 Memory
+    const memory = _loadPmMemory();
+    _updateMemoryFromReview(memory, {
+      review_id: reviewId,
+      timestamp: review.timestamp,
+      tool: "pm_review",
+      target,
+      overall_rating: String(review.overall_rating || "C"),
+      issues: (Array.isArray(review.issues) ? review.issues : []).map((issue: any, idx: number) => ({
+        issue_id: issue.id || _generateIssueId(memory),
+        severity: issue.severity || "medium",
+        category: issue.category || "ui_bug",
+        description: `${issue.location || ""}: ${issue.current_state || ""} → ${issue.expected_state || ""}`,
+        location: issue.location || "",
+        design_ref: issue.design_ref || "",
+        status: "open",
+      })),
+      positives: Array.isArray(review.positives) ? review.positives : [],
+    });
+
+    logTrace({ type: "done", tool: "pm_review", overall_rating: String(review.overall_rating || "C"), issues_found: Array.isArray(review.issues) ? review.issues.length : 0, elapsed_ms: Date.now() - Date.parse(review.timestamp), session_id: sessionId });
+    logTrace({ type: "memory_update", action: "append_review", review_id: reviewId, session_id: sessionId });
+
     return {
       content: [{
         type: "text",
@@ -454,6 +480,7 @@ export async function handlePmReview(args: Record<string, unknown>) {
   } catch (e: unknown) {
     const err = e as Error;
     error("pm_review failed:", err);
+    logTrace({ type: "error", tool: "pm_review", detail: err.message, session_id: sessionId });
     return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
   }
 }
@@ -572,6 +599,10 @@ export async function handlePmCompareWithDesign(args: Record<string, unknown>) {
 // ────────────────────────────────────────────────────────────────────────
 
 const PM_STATE_PATH = process.env.PM_STATE_PATH || "./.pm_state.json";
+const TRACE_PATH = process.env.PM_TRACE_PATH || "./pm_trace.jsonl";
+const PM_MEMORY_PATH = process.env.PM_MEMORY_PATH || "./.pm_memory.json";
+const PM_DISCUSSION_PATH = process.env.PM_DISCUSSION_PATH || "./.pm_discussions.json";
+const MAX_DISCUSSION_HISTORY = 10;
 
 interface PmState {
   fixed: Array<{ issue_id: string; note?: string; fixed_at: string; review_id?: string }>;
@@ -591,9 +622,281 @@ function _savePmState(state: PmState): void {
   fs.writeFileSync(PM_STATE_PATH, JSON.stringify(state, null, 2), "utf-8");
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Trace 系统（旁路日志，供 Monitor CLI 实时读取）
+// ────────────────────────────────────────────────────────────────────────
+
+type TraceEventType = "tool_call" | "step" | "vlm_think" | "done" | "memory_update" | "error" | "discuss" | "check";
+
+interface TraceEvent {
+  type: TraceEventType;
+  tool?: string;
+  args?: Record<string, unknown>;
+  step?: number;
+  total_steps?: number;
+  action?: string;
+  detail?: string;
+  overall_rating?: string;
+  issues_found?: number;
+  elapsed_ms?: number;
+  session_id?: string;
+  [key: string]: unknown;
+}
+
+function logTrace(event: TraceEvent): void {
+  try {
+    const line = JSON.stringify({ ...event, ts: new Date().toISOString() });
+    fs.appendFileSync(TRACE_PATH, line + "\n");
+  } catch {
+    // Trace 是旁路，失败不阻塞主流程
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Memory 系统（项目级持久化记忆）
+// ────────────────────────────────────────────────────────────────────────
+
+interface PmMemoryIssue {
+  issue_id: string;
+  severity: "high" | "medium" | "low";
+  category: string;
+  description: string;
+  location?: string;
+  design_ref?: string;
+  status: "open" | "fixed" | "ignored";
+  fixed_at?: string;
+  verified_by?: string;
+  verified_at?: string;
+}
+
+interface PmMemoryReview {
+  review_id: string;
+  timestamp: string;
+  tool: string;
+  target: string;
+  channel?: string;
+  overall_rating: string;
+  issues: PmMemoryIssue[];
+  positives: Array<{ item: string; evidence?: string }>;
+}
+
+interface PmMemory {
+  project: {
+    name: string;
+    package_name: string;
+    main_activity: string;
+    version: string;
+  };
+  design_specs: {
+    sources: string[];
+    tokens: Record<string, string>;
+  };
+  reviews: PmMemoryReview[];
+  issue_counter: number;
+  current_focus: {
+    channel: string;
+    page: string;
+    last_review_id: string | null;
+  };
+}
+
+function _loadPmMemory(): PmMemory {
+  if (!fs.existsSync(PM_MEMORY_PATH)) {
+    return {
+      project: { name: "ToutiaoFeedDemo", package_name: "com.example.toutiao", main_activity: "MainActivity", version: "1.0.0" },
+      design_specs: { sources: [], tokens: {} },
+      reviews: [],
+      issue_counter: 0,
+      current_focus: { channel: "recommend", page: "首页推荐", last_review_id: null },
+    };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(PM_MEMORY_PATH, "utf-8")) as PmMemory;
+  } catch {
+    return {
+      project: { name: "ToutiaoFeedDemo", package_name: "com.example.toutiao", main_activity: "MainActivity", version: "1.0.0" },
+      design_specs: { sources: [], tokens: {} },
+      reviews: [],
+      issue_counter: 0,
+      current_focus: { channel: "recommend", page: "首页推荐", last_review_id: null },
+    };
+  }
+}
+
+function _savePmMemory(memory: PmMemory): void {
+  fs.writeFileSync(PM_MEMORY_PATH, JSON.stringify(memory, null, 2), "utf-8");
+}
+
+function _generateIssueId(memory: PmMemory): string {
+  memory.issue_counter += 1;
+  return `ISSUE-${String(memory.issue_counter).padStart(3, "0")}`;
+}
+
+function _updateMemoryFromReview(memory: PmMemory, review: PmMemoryReview): void {
+  memory.reviews.push(review);
+  memory.current_focus.last_review_id = review.review_id;
+  memory.current_focus.page = review.target;
+  if (review.channel) memory.current_focus.channel = review.channel;
+  for (const issue of review.issues) {
+    if (!issue.status) issue.status = "open";
+  }
+  _savePmMemory(memory);
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Discussion History 管理
+// ────────────────────────────────────────────────────────────────────────
+
+interface DiscussionMessage {
+  role: "claude" | "pm" | "pm_tool";
+  content?: string;
+  tool?: string;
+  result_summary?: string;
+  time: string;
+}
+
+interface DiscussionSession {
+  session_id: string;
+  started_at: string;
+  context: {
+    current_file?: string;
+    current_channel?: string;
+  };
+  messages: DiscussionMessage[];
+}
+
+interface DiscussionHistory {
+  sessions: DiscussionSession[];
+}
+
+function _loadDiscussionHistory(): DiscussionHistory {
+  if (!fs.existsSync(PM_DISCUSSION_PATH)) return { sessions: [] };
+  try {
+    return JSON.parse(fs.readFileSync(PM_DISCUSSION_PATH, "utf-8")) as DiscussionHistory;
+  } catch {
+    return { sessions: [] };
+  }
+}
+
+function _saveDiscussionHistory(history: DiscussionHistory): void {
+  fs.writeFileSync(PM_DISCUSSION_PATH, JSON.stringify(history, null, 2), "utf-8");
+}
+
+function _appendDiscussion(question: string, answer: string, tool?: string, resultSummary?: string): void {
+  const history = _loadDiscussionHistory();
+  let session = history.sessions[history.sessions.length - 1];
+  if (!session) {
+    session = {
+      session_id: `sess-${Date.now()}`,
+      started_at: new Date().toISOString(),
+      context: {},
+      messages: [],
+    };
+    history.sessions.push(session);
+  }
+  const now = new Date().toISOString();
+  if (tool) {
+    session.messages.push({ role: "pm_tool", tool, result_summary: resultSummary || "", time: now });
+  }
+  session.messages.push({ role: "claude", content: question, time: now });
+  session.messages.push({ role: "pm", content: answer, time: now });
+  // 限制单 session 消息数，避免文件膨胀
+  if (session.messages.length > MAX_DISCUSSION_HISTORY * 2 + 4) {
+    session.messages = session.messages.slice(-MAX_DISCUSSION_HISTORY * 2);
+  }
+  _saveDiscussionHistory(history);
+}
+
+function _formatDiscussionHistory(limit = MAX_DISCUSSION_HISTORY): string {
+  const history = _loadDiscussionHistory();
+  const session = history.sessions[history.sessions.length - 1];
+  if (!session || session.messages.length === 0) return "(无历史对话)";
+  const recent = session.messages.slice(-limit * 2);
+  return recent.map((m) => {
+    const time = m.time ? new Date(m.time).toLocaleTimeString("zh-CN") : "";
+    if (m.role === "pm_tool") return `[${time}] Tool: ${m.tool} → ${m.result_summary}`;
+    if (m.role === "claude") return `[${time}] Claude: ${m.content?.slice(0, 100) || ""}`;
+    return `[${time}] PM: ${m.content?.slice(0, 200) || ""}`;
+  }).join("\n");
+}
+
+function _formatMemorySummary(memory: PmMemory): string {
+  const openIssues = memory.reviews.flatMap((r) => r.issues).filter((i) => i.status === "open");
+  const fixedIssues = memory.reviews.flatMap((r) => r.issues).filter((i) => i.status === "fixed");
+  const lines = [
+    `项目: ${memory.project.name} (${memory.project.package_name})`,
+    `设计稿: ${memory.design_specs.sources.length} 张`,
+    `审查记录: ${memory.reviews.length} 次`,
+    `Open Issues: ${openIssues.length} 个`,
+    `Fixed Issues: ${fixedIssues.length} 个`,
+    `当前焦点: ${memory.current_focus.page} (${memory.current_focus.channel})`,
+  ];
+  if (openIssues.length > 0) {
+    lines.push("未修复问题:");
+    for (const issue of openIssues.slice(0, 5)) {
+      lines.push(`  - ${issue.issue_id} [${issue.severity}] ${issue.description}`);
+    }
+  }
+  if (Object.keys(memory.design_specs.tokens).length > 0) {
+    lines.push("设计 Token:");
+    for (const [k, v] of Object.entries(memory.design_specs.tokens).slice(0, 5)) {
+      lines.push(`  - ${k}: ${v}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 文本 LLM 调用（pm_discuss 用，无视觉输入）
+// ────────────────────────────────────────────────────────────────────────
+
+async function _callTextLlm(systemPrompt: string, userPrompt: string, maxTokens = 4000): Promise<string> {
+  const { getActiveProvider, makeInsecureFetch } = await import("../utils/design-extractor.js");
+  const { default: OpenAI } = await import("openai");
+  const cfg = getActiveProvider();
+  const model = process.env.TEXT_MODEL || "MiniMax-M2.7";
+  const apiKey = process.env[cfg.apiKeyEnv];
+  if (!apiKey) throw new Error(`${cfg.apiKeyEnv} not set`);
+
+  const clientOpts: any = { apiKey, baseURL: cfg.baseURL };
+  if (cfg.insecureTLS) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    clientOpts.fetch = makeInsecureFetch();
+  }
+  const client = new OpenAI(clientOpts);
+  const requestOpts: any = {
+    model,
+    messages: [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: userPrompt },
+    ],
+    max_tokens: maxTokens,
+    temperature: 0.7,
+  };
+  if (model === "MiniMax-M3") {
+    requestOpts.extra_body = { thinking: { type: "disabled" } };
+  }
+  const response = await client.chat.completions.create(requestOpts, { timeout: 60000 });
+  const msg = response.choices[0]?.message as any;
+  let content = msg?.content;
+  if (!content && msg?.reasoning_content) content = msg.reasoning_content;
+  if (!content) throw new Error("Text model returned empty response");
+  return content;
+}
+
+function _scanDesignFiles(): string[] {
+  const designDir = path.resolve(_findProjectRoot(), "design");
+  if (!fs.existsSync(designDir)) return [];
+  return fs.readdirSync(designDir)
+    .filter((f) => f.endsWith(".jpg") || f.endsWith(".png") || f.endsWith(".jpeg") || f.endsWith(".webp"))
+    .map((f) => path.join("design", f));
+}
+
 export async function handlePmMarkFixed(args: Record<string, unknown>) {
+  const sessionId = `sess-${Date.now()}`;
   try {
     const issueId = args.issueId as string;
+    logTrace({ type: "tool_call", tool: "pm_mark_fixed", args: { issueId }, session_id: sessionId });
     const note = (args.note as string | undefined) || "";
     const action = (args.action as string | undefined) || "fixed";
 
@@ -631,6 +934,7 @@ export async function handlePmMarkFixed(args: Record<string, unknown>) {
   } catch (e: unknown) {
     const err = e as Error;
     error("pm_mark_fixed failed:", err);
+    logTrace({ type: "error", tool: "pm_mark_fixed", detail: err.message, session_id: sessionId });
     return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
   }
 }
@@ -819,9 +1123,11 @@ function _findProjectRoot(): string {
 }
 
 export async function handlePmExplore(args: Record<string, unknown>) {
+  const sessionId = `sess-${Date.now()}`;
   try {
     const goal = (args.goal as string) || "审查当前页面的可用性和设计";
     const maxSteps = Math.min(Math.max((args.maxSteps as number | undefined) ?? 6, 1), 12);
+    logTrace({ type: "tool_call", tool: "pm_explore", args: { goal, maxSteps }, session_id: sessionId });
 
     // 准备工作
     const exploreId = `explore-${Date.now()}`;
@@ -851,6 +1157,7 @@ export async function handlePmExplore(args: Record<string, unknown>) {
 
     for (let step = 1; step <= maxSteps; step++) {
       log(`pm_explore — step ${step}/${maxSteps} (goal: ${goal})`);
+      logTrace({ type: "step", step, total_steps: maxSteps, action: "screenshot", detail: `dump=${dumpNodes.length} nodes`, session_id: sessionId });
 
       // 1) 截图 + dump_ui (auto)
       const shotPath = path.join(traceDir, `step-${step}.png`);
@@ -877,6 +1184,7 @@ export async function handlePmExplore(args: Record<string, unknown>) {
       const tVlm = Date.now();
       const raw = await _callVision(shot, systemPrompt, filled, 4000);
       log(`pm_explore — step ${step} VLM ${Date.now() - tVlm}ms`);
+      logTrace({ type: "vlm_think", step, thought: call.note || call.tool, model: process.env.VISION_MODEL || "MiniMax-M3", latency_ms: Date.now() - tVlm, session_id: sessionId });
       const call = _parseToolCall(raw);
 
       // 3) stale 检测：只有 INTERACTIVE 工具的 UI 不变才算卡住
@@ -986,6 +1294,29 @@ export async function handlePmExplore(args: Record<string, unknown>) {
       };
     }
 
+    // 更新 Memory
+    if (finalResult && Array.isArray(finalResult.issues)) {
+      const memory = _loadPmMemory();
+      _updateMemoryFromReview(memory, {
+        review_id: exploreId,
+        timestamp: new Date().toISOString(),
+        tool: "pm_explore",
+        target: goal,
+        overall_rating: String(finalResult.overall_rating || "C"),
+        issues: (finalResult.issues as Array<Record<string, unknown>>).map((issue: any, idx: number) => ({
+          issue_id: issue.id || _generateIssueId(memory),
+          severity: issue.severity || "medium",
+          category: issue.category || "ui_bug",
+          description: `${issue.location || ""}: ${issue.current_state || ""} → ${issue.expected_state || ""}`,
+          location: issue.location || "",
+          design_ref: issue.design_ref || "",
+          status: "open",
+        })),
+        positives: Array.isArray(finalResult.positives) ? finalResult.positives as Array<Record<string, unknown>> : [],
+      });
+      logTrace({ type: "memory_update", action: "append_review", review_id: exploreId, session_id: sessionId });
+    }
+
     // 持久化
     const traceFile = path.join(REVIEW_DIR, `${exploreId}.json`);
     const fullTrace = {
@@ -1020,6 +1351,256 @@ export async function handlePmExplore(args: Record<string, unknown>) {
   } catch (e: unknown) {
     const err = e as Error;
     error("pm_explore failed:", err);
+    logTrace({ type: "error", tool: "pm_explore", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// P3: pm_discuss（PM 讨论 — 基于记忆的对话接口）
+// ────────────────────────────────────────────────────────────────────────
+
+export async function handlePmDiscuss(args: Record<string, unknown>) {
+  const sessionId = `sess-${Date.now()}`;
+  try {
+    const question = (args.question as string) || "";
+    const context = (args.context as string) || "";
+    const includeHistory = (args.include_history as boolean | undefined) !== false;
+    const includeScreenshot = (args.include_screenshot as boolean | undefined) === true;
+
+    if (!question) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: "question required" }) }] };
+    }
+
+    logTrace({ type: "discuss", tool: "pm_discuss", args: { question: question.slice(0, 100), context: context.slice(0, 100), includeHistory, includeScreenshot }, session_id: sessionId });
+
+    // 1. 加载记忆
+    const memory = _loadPmMemory();
+    const memorySummary = _formatMemorySummary(memory);
+
+    // 2. 加载对话历史
+    const discussionHistory = includeHistory ? _formatDiscussionHistory() : "(历史已忽略)";
+
+    // 3. 可选截图
+    let screenshotPath: string | undefined;
+    if (includeScreenshot) {
+      screenshotPath = await _takeScreenshot();
+    }
+
+    // 4. 加载 prompt 模板
+    const tplPath = path.resolve(process.cwd(), "./skills/prompts/pm_discuss.txt");
+    let tpl = fs.existsSync(tplPath) ? fs.readFileSync(tplPath, "utf-8") : "";
+    if (!tpl) {
+      tpl = `你是 ToutiaoFeedDemo 的 AI 产品经理。基于项目记忆和对话历史回答产品问题。`;
+    }
+
+    const filled = tpl
+      .replace("${pm_memory_summary}", memorySummary)
+      .replace("${discussion_history}", discussionHistory)
+      .replace("${context}", context || "(未提供)");
+
+    // 5. 调用 LLM
+    const systemPrompt = "你是 Android 产品经理。回答简洁、具体、可执行。不确定时说\"项目记忆中没有相关信息\"。";
+    let answer: string;
+
+    if (includeScreenshot && screenshotPath) {
+      // 视觉模式：复用 _callVision
+      const userPrompt = filled + "\n\n用户问题：" + question + "\n（用户要求 PM 基于当前截图回答）";
+      answer = await _callVision(screenshotPath, systemPrompt, userPrompt, 4000);
+    } else {
+      answer = await _callTextLlm(systemPrompt, filled + "\n\n用户问题：" + question, 4000);
+    }
+
+    // 6. 追加到对话历史
+    _appendDiscussion(question, answer, "pm_discuss", "回答完成");
+
+    logTrace({ type: "discuss", tool: "pm_discuss", detail: "completed", session_id: sessionId });
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          answer,
+          memory_summary: memorySummary.slice(0, 500),
+          include_screenshot: includeScreenshot,
+        }, null, 2),
+      }],
+    };
+  } catch (e: unknown) {
+    const err = e as Error;
+    error("pm_discuss failed:", err);
+    logTrace({ type: "error", tool: "pm_discuss", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// P4: pm_check（修复验证 — VLM 对比截图判断 issue 是否已修复）
+// ────────────────────────────────────────────────────────────────────────
+
+export async function handlePmCheck(args: Record<string, unknown>) {
+  const sessionId = `sess-${Date.now()}`;
+  try {
+    const issueId = args.issue_id as string;
+    const target = (args.target as string) || "";
+    const autoMarkFixed = (args.auto_mark_fixed as boolean | undefined) !== false;
+
+    if (!issueId) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: "issue_id required" }) }] };
+    }
+
+    logTrace({ type: "check", tool: "pm_check", args: { issue_id: issueId, target, autoMarkFixed }, session_id: sessionId });
+
+    // 1. 从 memory 查找 issue
+    const memory = _loadPmMemory();
+    const allIssues = memory.reviews.flatMap((r) => r.issues);
+    const issue = allIssues.find((i) => i.issue_id === issueId);
+    if (!issue) {
+      return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: `Issue not found in memory: ${issueId}` }) }] };
+    }
+
+    // 2. 截图
+    const shot = await _takeScreenshot();
+
+    // 3. 加载 prompt 模板
+    const tplPath = path.resolve(process.cwd(), "./skills/prompts/pm_check.txt");
+    let tpl = fs.existsSync(tplPath) ? fs.readFileSync(tplPath, "utf-8") : "";
+    if (!tpl) {
+      tpl = "判断以下 issue 是否已修复。输出 JSON: {fixed: boolean, confidence: high/medium/low, note: string}";
+    }
+
+    const filled = tpl.replace("${issue_json}", JSON.stringify(issue, null, 2));
+    const systemPrompt = "你是 Android 产品经理，正在验证 issue 修复状态。严格按 JSON 格式输出。";
+    const raw = await _callVision(shot, systemPrompt, filled, 2000);
+    const parsed = _parseJsonFromVision(raw);
+
+    const fixed = parsed.fixed === true;
+    const confidence = String(parsed.confidence || "low");
+    const note = String(parsed.note || "");
+    const remainingConcerns = String(parsed.remaining_concerns || "");
+
+    // 4. 自动标记 fixed
+    if (fixed && autoMarkFixed) {
+      issue.status = "fixed";
+      issue.verified_by = "pm_check";
+      issue.verified_at = new Date().toISOString();
+      _savePmMemory(memory);
+
+      // 同时更新旧版 .pm_state.json（兼容）
+      const state = _loadPmState();
+      if (!state.fixed.find((f) => f.issue_id === issueId)) {
+        state.fixed.push({ issue_id: issueId, note: `Verified by pm_check: ${note}`, fixed_at: new Date().toISOString() });
+        _savePmState(state);
+      }
+
+      logTrace({ type: "memory_update", action: "mark_fixed", detail: issueId, session_id: sessionId });
+    }
+
+    logTrace({ type: "check", tool: "pm_check", detail: fixed ? "fixed" : "not_fixed", session_id: sessionId });
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          issue_id: issueId,
+          fixed,
+          confidence,
+          note,
+          remaining_concerns: remainingConcerns,
+          auto_marked: fixed && autoMarkFixed,
+        }, null, 2),
+      }],
+    };
+  } catch (e: unknown) {
+    const err = e as Error;
+    error("pm_check failed:", err);
+    logTrace({ type: "error", tool: "pm_check", detail: err.message, session_id: sessionId });
+    return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// P5: pm_get_memory（记忆查询 — 按 scope 返回结构化记忆）
+// ────────────────────────────────────────────────────────────────────────
+
+export async function handlePmGetMemory(args: Record<string, unknown>) {
+  try {
+    const scope = (args.scope as string) || "overview";
+    const channel = (args.channel as string) || "";
+
+    const memory = _loadPmMemory();
+    const allIssues = memory.reviews.flatMap((r) => r.issues);
+    const filteredIssues = channel ? allIssues.filter((i) => {
+      const review = memory.reviews.find((r) => r.issues.includes(i));
+      return review?.channel === channel;
+    }) : allIssues;
+
+    let result: Record<string, unknown> = { success: true, scope };
+
+    switch (scope) {
+      case "overview": {
+        result = {
+          ...result,
+          project: memory.project,
+          review_count: memory.reviews.length,
+          open_issues: filteredIssues.filter((i) => i.status === "open").length,
+          fixed_issues: filteredIssues.filter((i) => i.status === "fixed").length,
+          ignored_issues: filteredIssues.filter((i) => i.status === "ignored").length,
+          current_focus: memory.current_focus,
+          design_files: memory.design_specs.sources.length,
+        };
+        break;
+      }
+      case "open_issues": {
+        result = {
+          ...result,
+          issues: filteredIssues.filter((i) => i.status === "open"),
+          count: filteredIssues.filter((i) => i.status === "open").length,
+        };
+        break;
+      }
+      case "fixed_issues": {
+        result = {
+          ...result,
+          issues: filteredIssues.filter((i) => i.status === "fixed"),
+          count: filteredIssues.filter((i) => i.status === "fixed").length,
+        };
+        break;
+      }
+      case "design_specs": {
+        result = {
+          ...result,
+          sources: memory.design_specs.sources,
+          tokens: memory.design_specs.tokens,
+        };
+        break;
+      }
+      case "last_review": {
+        const last = memory.reviews[memory.reviews.length - 1];
+        result = { ...result, review: last || null };
+        break;
+      }
+      case "discussions": {
+        const history = _loadDiscussionHistory();
+        result = { ...result, sessions: history.sessions.length, last_session: history.sessions[history.sessions.length - 1] || null };
+        break;
+      }
+      default: {
+        result = { ...result, hint: `Unknown scope: ${scope}. Available: overview, open_issues, fixed_issues, design_specs, last_review, discussions` };
+      }
+    }
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(result, null, 2),
+      }],
+    };
+  } catch (e: unknown) {
+    const err = e as Error;
+    error("pm_get_memory failed:", err);
     return { isError: true, content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }] };
   }
 }

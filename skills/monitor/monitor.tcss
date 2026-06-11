@@ -1,0 +1,53 @@
+/* Toutiao PM Monitor TCSS */
+
+Screen {
+    layout: vertical;
+}
+
+Header {
+    dock: top;
+    height: 1;
+    background: $surface;
+    color: $text;
+    text-style: bold;
+}
+
+#trace_log {
+    height: 55%;
+    border: solid $primary;
+    padding: 0 1;
+}
+
+#issue_table {
+    height: 30%;
+    border: solid $success;
+    padding: 0 1;
+}
+
+#status_bar {
+    height: 3;
+    background: $surface-darken-1;
+    color: $text;
+    content-align: center middle;
+    text-style: bold;
+}
+
+Footer {
+    height: 1;
+    background: $surface;
+    color: $text;
+}
+
+/* Severity colors */
+.severity-high {
+    color: #ff4444;
+    text-style: bold;
+}
+
+.severity-medium {
+    color: #ffaa00;
+}
+
+.severity-low {
+    color: #44ff44;
+}

@@ -1,0 +1,6 @@
+# PM Agent MCP 系统
+pm_trace.jsonl
+.pm_discussions.json
+node_modules/
+dist/
+.env
