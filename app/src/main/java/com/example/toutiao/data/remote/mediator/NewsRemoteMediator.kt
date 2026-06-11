@@ -57,9 +57,10 @@ class NewsRemoteMediator(
                 return MediatorResult.Success(endOfPaginationReached = true)
             }
             LoadType.APPEND -> {
-                val remoteKey = appDatabase.remoteKeyDao().getLastRemoteKeyByChannel(channel)
-                remoteKey?.nextKey
-                    ?: return MediatorResult.Success(endOfPaginationReached = true)
+                // 从 lastItemOrNull().id 解析 page：id 格式 "${channel}_p${page}_${index}_${hash}"
+                val lastId = state.lastItemOrNull()?.id
+                val nextPage = lastId?.let { parsePageFromId(it) + 1 } ?: 1
+                nextPage
             }
         }
 
@@ -73,12 +74,13 @@ class NewsRemoteMediator(
             }
 
             val items = response.data.list
-            val hasMore = response.data.hasMore
-            val endOfPaginationReached = !hasMore
+            // 关键：永远返回 endOfPaginationReached = false，让 Pager 持续 append
+            // （数据来源有限，靠 page 无限递增 + 循环复用保证用户感觉无限下拉）
+            val endOfPaginationReached = false
             val entities = items.map { it.toEntity(channel) }
 
             val prevKey = if (page == 0) null else page - 1
-            val nextKey = if (endOfPaginationReached) null else page + 1
+            val nextKey = page + 1
             val keys = entities.map {
                 RemoteKeyEntity(id = it.id, prevKey = prevKey, nextKey = nextKey, channel = channel)
             }
@@ -89,7 +91,7 @@ class NewsRemoteMediator(
                 appDatabase.insertFeedAndKeys(entities, keys)
             }
 
-            Timber.d("NewsRemoteMediator.load — inserted ${entities.size} entities, prevKey=$prevKey, nextKey=$nextKey")
+            Timber.d("NewsRemoteMediator.load — inserted ${entities.size} entities, prevKey=$prevKey, nextKey=$nextKey, endOfPage=$endOfPaginationReached")
             return MediatorResult.Success(endOfPaginationReached = endOfPaginationReached)
         } catch (e: IOException) {
             Timber.e(e, "NewsRemoteMediator.load — IOException")
@@ -98,5 +100,15 @@ class NewsRemoteMediator(
             Timber.e(e, "NewsRemoteMediator.load — HttpException")
             return MediatorResult.Error(e)
         }
+    }
+
+    /**
+     * 从 entity.id 解析出 page 编号
+     * id 格式："${channel}_p${page}_${index}_${title.hashCode()}"
+     * 例如："recommend_p3_42_xxxxx" → 3
+     */
+    private fun parsePageFromId(id: String): Int {
+        val match = Regex("""_p(\d+)_""").find(id)
+        return match?.groupValues?.get(1)?.toIntOrNull() ?: 0
     }
 }

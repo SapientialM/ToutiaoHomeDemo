@@ -159,12 +159,17 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     }
 
     /**
-     * 用真实数据构造响应（循环复用）。
+     * 用真实数据构造响应（数据头尾拼接 = 永远循环复用）。
      *
-     * 每频道 100 条真实数据。当用户滑动到底（page*size >= totalSize），
-     * 继续按 offset % totalSize 取数据，从而实现"无限下拉 + 循环复用"。
-     * 同时限制最多加载 [REAL_MAX_PAGES] 页（避免 Room 无限增长），
-     * 达到上限后返回 hasMore=false，UI 停止自动加载，用户可下拉刷新重新开始。
+     * 每频道只有 100 条真实数据。MockDataSource 把这一批数据视为"环"，
+     * 用户每次滑动到底触发 APPEND 时，按 offset % totalSize 取下一段，
+     * 同时 id 用 page+offset+hash 保证唯一（LazyColumn key 不冲突），
+     * 这样用户感觉"无限下滑"，实际就是同一批数据的循环拼接。
+     *
+     * 取消原来的 REAL_MAX_PAGES 上限：之前到达上限后返回空列表，
+     * NewsRemoteMediator 永远返回 endOfPaginationReached=false，
+     * 导致 Pager 一直触发 APPEND 但拿到空数据（loading indicator 永远转）。
+     * 现在保证永远返回非空 → Pager 加载一次就停，符合"无限下拉"的预期。
      */
     private fun buildResponseFromReal(
         channel: String,
@@ -174,20 +179,17 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     ): NewsFeedResponse {
         val totalSize = items.size
         val offset = page * size
-        if (offset >= totalSize * REAL_MAX_PAGES) {
-            Timber.d("MockDataSource(real) — channel=$channel, page=$page, reached maxPages=$REAL_MAX_PAGES, stop")
-            return NewsFeedResponse(code = 0, data = NewsFeedData(list = emptyList(), hasMore = false))
-        }
-        // 循环：offset % totalSize 让页码超出后从头开始
+        // 头尾拼接：offset % totalSize 让页码超出后从头开始
         val cycleOffset = offset % totalSize
         val endIndex = minOf(cycleOffset + size, totalSize)
-        val pageItems = if (cycleOffset >= totalSize) {
+        val pageItems = if (cycleOffset >= totalSize || totalSize == 0) {
             emptyList()
         } else {
             items.subList(cycleOffset, endIndex)
         }
-        val hasMore = (page + 1) < REAL_MAX_PAGES || endIndex < totalSize
-        Timber.d("MockDataSource(real) — channel=$channel, page=$page, total=$totalSize, returned=${pageItems.size}, cycleOffset=$cycleOffset, hasMore=$hasMore")
+        // 永远 hasMore=true：cycle 拼接保证永远有下一页可拿
+        val hasMore = true
+        Timber.d("MockDataSource(real) — channel=$channel, page=$page, total=$totalSize, returned=${pageItems.size}, cycleOffset=$cycleOffset")
         val dtoList = pageItems.mapIndexed { index, raw ->
             mapRealToDto(raw, channel, page, offset + index)
         }
@@ -244,11 +246,13 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
      *  - 视频频道全部 → video
      *  - 其他 → left_text_right_image
      *
-     * 当 imageUrl 为空时强制降级为 text_top（避免占位图泛滥）。
+     * **约束**：video 类型必须有封面 URL，否则降级为 text_top（避免播放页面无封面）。
+     * imageUrl 为空时强制降级为 text_top（避免占位图泛滥）。
      */
     private fun determineRealType(raw: RawRealNewsItem, channel: String, index: Int): String {
         if (channel == "video") return "video"
-        if (raw.isVideo) return "video"
+        // 普通频道里的视频条目：必须有真实封面才能渲染为 video 类型，否则降级
+        if (raw.isVideo && raw.coverUrl.isNotBlank()) return "video"
         if (channel == "recommend" && index < 5) return "text_top"
         // 没有封面图：兜底用 text_top（紧凑无图）
         if (raw.coverUrl.isBlank()) return "text_top"
@@ -272,11 +276,9 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     }
 
     companion object {
-        // 真实数据循环复用上限：每个频道最多加载 50 页 = 1000 条，
-        // 避免 Room 表无限增长。下拉刷新触发 REFRESH 重新加载。
-        // 真实数据循环复用上限：每个频道最多加载 1000 页 = 20000 条
-        // （足够滑几十分钟；下拉刷新触发 REFRESH 重新加载）
-        private const val REAL_MAX_PAGES = 1000
+        // 已移除 REAL_MAX_PAGES 上限：
+        // 改为永远循环复用（数据头尾拼接）→ 用户感觉"无限下滑"。
+        // 下拉刷新触发 REFRESH 时会清空该 channel 的 Room 表，从 page=0 重新开始。
     }
 
     // ── JSON 加载 ──────────────────────────────────────────────────────────────
@@ -366,31 +368,26 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     //   compact → CompactCard（紧凑无图）
     //
     // 推断规则：
+    //   视频频道 (channel == "video") → 全部 video（用户 PM 要求）
     //   推荐频道前 5 条 → text_top（5 条置顶）
-    //   其余新闻 → 按 index % 6 轮转 4 种图文 + video + compact
+    //   其他频道 → 用 hashCode 做"确定性随机穿插"：视频 + 图文混合排布
+    // 关键约束：**封面必须真实对应** — 不再用 picsum.photos 兜底生成占位图，
+    // raw.imageUrl 为空时强制降级为 compact（无图类型）。
     private fun mapToDto(raw: RawNewsItem, channel: String, index: Int): NewsItemDto {
         println("MockDataSource — mapToDto called for: ${raw.title.take(30)}...")
         val pinned = isPinned(raw.source)
-        val type = determineType(raw.imageUrl, index, pinned)
+        val type = determineType(raw.imageUrl, index, pinned, channel, raw.title.hashCode())
         val relativeTime = formatRelativeTime(raw.datetime)
         val commentCount = generateCommentCount(raw.category, index)
 
-        // 优先使用数据源自带的 imageUrl（新数据源字段 "封面URL"），
-        // 兜底用 picsum.photos 生成确定性图片（保证同一新闻总是显示同一张图）
-        val resolvedImageUrl = when {
-            type == "text_top" -> null
-            type == "compact" -> null
-            raw.imageUrl.isNotBlank() -> {
-                val url = raw.imageUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
-                url
-            }
-            else -> {
-                val seed = raw.title.hashCode().absoluteValue
-                "https://picsum.photos/seed/$seed/800/450"
-            }
-        }
+        // 只有数据源自带真实 imageUrl 且卡片类型需要图片时才返回 URL；
+        // 否则一律 null（不再用 picsum 占位图，保持封面与新闻的真实对应）
+        val resolvedImageUrl = if (raw.imageUrl.isNotBlank() && type != "text_top" && type != "compact") {
+            raw.imageUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
+        } else null
 
-        val videoUrl = if (type == "video") "https://example.com/video/$index" else null
+        // videoUrl 同样要求真实：raw.sourceUrl 非空时直接用，空就 null，不构造 example.com 占位
+        val resolvedVideoUrl = if (type == "video") raw.sourceUrl.takeIf { it.isNotBlank() } else null
         val duration = if (type == "video") {
             val secs = (raw.title.hashCode().absoluteValue) % 600
             "${secs / 60}:${String.format("%02d", secs % 60)}"
@@ -403,7 +400,7 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
             source = raw.source,
             commentCount = commentCount,
             imageUrl = resolvedImageUrl,
-            videoUrl = videoUrl,
+            videoUrl = resolvedVideoUrl,
             duration = duration,
             publishTime = relativeTime,
             isTop = pinned,
@@ -413,22 +410,40 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     }
 
     /**
-     * 卡片类型轮转：
-     * 推荐频道 index < 5 → text_top（5 条置顶纯文字）
-     * 其余按 index % 6 轮转：左文右图 → 大图 → 视频 → 左文右图 → 紧凑无图
-     * → 模拟真实头条「图文+视频+图文」混合流
+     * 卡片类型推断：
+     *   - 视频频道 → 全部 video（PM 要求：视频分页只要视频）
+     *   - 推荐频道前 5 条 → text_top（5 条置顶纯文字）
+     *   - 其他频道 → 用 hashCode 做"确定性伪随机"穿插视频+图文：
+     *       视频 ~18% / 大图 ~17% / 左文右图 ~35% / 纯文字 ~20% / 紧凑无图 ~10%
+     *     同一新闻每次渲染结果相同（基于 hashCode 而非 System.currentTimeMillis，
+     *     否则滚动会导致卡片类型闪烁，体验糟糕）
+     *
+     * **约束**：没有真实封面 URL 的新闻必须降级为 compact，
+     * 否则渲染时会触发 picsum.photos 占位（与新闻内容不匹配）。
      */
-    private fun determineType(imageUrl: String?, index: Int, isPinned: Boolean): String {
+    private fun determineType(
+        imageUrl: String?,
+        index: Int,
+        isPinned: Boolean,
+        channel: String,
+        seedHash: Int,
+    ): String {
         if (isPinned && index == 0) return "text_top"
-        // 推荐频道前 5 条统一为置顶纯文字（HomeScreen 也会把前 5 条用作置顶）
-        if (index < 5) return "text_top"
-        return when (index % 6) {
-            0 -> "large_image"            // 上文下大图
-            1 -> "left_text_right_image"  // 左文右图
-            2 -> "video"                  // 上文下视频
-            3 -> "left_text_right_image"  // 左文右图
-            4 -> "compact"                // 紧凑无图（小标题 + 灰色信息行）
-            else -> "left_text_right_image"
+        // 视频频道：所有卡片强制为 video 类型
+        if (channel == "video") return "video"
+        // 推荐频道前 5 条统一为置顶纯文字
+        if (index < 5 && channel == "recommend") return "text_top"
+        // 没有真实封面 URL：强制降级为 compact（无图紧凑卡）
+        if (imageUrl.isNullOrBlank()) return "compact"
+        // 其他频道：基于 hashCode 的确定性"伪随机"穿插
+        // 使用 (hashCode * 31 + index) & MAX_VALUE 产生稳定的非负随机分布
+        val rand = ((seedHash * 31 + index) and Int.MAX_VALUE) % 100
+        return when {
+            rand < 18 -> "video"               // ~18% 视频
+            rand < 35 -> "large_image"         // ~17% 上文下大图
+            rand < 70 -> "left_text_right_image" // ~35% 左文右图
+            rand < 90 -> "text_top"            // ~20% 纯文字
+            else -> "compact"                  // ~10% 紧凑无图
         }
     }
 
@@ -538,12 +553,13 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
 
     private fun mapToVideoDto(raw: RawNewsItem, index: Int): NewsItemDto {
         val seed = raw.title.hashCode().absoluteValue
-        // 同样优先用数据源封面 URL
-        val cover = if (raw.imageUrl.isNotBlank()) {
-            raw.imageUrl.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
-        } else {
-            "https://picsum.photos/seed/$seed/800/450"
-        }
+        // 优先使用数据源自带的封面 URL；为空时返回 null（不再用 picsum 占位图）。
+        // video 类型必须真实：调用方（getVideoFeed）会过滤掉 coverUrl 为空的 raw，
+        // 这里作为防御性兜底，避免脏数据走到 UI。
+        val cover = raw.imageUrl.takeIf { it.isNotBlank() }
+            ?.replace(Regex("^http://", RegexOption.IGNORE_CASE), "https://")
+        // videoUrl 同样要求真实：raw.sourceUrl 非空才用，空就 null
+        val videoUrl = raw.sourceUrl.takeIf { it.isNotBlank() }
         return NewsItemDto(
             id = "video_${index}_${raw.datetime.hashCode()}",
             type = "video",
@@ -551,7 +567,7 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
             source = raw.source,
             commentCount = generateCommentCount(raw.category, index),
             imageUrl = cover,
-            videoUrl = "https://example.com/video/$seed",
+            videoUrl = videoUrl,
             duration = "${(seed % 300) / 60}:${String.format("%02d", (seed % 300) % 60)}",
             publishTime = formatRelativeTime(raw.datetime),
             isTop = false,

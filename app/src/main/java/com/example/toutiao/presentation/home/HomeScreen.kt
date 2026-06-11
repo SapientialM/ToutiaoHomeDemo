@@ -84,6 +84,7 @@ import com.example.toutiao.presentation.home.components.AudioRecommendItem
 import com.example.toutiao.presentation.home.components.HotAuthorsRow
 import com.example.toutiao.presentation.home.components.AudioSectionHeader
 import com.example.toutiao.presentation.home.components.AudioSubTabs
+import com.example.toutiao.presentation.home.components.BackToTopButton
 import com.example.toutiao.presentation.home.components.FinanceRiskNotice
 import com.example.toutiao.presentation.home.components.FinanceStockIndexCard
 import com.example.toutiao.presentation.home.components.FloatingHintCardWithState
@@ -191,6 +192,13 @@ private fun HomeScreenContent(
     // 改为只展示「用户已滚过 2 张卡片」时才显示浮卡。状态由 PagingFeedList 通过回调更新。
     var scrolledPastFirstCard by remember { mutableStateOf(false) }
 
+    // PM ISSUE-003 修复：浮卡点击跳转热榜后，本次会话内不再显示（用户已经看过了）。
+    // state 提到 HomeScreenContent 层级（而不是放在 FloatingHintCardWithState 内部），
+    // 是因为：1) 条件 if (...) 包了 FloatingHintCardWithState，如果 state 在函数内部，
+    // 条件不满足时（scrolledPastFirstCard=false）函数不会调用，state 会被丢弃重建，
+    // 用户每次滚到顶再下来浮卡都会重新出现；2) 提到外部让"点击跳转即关闭"的语义清晰。
+    var floatingHintDismissed by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier.fillMaxSize(),
     ) {
@@ -293,11 +301,17 @@ private fun HomeScreenContent(
 
             // 悬浮提示卡（设计稿：右下角浮于内容之上）— 仅在「推荐/热榜」频道显示
             // PM 审查 ISSUE-001 修复：仅在用户滚过 2 张卡片后才显示，避免遮挡首屏内容
-            if ((currentTab == "recommend" || currentTab == "hot") && scrolledPastFirstCard) {
+            // PM 审查 ISSUE-003 修复：点击浮卡跳转热榜后，本次会话内不再显示（!floatingHintDismissed）
+            if ((currentTab == "recommend" || currentTab == "hot") &&
+                scrolledPastFirstCard && !floatingHintDismissed
+            ) {
                 FloatingHintCardWithState(
                     title = "高考作文题来了",
                     subtitle = "去热榜看详情  ›",
                     onClick = {
+                        // 点击后立即关闭浮卡，再触发 Tab 跳转；
+                        // 顺序无关（onEvent 是同步的状态更新，state 重组后浮卡消失）
+                        floatingHintDismissed = true
                         onEvent(HomeUiEvent.OnTabSelected("hot"))
                     },
                     modifier = Modifier
@@ -332,6 +346,11 @@ private fun PagingFeedList(
     val isEmpty = refreshLoadState is LoadState.NotLoading && lazyPagingItems.itemCount == 0
     val isError = refreshLoadState is LoadState.Error && lazyPagingItems.itemCount == 0
     val errorMessage = (refreshLoadState as? LoadState.Error)?.error?.message ?: "加载失败"
+
+    // 诊断日志：itemCount + loadState
+    LaunchedEffect(lazyPagingItems.itemCount) {
+        Timber.d("PagingFeedList DIAG: itemCount=${lazyPagingItems.itemCount}, append=${lazyPagingItems.loadState.append::class.simpleName}")
+    }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -437,6 +456,10 @@ private fun PagingFeedList(
             }
         }
         else -> {
+            // 一键回顶按钮：滚过 3 张卡片以上才显示，避免在顶部时遮挡内容
+            val showBackToTop by remember {
+                derivedStateOf { firstVisibleIndex > 3 }
+            }
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 // Task 7: 假刷新 — 仅触发 OnRefresh 事件（ViewModel 内 1.5s loading 状态），
@@ -914,21 +937,27 @@ private fun PagingFeedList(
                         }
                     }
 
-                    // Paging 渲染：过滤掉已在置顶部分展示的 item
-                    val allItems = lazyPagingItems.itemSnapshotList.items
-                    // 推荐频道：跳过前 5 条置顶
+                    // Paging 渲染：用 lazyPagingItems[index] 触发 prefetch。
+                    // 之前的实现用 itemSnapshotList.items.drop(...) 的 List 访问，
+                    // Pager 完全感知不到 viewport 位置，APPEND 永远不被触发 → 用户滑到底就卡住。
+                    // 推荐频道：跳过前 5 条置顶（在 header 中已渲染过）
                     val skipCount = if (channelKey == "recommend") 5 else 0
-                    val visibleItems = if (skipCount > 0) allItems.drop(skipCount) else allItems
                     items(
-                        count = visibleItems.size,
-                        key = { idx -> "paging_${visibleItems[idx].id}" },
-                    ) { idx ->
-                        val card = visibleItems[idx]
-                        // 注意：lastSeenCardId 的全局 index 也要重新映射（基于 allItems）
-                        val globalIndex = allItems.indexOfFirst { it.id == card.id }
+                        count = (lazyPagingItems.itemCount - skipCount).coerceAtLeast(0),
+                        key = { index ->
+                            // peek 是 LazyPagingItems 的访问方式，不会触发 prefetch；
+                            // 这里用 Paging 实际 index（+skipCount）拿对应的 item id 作 key。
+                            lazyPagingItems.peek(skipCount + index)?.id?.let { "paging_$it" }
+                                ?: "paging_fallback_$index"
+                        },
+                    ) { index ->
+                        // 关键：用 [] 访问才会触发 Pager 内部的 differ[index]，
+                        // 进而根据 prefetchDistance 决定是否调用 PagingSource.load(APPEND)
+                        val card = lazyPagingItems[skipCount + index] ?: return@items
+                        val globalIndex = skipCount + index
                         Column {
                             // 当 index == lastSeenIndex 时，在该卡片前再插一个 hint
-                            if (globalIndex >= 0 && globalIndex == lastSeenIndex &&
+                            if (globalIndex == lastSeenIndex &&
                                 showLastSeenHint && firstVisibleIndex == 0
                             ) {
                                 LastSeenHint(
@@ -961,6 +990,21 @@ private fun PagingFeedList(
                         }
                     }
                 }
+
+                // 一键回顶按钮：滚动超过 3 张卡片时浮现；用 PullToRefreshBox 的 BoxScope
+                // 直接 align 到 BottomEnd，避免在 Box 里再包一层 LazyColumn。
+                // 与右下角浮卡错开（浮卡 bottom=80.dp，FAB bottom=20.dp），不会重叠。
+                BackToTopButton(
+                    visible = showBackToTop,
+                    onClick = {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(0)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 20.dp),
+                )
             }
         }
     }

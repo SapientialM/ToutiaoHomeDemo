@@ -62,10 +62,12 @@ class NewsRepositoryImpl @Inject constructor(
         Timber.d("getFeedPagingData — creating Pager for channel=$channel")
         return Pager(
             config = PagingConfig(
-                pageSize = 100,                 // 一次加载整批（每频道 100 条正好）
-                prefetchDistance = 20,          // 距底 20 条触发
+                // pageSize 越小，每次触发 APPEND 时同时加载的图片越少，
+                // 带宽被分散到更多次的请求里，单张图片加载更快、首屏更轻。
+                pageSize = 20,                  // 与 MockDataSource 默认 size 一致
+                prefetchDistance = 8,           // 距底 8 条触发下一页（避免用户滑到底才加载）
                 enablePlaceholders = false,
-                initialLoadSize = 100,          // 首次加载 100 条
+                initialLoadSize = 30,           // 首次加载 30 条，铺满首屏 + 留少量滚动余量
             ),
             remoteMediator = NewsRemoteMediator(
                 channel = channel,

@@ -1,5 +1,10 @@
 package com.example.toutiao.presentation.home.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -15,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -125,5 +131,44 @@ fun FloatingHintCardWithState(
             onDismiss = { visible = false },
             modifier = modifier,
         )
+    }
+}
+
+/**
+ * 一键回顶部按钮
+ *
+ * 设计参考今日头条/抖音：右下角圆形 FAB，白底 + 阴影 + 向上箭头。
+ * 使用 AnimatedVisibility 做淡入淡出 + 缩放，避免在顶部时突兀地占着位置。
+ *
+ * 显示时机由调用方控制（一般：firstVisibleItemIndex > 3），本组件只管渲染。
+ */
+@Composable
+fun BackToTopButton(
+    visible: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + scaleIn(),
+        exit = fadeOut() + scaleOut(),
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .shadow(6.dp, CircleShape)
+                .clip(CircleShape)
+                .background(Color.White)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.KeyboardArrowUp,
+                contentDescription = "回顶部",
+                tint = Color(0xFF1A1A1A),
+                modifier = Modifier.size(26.dp),
+            )
+        }
     }
 }
