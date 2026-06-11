@@ -53,12 +53,14 @@ fun VideoCardItem(
     modifier: Modifier = Modifier,
 ) {
     // 复用 LargeImageCard 的样式，但添加视频标识
+    // PM ISSUE-001 修复：playCount 之前在 FeedCardItem 和 VideoCard 双重拼接 "${x}次播放" + "次播放"，
+    // 渲染出 "517次播放次播放"。这里只传数字 517，由 VideoScreen 统一加 "次播放" 后缀。
     VideoCard(
         video = VideoItem(
             id = card.id,
             title = card.title,
             author = card.source,
-            playCount = "${card.commentCount}次播放",
+            playCount = "${card.commentCount}",
             duration = card.duration ?: "00:00",
             imageUrl = card.imageUrl,
         ),
