@@ -26,10 +26,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.toutiao.domain.model.FeedCard
 
 /**
@@ -46,6 +49,7 @@ data class XhsCard(
     val authorName: String,
     val authorAvatar: String,
     val likes: String,
+    val coverUrl: String? = null,
     val coverEmoji: String,
     val coverColor1: Color,
     val coverColor2: Color,
@@ -81,6 +85,7 @@ private fun XhsCardItem(card: XhsCard, onClick: () -> Unit) {
             .clickable(onClick = onClick),
     ) {
         // 封面（3:4 比例）
+        // 优先用真实 coverUrl（来自 v2 数据源），没有时降级到渐变 + emoji 占位
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -92,7 +97,18 @@ private fun XhsCardItem(card: XhsCard, onClick: () -> Unit) {
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text(card.coverEmoji, fontSize = 56.sp)
+            if (!card.coverUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = card.coverUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    placeholder = ColorPainter(Color(0xFFF0F0F0)),
+                    error = ColorPainter(Color(0xFFE0E0E0)),
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(card.coverEmoji, fontSize = 56.sp)
+            }
         }
         // 标题
         Text(
@@ -139,7 +155,8 @@ private fun XhsCardItem(card: XhsCard, onClick: () -> Unit) {
 }
 
 /**
- * 把 Mock FeedCard 转成 XhsCard 用于发现页（演示用）
+ * 把 Mock FeedCard 转成 XhsCard 用于发现页。
+ * coverUrl 透传原始 imageUrl（来自 v2 真实数据）；空时降级到渐变 + emoji 占位。
  */
 fun feedCardToXhsCard(card: FeedCard): XhsCard {
     val title = card.title
@@ -154,12 +171,22 @@ fun feedCardToXhsCard(card: FeedCard): XhsCard {
     )
     val hash = title.hashCode()
     val absHash = if (hash < 0) -hash else hash
+    // FeedCard 是 sealed class，imageUrl 分布在 3 个子类型（LeftTextRightImage / LargeImage / Video）
+    // 用 when 提取；TextTop/Compact 无图，保持 null 走降级路径
+    val resolvedCoverUrl: String? = when (card) {
+        is FeedCard.LeftTextRightImage -> card.imageUrl.takeIf { it.isNotBlank() }
+        is FeedCard.LargeImage -> card.imageUrl.takeIf { it.isNotBlank() }
+        is FeedCard.Video -> card.imageUrl.takeIf { it.isNotBlank() }
+        is FeedCard.TextTop -> null
+        is FeedCard.Compact -> null
+    }
     return XhsCard(
         id = card.id,
         title = title,
         authorName = card.source,
         authorAvatar = card.source.firstOrNull()?.toString() ?: "?",
         likes = (100 + (absHash % 9000)).toString(),
+        coverUrl = resolvedCoverUrl,
         coverEmoji = emojis[absHash % emojis.size],
         coverColor1 = colors[absHash % colors.size].first,
         coverColor2 = colors[absHash % colors.size].second,

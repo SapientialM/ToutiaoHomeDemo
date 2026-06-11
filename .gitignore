@@ -27,7 +27,7 @@ skills/*.sh
 skills/.env
 skills/dist/
 
-# Mock 数据 (抓取自头条/苏宁, 详见 app/src/main/java/com/example/toutiao/data/NEWS_DATA_README.md)
+# Mock 数据 (合成生成, 详见 docs/data/mock-data.md)
 app/src/main/assets/news_data.json
 app/src/main/assets/mall_products.json
 # 真实数据副本：从项目根 news_data/ 同步到 APK assets（不入 git，避免重复跟踪）
@@ -37,5 +37,4 @@ scripts/hourly-pm-review/*.log
 scripts/hourly-pm-review/launchd.out.log
 scripts/hourly-pm-review/launchd.err.log
 .playwright-cli/
-screenshots/
 screenshots/

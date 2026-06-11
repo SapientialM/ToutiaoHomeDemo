@@ -147,6 +147,8 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onCardClick: (FeedCard) -> Unit = {},
     onQuickActionClick: (com.example.toutiao.domain.model.HotQuickAction) -> Unit = {},
+    onSearchClick: () -> Unit = {},
+    onAiClick: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
@@ -169,6 +171,8 @@ fun HomeScreen(
         onEvent = viewModel::onEvent,
         onCardClick = onCardClickLogged,
         onQuickActionClick = onQuickActionClick,
+        onSearchClick = onSearchClick,
+        onAiClick = onAiClick,
     )
 }
 
@@ -183,6 +187,8 @@ private fun HomeScreenContent(
     onEvent: (HomeUiEvent) -> Unit,
     onCardClick: (FeedCard) -> Unit,
     onQuickActionClick: (com.example.toutiao.domain.model.HotQuickAction) -> Unit,
+    onSearchClick: () -> Unit,
+    onAiClick: () -> Unit,
 ) {
     val successState = uiState as? HomeUiState.Success
     val isSearching = successState?.isSearching ?: false
@@ -207,6 +213,8 @@ private fun HomeScreenContent(
             currentTab = currentTab,
             searchQuery = searchQuery,
             onEvent = onEvent,
+            onSearchClick = onSearchClick,
+            onAiClick = onAiClick,
         )
 
         Box(
@@ -1054,6 +1062,8 @@ private fun HomeTopBar(
     currentTab: String,
     searchQuery: String,
     onEvent: (HomeUiEvent) -> Unit,
+    onSearchClick: () -> Unit,
+    onAiClick: () -> Unit,
 ) {
     val tabs = remember {
         listOf(
@@ -1083,7 +1093,10 @@ private fun HomeTopBar(
                 .statusBarsPadding(),
         ) {
             if (!isSearching) {
-                BrandTopRow()
+                BrandTopRow(
+                    onSearchClick = onSearchClick,
+                    onAiClick = onAiClick,
+                )
             } else {
                 SearchInputBar(
                     query = searchQuery,
@@ -1151,12 +1164,10 @@ private fun HomeTopBar(
 }
 
 @Composable
-private fun WeatherHeader() {
-    BrandTopRow()
-}
-
-@Composable
-private fun BrandTopRow() {
+private fun BrandTopRow(
+    onSearchClick: () -> Unit,
+    onAiClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1180,7 +1191,7 @@ private fun BrandTopRow() {
                 .height(36.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Color.White)
-                .clickable { /* TODO: 触发搜索 */ }
+                .clickable { onSearchClick() }
                 .padding(horizontal = 12.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
@@ -1211,7 +1222,7 @@ private fun BrandTopRow() {
                 .size(32.dp)
                 .clip(CircleShape)
                 .background(Color(0xFFFFCDB2))
-                .clickable { /* TODO: 豆包 AI */ },
+                .clickable { onAiClick() },
             contentAlignment = Alignment.Center,
         ) {
             // 用一个 16sp 的 "AI" 文字作图标（无独立 drawable 时用 emoji/文字占位）
@@ -1438,6 +1449,8 @@ private fun HomeScreenSuccessPreview() {
                 onEvent = {},
                 onCardClick = {},
                 onQuickActionClick = {},
+                onSearchClick = {},
+                onAiClick = {},
             )
         }
     }

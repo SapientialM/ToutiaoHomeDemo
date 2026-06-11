@@ -54,6 +54,8 @@ import com.example.toutiao.ui.theme.RedMain
 // =============================================================================
 @Composable
 fun SearchScreen(
+    onBack: () -> Unit = {},
+    onCardClick: (FeedCard) -> Unit = {},
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val searchResults by viewModel.searchResults.collectAsState()
@@ -85,6 +87,7 @@ fun SearchScreen(
                     viewModel.clearResults()
                     isSearching = false
                 },
+                onBack = onBack,
             )
         },
         containerColor = Color(0xFFF5F5F5),
@@ -117,6 +120,7 @@ fun SearchScreen(
             isSearching && searchResults.isNotEmpty() -> {
                 SearchResultList(
                     results = searchResults,
+                    onCardClick = onCardClick,
                     modifier = Modifier.padding(innerPadding),
                 )
             }
@@ -151,6 +155,7 @@ fun SearchScreen(
 @Composable
 private fun SearchResultList(
     results: List<FeedCard>,
+    onCardClick: (FeedCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -160,7 +165,7 @@ private fun SearchResultList(
         items(results, key = { it.id }) { card ->
             FeedCardItem(
                 card = card,
-                onClick = { /* TODO: 跳转详情 */ },
+                onClick = { onCardClick(card) },
             )
         }
     }
@@ -172,6 +177,7 @@ private fun SearchPageTopBar(
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onClear: () -> Unit,
+    onBack: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -181,7 +187,7 @@ private fun SearchPageTopBar(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = { /* 返回 */ }, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "返回",

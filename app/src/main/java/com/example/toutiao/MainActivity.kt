@@ -45,6 +45,8 @@ import com.example.toutiao.presentation.mall.sub.FollowedShopsScreen
 import com.example.toutiao.presentation.mall.sub.OrderListScreen
 import com.example.toutiao.presentation.notification.NotificationScreen
 import com.example.toutiao.presentation.profile.ProfileScreen
+import com.example.toutiao.presentation.ai.AiChatScreen
+import com.example.toutiao.presentation.search.SearchScreen
 import com.example.toutiao.presentation.task.TaskScreen
 import com.example.toutiao.presentation.tools.AllFunctionsScreen
 import com.example.toutiao.presentation.tools.BookshelfScreen
@@ -170,6 +172,14 @@ private fun AppRoot(homeViewModel: HomeViewModel, commentDataSource: com.example
                             Timber.d("MainActivity hot quick action — title=${action.title}")
                             hotTopicTarget = action
                         },
+                        onSearchClick = {
+                            Timber.d("MainActivity onSearchClick — open SearchScreen")
+                            subPage = SubPage.SearchOverlay
+                        },
+                        onAiClick = {
+                            Timber.d("MainActivity onAiClick — open AiChatScreen")
+                            subPage = SubPage.AiChat
+                        },
                     )
                     1 -> VideoScreen(
                         onVideoClick = { video ->
@@ -253,6 +263,38 @@ private fun AppRoot(homeViewModel: HomeViewModel, commentDataSource: com.example
                     )
                     SubPage.AllFunctions -> AllFunctionsScreen(
                         onBack = { subPage = null },
+                    )
+                    SubPage.SearchOverlay -> SearchScreen(
+                        onBack = { subPage = null },
+                        onCardClick = { feedCard ->
+                            // 搜索结果点击：复用主卡片逻辑（跳详情）
+                            if (feedCard is FeedCard.Video) {
+                                videoTarget = VideoTarget.fromVideo(feedCard)
+                            } else {
+                                feedCard.sourceUrl?.let { url ->
+                                    detailTarget = DetailTarget(
+                                        sourceUrl = url,
+                                        fallbackTitle = feedCard.title,
+                                    )
+                                } ?: Timber.w("Search result onCardClick — no sourceUrl, skip")
+                            }
+                        },
+                    )
+                    SubPage.AiChat -> AiChatScreen(
+                        onBack = { subPage = null },
+                        onCardClick = { feedCard ->
+                            // AI 嵌入新闻卡片点击：跳详情
+                            if (feedCard is FeedCard.Video) {
+                                videoTarget = VideoTarget.fromVideo(feedCard)
+                            } else {
+                                feedCard.sourceUrl?.let { url ->
+                                    detailTarget = DetailTarget(
+                                        sourceUrl = url,
+                                        fallbackTitle = feedCard.title,
+                                    )
+                                } ?: Timber.w("AI card onCardClick — no sourceUrl, skip")
+                            }
+                        },
                     )
                 }
             }
@@ -379,6 +421,8 @@ enum class SubPage {
     History,
     Bookshelf,
     AllFunctions,
+    SearchOverlay,
+    AiChat,
     ;
 
     companion object {

@@ -24,7 +24,7 @@ import java.time.temporal.ChronoUnit
 // MockDataSource — 数据链路的起点
 //
 // 角色：实现 RemoteDataSource 接口，从 assets/news_data.json 加载**合成** mock 数据。
-//       数据用模板+种子随机生成, 不含真实信息, 详见 data/NEWS_DATA_README.md.
+//       数据用模板+种子随机生成, 不含真实信息, 详见 docs/data/mock-data.md.
 //
 // 调用链中的位置：
 //   assets/news_data.json  ← 唯一数据来源（~2400 条合成, 10 频道）

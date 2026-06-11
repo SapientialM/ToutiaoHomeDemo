@@ -4,7 +4,7 @@ package com.example.toutiao.presentation.profile
 // ProfileMockData — 我的页 + 通知 + 作品 Tab 的合成数据
 //
 // 全部为模板+种子随机的合成数据, 不含真实信息, 详见
-// app/src/main/java/com/example/toutiao/data/NEWS_DATA_README.md
+// 详见 docs/data/mock-data.md
 //
 // 存在形式: 单例 object + data class, 不走 Repository/DataSource 层
 // (UI 端 mock, 没必要走完整 DI 链路)

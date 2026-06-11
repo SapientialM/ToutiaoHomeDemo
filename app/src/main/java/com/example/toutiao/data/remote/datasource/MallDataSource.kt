@@ -11,7 +11,7 @@ import java.io.IOException
 // =============================================================================
 // MallDataSource — 商城商品数据源
 //
-// 数据来源: app/src/main/assets/mall_products.json (抓取自苏宁, 详见 NEWS_DATA_README.md)
+// 数据来源: app/src/main/assets/mall_products.json (合成 mock, 详见 docs/data/mock-data.md)
 // Schema: { 商品: [{ 商品ID, 名称, 类别, 源URL, 封面URL }] }
 //
 // 调用链:
