@@ -14,6 +14,15 @@ data class HotListItem(
     val rank: Int,
     val title: String,
     val badge: HotBadge,
+    /**
+     * 新闻源 URL。点击热榜项进入详情页时使用，详情页会 HTTP 抓取此 URL
+     * 走 Jsoup → LLM → Mock 三级回退解析。
+     */
+    val sourceUrl: String? = null,
+    /**
+     * 数据来源（头条/B站等），详情页可展示「来源：xxx」。
+     */
+    val source: String = "",
 )
 
 /**

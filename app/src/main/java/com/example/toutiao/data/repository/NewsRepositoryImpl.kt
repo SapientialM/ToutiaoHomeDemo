@@ -144,42 +144,8 @@ class NewsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getHotList(): Pair<List<com.example.toutiao.domain.model.HotQuickAction>, List<com.example.toutiao.domain.model.HotListItem>> {
-        // 模拟数据 — 真实实现需要从 API 拉取
-        val quickActions = listOf(
-            com.example.toutiao.domain.model.HotQuickAction("1", "🔥", "头条热榜", "实时更新"),
-            com.example.toutiao.domain.model.HotQuickAction("2", "🔥", "2026高考", "作文题目出炉"),
-            com.example.toutiao.domain.model.HotQuickAction("3", "🔥", "美伊局势迷雾", "谈判陷僵局"),
-            com.example.toutiao.domain.model.HotQuickAction("4", "🔥", "实测中", "7x24小时"),
-        )
-        val items = (1..13).map { i ->
-            com.example.toutiao.domain.model.HotListItem(
-                id = "hot_$i",
-                rank = i,
-                title = when (i) {
-                    1 -> "青春正好 踏在脚下"
-                    2 -> "高考作文题来了"
-                    3 -> "矿难致82死后当地应急管理局局长被查"
-                    4 -> "与世界共谋 探寻中国乡村绿色转型密码"
-                    5 -> "警号\"985\"已被盘出包浆"
-                    6 -> "2026高考第一批显眼包出现了"
-                    7 -> "杭二中考点第一个出来考生评语文卷"
-                    8 -> "女子掀头发前判若两人"
-                    9 -> "男生高考从考场发现教室就自己1人"
-                    10 -> "中专生成北大博士:这不是逆袭"
-                    11 -> "家长看上去比考生们还要紧张"
-                    12 -> "官方辟谣游客三亚拍照遭遇拦路收费"
-                    else -> "高考首日多地暴雨 考生撑伞赴考"
-                },
-                badge = when (i) {
-                    1 -> com.example.toutiao.domain.model.HotBadge.Fire
-                    2 -> com.example.toutiao.domain.model.HotBadge.Boom
-                    3, 6, 7, 9, 13 -> com.example.toutiao.domain.model.HotBadge.Hot
-                    5, 11 -> com.example.toutiao.domain.model.HotBadge.New
-                    12 -> com.example.toutiao.domain.model.HotBadge.Rumor
-                    else -> com.example.toutiao.domain.model.HotBadge.None
-                },
-            )
-        }
-        return Pair(quickActions, items)
+        // 委托 RemoteDataSource：Mock 实现从 assets/news_data/热榜_top10.json 加载，
+        // 真实实现接入 hot_board API。Repository 层零业务逻辑。
+        return remoteDataSource.getHotList()
     }
 }

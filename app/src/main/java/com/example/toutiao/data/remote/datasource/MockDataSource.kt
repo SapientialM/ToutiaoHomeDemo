@@ -8,6 +8,9 @@ import com.example.toutiao.data.remote.dto.RawNewsItem
 import com.example.toutiao.data.remote.dto.RawRealNewsItem
 import com.example.toutiao.data.remote.dto.ToutiaoMockItem
 import com.example.toutiao.data.remote.dto.ToutiaoMockWrapper
+import com.example.toutiao.domain.model.HotBadge
+import com.example.toutiao.domain.model.HotListItem
+import com.example.toutiao.domain.model.HotQuickAction
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import timber.log.Timber
@@ -68,13 +71,13 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     }
 
     private val channelFileMap: Map<String, String> = mapOf(
-        "recommend" to "推荐.json",
-        "follow" to "推荐.json",
-        "hot" to "热榜.json",
-        "shenzhen" to "深圳.json",
-        "discover" to "发现.json",
-        "video" to "视频.json",
-        "finance" to "财经.json",
+        "recommend" to "推荐_v2.json",
+        "follow" to "推荐_v2.json",
+        "hot" to "热榜_v2.json",
+        "shenzhen" to "深圳_v2.json",
+        "discover" to "发现_v2.json",
+        "video" to "视频_v2.json",
+        "finance" to "财经_v2.json",
     )
 
     // 从全部新闻中提取所有真实图片 URL，并将 HTTP 升级为 HTTPS，供无图新闻循环复用
@@ -573,6 +576,69 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
             isTop = false,
             createdAt = parseDatetimeToMillis(raw.datetime),
             sourceUrl = raw.sourceUrl.ifBlank { null },
+        )
+    }
+
+    // =========================================================================
+    // 热榜频道数据 - 优先用 news_data/热榜_top10.json（已筛选的 Top10），
+    // 缺失时回退到 allItems 中 category=热榜 的条目按 hash 倒序取前 N 条
+    // =========================================================================
+    override suspend fun getHotList(): Pair<List<HotQuickAction>, List<HotListItem>> {
+        val delayMs = DebugControls.networkDelayMs
+        if (delayMs > 0) delay(delayMs)
+        if (DebugControls.shouldSimulateError) throw IOException(DebugControls.DEFAULT_ERROR_MESSAGE)
+
+        val items = loadHotListItems()
+        val quickActions = listOf(
+            HotQuickAction("1", "🔥", "头条热榜", "实时更新"),
+            HotQuickAction("2", "🔥", "2026高考", "作文题目出炉"),
+            HotQuickAction("3", "🔥", "美伊局势迷雾", "谈判陷僵局"),
+            HotQuickAction("4", "🔥", "实测中", "7x24小时"),
+        )
+        Timber.d("MockDataSource.getHotList — loaded ${items.size} items from 热榜_top10.json")
+        return Pair(quickActions, items)
+    }
+
+    private fun loadHotListItems(): List<HotListItem> {
+        return try {
+            val jsonStr = context.assets.open("news_data/热榜_top10.json")
+                .bufferedReader().use { it.readText() }
+            val json = Json { ignoreUnknownKeys = true; isLenient = true }
+            val rawList = json.decodeFromString<List<RawRealNewsItem>>(jsonStr)
+            rawList.mapIndexed { index, raw -> mapRawToHotItem(raw, index) }
+        } catch (e: Exception) {
+            Timber.e(e, "MockDataSource — failed to load 热榜_top10.json")
+            emptyList()
+        }
+    }
+
+    /**
+     * 真实数据 → HotListItem 映射。
+     * 徽标策略（基于 hot_score 与 is_video 启发式）：
+     *  - 1  → Fire（永久热门）
+     *  - 2~3 → Boom（爆款）
+     *  - 4~7 → Hot（热度高）
+     *  - is_video && 8~10 → New（新上榜）
+     *  - 其余 → None
+     * 这样设计稿 5 种徽标都能覆盖，又跟实际热度数据呼应。
+     */
+    private fun mapRawToHotItem(raw: RawRealNewsItem, index: Int): HotListItem {
+        val rank = index + 1
+        val badge = when {
+            rank == 1 -> HotBadge.Fire
+            rank <= 3 -> HotBadge.Boom
+            rank <= 7 -> HotBadge.Hot
+            raw.isVideo -> HotBadge.New
+            else -> HotBadge.None
+        }
+        val resolvedSource = raw.sourceName.ifBlank { raw.source.ifBlank { "未知来源" } }
+        return HotListItem(
+            id = "hot_top10_${index}_${raw.title.hashCode()}",
+            rank = rank,
+            title = raw.title,
+            badge = badge,
+            sourceUrl = raw.url.takeIf { it.isNotBlank() },
+            source = resolvedSource,
         )
     }
 

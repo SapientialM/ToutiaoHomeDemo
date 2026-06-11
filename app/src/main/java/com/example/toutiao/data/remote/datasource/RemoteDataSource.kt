@@ -1,7 +1,8 @@
 package com.example.toutiao.data.remote.datasource
 
 import com.example.toutiao.data.remote.dto.NewsFeedResponse
-import com.example.toutiao.data.remote.dto.NewsItemDto
+import com.example.toutiao.domain.model.HotListItem
+import com.example.toutiao.domain.model.HotQuickAction
 
 /**
  * 远程数据源抽象接口。
@@ -19,4 +20,9 @@ interface RemoteDataSource {
      * 搜索新闻
      */
     suspend fun searchNews(query: String, page: Int, size: Int = 20): NewsFeedResponse
+
+    /**
+     * 获取热榜频道数据：快捷入口胶囊 + Top N 榜单（带源 URL 用于跳详情页）。
+     */
+    suspend fun getHotList(): Pair<List<HotQuickAction>, List<HotListItem>>
 }

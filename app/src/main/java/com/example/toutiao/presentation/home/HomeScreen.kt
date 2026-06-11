@@ -244,7 +244,26 @@ private fun HomeScreenContent(
                         HotListView(
                             items = successState.hotListItems,
                             quickActions = successState.hotQuickActions,
-                            onItemClick = { onEvent(HomeUiEvent.OnCardClick(it.id)) },
+                            onItemClick = { hotItem ->
+                                // 把热榜项构造成纯文字 FeedCard，传给 onCardClick
+                                // → MainActivity 走与普通卡片相同的 detailTarget 逻辑
+                                // 注意：没有 sourceUrl 的兜底项不触发跳转（避免详情页空抓取）
+                                if (hotItem.sourceUrl.isNullOrBlank()) {
+                                    Timber.d("HotListView click — no sourceUrl for rank=${hotItem.rank}")
+                                } else {
+                                    onCardClick(
+                                        FeedCard.TextTop(
+                                            id = hotItem.id,
+                                            title = hotItem.title,
+                                            source = hotItem.source,
+                                            commentCount = 0,
+                                            publishTime = "",
+                                            sourceUrl = hotItem.sourceUrl,
+                                            isTop = true,
+                                        ),
+                                    )
+                                }
+                            },
                             onQuickActionClick = { action ->
                                 // 顶部快捷入口是子分页按钮 → 委托 MainActivity 打开 HotTopicScreen
                                 onQuickActionClick(action)

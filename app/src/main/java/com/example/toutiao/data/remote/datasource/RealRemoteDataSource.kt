@@ -2,6 +2,8 @@ package com.example.toutiao.data.remote.datasource
 
 import com.example.toutiao.data.remote.api.NewsApi
 import com.example.toutiao.data.remote.dto.NewsFeedResponse
+import com.example.toutiao.domain.model.HotListItem
+import com.example.toutiao.domain.model.HotQuickAction
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,5 +28,10 @@ class RealRemoteDataSource @Inject constructor(
     override suspend fun searchNews(query: String, page: Int, size: Int): NewsFeedResponse {
         // TODO: 接入真实搜索API
         return newsApi.getNewsFeed("recommend", page, size)
+    }
+
+    override suspend fun getHotList(): Pair<List<HotQuickAction>, List<HotListItem>> {
+        // TODO: 接入真实热榜 API
+        return emptyList<HotQuickAction>() to emptyList()
     }
 }
