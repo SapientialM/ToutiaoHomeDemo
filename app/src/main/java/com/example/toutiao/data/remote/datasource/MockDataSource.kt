@@ -282,6 +282,7 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
         // 已移除 REAL_MAX_PAGES 上限：
         // 改为永远循环复用（数据头尾拼接）→ 用户感觉"无限下滑"。
         // 下拉刷新触发 REFRESH 时会清空该 channel 的 Room 表，从 page=0 重新开始。
+        private const val MAX_SEARCH_RESULTS = 300
     }
 
     // ── JSON 加载 ──────────────────────────────────────────────────────────────
@@ -409,6 +410,19 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
             isTop = pinned,
             createdAt = parseDatetimeToMillis(raw.datetime),
             sourceUrl = raw.sourceUrl.ifBlank { null },
+        )
+    }
+
+    /**
+     * mapToDto 的搜索专用变体：raw.sourceUrl 为空时回填 mock://news/... 占位 URL，
+     * 让 MainActivity 的点击不静默跳过 → 详情页 OkHttp 抓 mock:// 失败 → MockFallback 兜底渲染。
+     * 兜底 URL 用 id 作唯一键，重复点击会命中同一份 MockFallback 输出。
+     */
+    private fun mapToDtoWithMockUrl(raw: RawNewsItem, channel: String, index: Int): NewsItemDto {
+        val dto = mapToDto(raw, channel, index)
+        return dto.copy(
+            sourceUrl = dto.sourceUrl
+                ?: "mock://news/${channel}_${index}_${raw.datetime.hashCode()}",
         )
     }
 
@@ -643,14 +657,23 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
     }
 
     // =========================================================================
-    // 搜索功能 - 从所有新闻中匹配
+    // 搜索功能 - 跨频道真实数据匹配（带 url，支持点击进详情）
     // =========================================================================
     override suspend fun searchNews(query: String, page: Int, size: Int): NewsFeedResponse {
         val delayMs = DebugControls.networkDelayMs
         if (delayMs > 0) delay(delayMs)
         if (DebugControls.shouldSimulateError) throw IOException(DebugControls.DEFAULT_ERROR_MESSAGE)
 
-        val results = getSearchResults(query, 100) // 最多返回100条
+        // 优先用 v2 真实数据（带 url，搜索结果可点击跳详情页）
+        val realResults = searchRealData(query, MAX_SEARCH_RESULTS)
+        if (realResults.isNotEmpty()) {
+            return buildSearchResponseFromReal(page, size, realResults)
+        }
+
+        // 回退：合成数据（旧逻辑）。合成数据无 url，会让 MainActivity 跳过点击。
+        // 解决：mapToDto 里给 raw.sourceUrl 为空的合成 item 一个 mock://news/... 占位 URL，
+        // 点击后 OkHttp 抓取失败 → NewsContentRepository 走 MockFallback 解析器，展示 mock 正文。
+        val results = getSearchResults(query, 100)
         val offset = page * size
         val pageItems = if (offset >= results.size) {
             emptyList()
@@ -660,12 +683,52 @@ class MockDataSource(private val context: Context) : RemoteDataSource {
         val hasMore = (offset + size) < results.size
 
         val dtoList = pageItems.mapIndexed { index, raw ->
-            mapToDto(raw, "search", offset + index)
+            mapToDtoWithMockUrl(raw, "search", offset + index)
         }
 
         return NewsFeedResponse(
             code = 0,
             data = NewsFeedData(list = dtoList, hasMore = hasMore),
+        )
+    }
+
+    /**
+     * 跨所有 v2 频道文件搜索关键词，匹配 title / source / source_name / category。
+     * 返回的每条都带 url，搜索结果点击可正常跳详情页。
+     */
+    private fun searchRealData(query: String, size: Int): List<RawRealNewsItem> {
+        val lowerQuery = query.lowercase()
+        val allReal = channelFileMap.keys.flatMap { ch -> loadRealChannelData(ch) }
+        val matched = allReal.filter { item ->
+            item.title.lowercase().contains(lowerQuery) ||
+            item.source.lowercase().contains(lowerQuery) ||
+            item.sourceName.lowercase().contains(lowerQuery) ||
+            item.category.lowercase().contains(lowerQuery)
+        }
+        Timber.d("MockDataSource(search) — query='$query', total=${allReal.size}, matched=${matched.size}")
+        return matched.take(size)
+    }
+
+    /**
+     * 搜索结果的循环分页（与频道列表 `buildResponseFromReal` 同款：offset % totalSize + hasMore=true），
+     * 保证用户无限下滑也能拿到数据。
+     */
+    private fun buildSearchResponseFromReal(
+        page: Int,
+        size: Int,
+        items: List<RawRealNewsItem>,
+    ): NewsFeedResponse {
+        val totalSize = items.size
+        val offset = page * size
+        val cycleOffset = offset % totalSize
+        val endIndex = minOf(cycleOffset + size, totalSize)
+        val pageItems = if (totalSize == 0) emptyList() else items.subList(cycleOffset, endIndex)
+        val dtoList = pageItems.mapIndexed { index, raw ->
+            mapRealToDto(raw, "search", page, offset + index)
+        }
+        return NewsFeedResponse(
+            code = 0,
+            data = NewsFeedData(list = dtoList, hasMore = true),
         )
     }
 

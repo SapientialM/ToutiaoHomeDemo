@@ -91,6 +91,7 @@ class NewsRepositoryImpl @Inject constructor(
                     source = dto.source,
                     commentCount = dto.commentCount,
                     publishTime = dto.publishTime ?: "",
+                    sourceUrl = dto.sourceUrl,
                     isTop = dto.isTop,
                 )
                 "left_text_right_image" -> FeedCard.LeftTextRightImage(
@@ -100,6 +101,7 @@ class NewsRepositoryImpl @Inject constructor(
                     commentCount = dto.commentCount,
                     publishTime = dto.publishTime ?: "",
                     imageUrl = dto.imageUrl ?: "",
+                    sourceUrl = dto.sourceUrl,
                     isTop = dto.isTop,
                 )
                 "large_image" -> FeedCard.LargeImage(
@@ -109,6 +111,19 @@ class NewsRepositoryImpl @Inject constructor(
                     commentCount = dto.commentCount,
                     publishTime = dto.publishTime ?: "",
                     imageUrl = dto.imageUrl ?: "",
+                    sourceUrl = dto.sourceUrl,
+                    isTop = dto.isTop,
+                )
+                "video" -> FeedCard.Video(
+                    id = dto.id,
+                    title = dto.title,
+                    source = dto.source,
+                    commentCount = dto.commentCount,
+                    publishTime = dto.publishTime ?: "",
+                    imageUrl = dto.imageUrl ?: "",
+                    videoUrl = dto.videoUrl,
+                    duration = dto.duration,
+                    sourceUrl = dto.sourceUrl,
                     isTop = dto.isTop,
                 )
                 else -> FeedCard.LeftTextRightImage(
@@ -118,6 +133,7 @@ class NewsRepositoryImpl @Inject constructor(
                     commentCount = dto.commentCount,
                     publishTime = dto.publishTime ?: "",
                     imageUrl = dto.imageUrl ?: "",
+                    sourceUrl = dto.sourceUrl,
                     isTop = dto.isTop,
                 )
             }

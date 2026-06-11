@@ -205,35 +205,8 @@ private fun AppRoot(homeViewModel: HomeViewModel, commentDataSource: com.example
                 }
             }
 
-            // 新闻详情页层（覆盖在主页之上）
-            detailTarget?.let { target ->
-                NewsDetailScreen(
-                    sourceUrl = target.sourceUrl,
-                    fallbackTitle = target.fallbackTitle,
-                    onBack = { detailTarget = null },
-                )
-            }
-
-            // 视频详情页层（覆盖在主页之上）
-            videoTarget?.let { target ->
-                VideoDetailScreen(
-                    video = target.toFeedCardVideo(),
-                    onBack = { videoTarget = null },
-                    commentDataSource = commentDataSource,
-                )
-            }
-
-            // 热榜子分页层（从热榜顶部快捷入口进入）
-            hotTopicTarget?.let { action ->
-                val hotList = (homeViewModel.uiState.value as? HomeUiState.Success)?.hotListItems ?: emptyList()
-                HotTopicScreen(
-                    action = action,
-                    items = hotList,
-                    onBack = { hotTopicTarget = null },
-                )
-            }
-
-            // 子页面层
+            // 子页面层（在详情页之下、主页之上）— Box 中后渲染 = 高 z-order
+            // 但要保证详情页在子页面之上，所以子页面先渲染、详情页后渲染
             subPage?.let { page ->
                 when (page) {
                     SubPage.Notifications -> NotificationScreen(
@@ -297,6 +270,31 @@ private fun AppRoot(homeViewModel: HomeViewModel, commentDataSource: com.example
                         },
                     )
                 }
+            }
+
+            // 详情页层（覆盖在 subPage 之上）— Box 中最后渲染 = 最高 z-order
+            // 关键：subPage 之后渲染，否则 SearchScreen / AiChatScreen 的卡片点进详情会被覆盖
+            detailTarget?.let { target ->
+                NewsDetailScreen(
+                    sourceUrl = target.sourceUrl,
+                    fallbackTitle = target.fallbackTitle,
+                    onBack = { detailTarget = null },
+                )
+            }
+            videoTarget?.let { target ->
+                VideoDetailScreen(
+                    video = target.toFeedCardVideo(),
+                    onBack = { videoTarget = null },
+                    commentDataSource = commentDataSource,
+                )
+            }
+            hotTopicTarget?.let { action ->
+                val hotList = (homeViewModel.uiState.value as? HomeUiState.Success)?.hotListItems ?: emptyList()
+                HotTopicScreen(
+                    action = action,
+                    items = hotList,
+                    onBack = { hotTopicTarget = null },
+                )
             }
         }
     }
