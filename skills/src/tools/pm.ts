@@ -1157,7 +1157,6 @@ export async function handlePmExplore(args: Record<string, unknown>) {
 
     for (let step = 1; step <= maxSteps; step++) {
       log(`pm_explore — step ${step}/${maxSteps} (goal: ${goal})`);
-      logTrace({ type: "step", step, total_steps: maxSteps, action: "screenshot", detail: `dump=${dumpNodes.length} nodes`, session_id: sessionId });
 
       // 1) 截图 + dump_ui (auto)
       const shotPath = path.join(traceDir, `step-${step}.png`);
@@ -1165,6 +1164,10 @@ export async function handlePmExplore(args: Record<string, unknown>) {
       const { nodes: dumpNodes } = await _dumpUiInternal();
       const texts = dumpNodes.map((n) => n.text).filter(Boolean).join(" | ");
       const dumpSummary = texts.length > 0 ? texts.slice(0, 400) : "(页面无文本节点)";
+
+      // 修复 TDZ bug：原本 logTrace 在 dumpNodes 声明之前就引用 dumpNodes.length
+      // 必须放到 _dumpUiInternal() 之后
+      logTrace({ type: "step", step, total_steps: maxSteps, action: "screenshot", detail: `dump=${dumpNodes.length} nodes`, session_id: sessionId });
 
       // ⚠️ 自救协议：检测到 launcher 状态时自动注入强提示
       if (_isLauncherState(texts)) {
@@ -1184,8 +1187,11 @@ export async function handlePmExplore(args: Record<string, unknown>) {
       const tVlm = Date.now();
       const raw = await _callVision(shot, systemPrompt, filled, 4000);
       log(`pm_explore — step ${step} VLM ${Date.now() - tVlm}ms`);
-      logTrace({ type: "vlm_think", step, thought: call.note || call.tool, model: process.env.VISION_MODEL || "MiniMax-M3", latency_ms: Date.now() - tVlm, session_id: sessionId });
+
+      // 修复 TDZ bug：原本 logTrace 在 call 声明之前就引用 call.note/call.tool
+      // 必须放到 _parseToolCall() 之后
       const call = _parseToolCall(raw);
+      logTrace({ type: "vlm_think", step, thought: call.note || call.tool, model: process.env.VISION_MODEL || "MiniMax-M3", latency_ms: Date.now() - tVlm, session_id: sessionId });
 
       // 3) stale 检测：只有 INTERACTIVE 工具的 UI 不变才算卡住
       const isInteractive = INTERACTIVE_TOOLS.has(call.tool);

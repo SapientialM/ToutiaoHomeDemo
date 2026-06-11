@@ -21,9 +21,18 @@ from textual.containers import Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Log, Static
 
-# 自动探测 trace 文件路径
-TRACE_PATH = Path(os.environ.get("PM_TRACE_PATH", "../pm_trace.jsonl")).resolve()
-MEMORY_PATH = Path(os.environ.get("PM_MEMORY_PATH", "../.pm_memory.json")).resolve()
+# 锚定到脚本所在目录（不依赖 CWD，避免用户从项目根直接 `python skills/monitor/main.py`
+# 时 Path("../xxx") 解析到错的地方）
+# 脚本位置：<project_root>/skills/monitor/main.py
+# project_root = main.py 父目录的父目录
+SCRIPT_DIR = Path(__file__).parent.resolve()
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+
+# MCP server (skills/dist/server.js) 用 ./pm_trace.jsonl 写到「启动时的 CWD」，
+# 一般从项目根启动，所以落在 <project_root>/pm_trace.jsonl。
+# Monitor 的默认路径锚定到脚本位置推导出的 PROJECT_ROOT，与 MCP server 一致。
+TRACE_PATH = Path(os.environ.get("PM_TRACE_PATH", str(PROJECT_ROOT / "pm_trace.jsonl"))).resolve()
+MEMORY_PATH = Path(os.environ.get("PM_MEMORY_PATH", str(PROJECT_ROOT / ".pm_memory.json"))).resolve()
 
 
 class PMMonitor(App):

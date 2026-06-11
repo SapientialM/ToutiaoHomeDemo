@@ -155,7 +155,12 @@ export async function pressKey(key: string): Promise<void> {
 }
 
 export async function launchApp(packageName: string, activity?: string): Promise<void> {
-  const component = activity ? `${packageName}/${activity}` : packageName;
+  // 修复 launchApp bug：之前 component = activity ? `${pkg}/${act}` : pkg，
+  // 导致 activity 为空时调 adb shell am start -n com.example.toutiao（缺 /MainActivity 后缀），
+  // adb 报 Bad component name，PM 卡死循环。
+  // 默认回退到 .MainActivity（项目标准入口；如清单是 .ui.MainActivity 等其他位置，调方需显式传 activity）
+  const act = activity && activity.trim().length > 0 ? activity : ".MainActivity";
+  const component = act.startsWith(".") ? `${packageName}/${act}` : `${packageName}/${act}`;
   await adbExec(`shell am start -n ${component}`);
 }
 

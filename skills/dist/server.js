@@ -140,7 +140,8 @@ async function pressKey(key) {
   await adbExec(`shell input keyevent ${code}`);
 }
 async function launchApp(packageName, activity) {
-  const component = activity ? `${packageName}/${activity}` : packageName;
+  const act = activity && activity.trim().length > 0 ? activity : ".MainActivity";
+  const component = act.startsWith(".") ? `${packageName}/${act}` : `${packageName}/${act}`;
   await adbExec(`shell am start -n ${component}`);
 }
 
@@ -4517,12 +4518,12 @@ async function handlePmExplore(args) {
     let tStart = Date.now();
     for (let step = 1; step <= maxSteps; step++) {
       log(`pm_explore \u2014 step ${step}/${maxSteps} (goal: ${goal})`);
-      logTrace({ type: "step", step, total_steps: maxSteps, action: "screenshot", detail: `dump=${dumpNodes.length} nodes`, session_id: sessionId });
       const shotPath = path3.join(traceDir, `step-${step}.png`);
       const shot = await _takeScreenshot(shotPath);
       const { nodes: dumpNodes } = await _dumpUiInternal();
       const texts = dumpNodes.map((n) => n.text).filter(Boolean).join(" | ");
       const dumpSummary = texts.length > 0 ? texts.slice(0, 400) : "(\u9875\u9762\u65E0\u6587\u672C\u8282\u70B9)";
+      logTrace({ type: "step", step, total_steps: maxSteps, action: "screenshot", detail: `dump=${dumpNodes.length} nodes`, session_id: sessionId });
       if (_isLauncherState(texts)) {
         const hint = "\u26A0\uFE0F \u5F53\u524D\u5C4F\u5E55\u662F Android launcher\uFF08Play Store / Gmail \u7B49\uFF09\uFF0C\u4E0D\u662F Toutiao app\uFF01\u5FC5\u987B\u5148\u8C03 `install_and_launch({})` \u624D\u80FD\u7EE7\u7EED";
         lastResult = hint;
@@ -4532,8 +4533,8 @@ async function handlePmExplore(args) {
       const tVlm = Date.now();
       const raw = await _callVision(shot, systemPrompt, filled, 4e3);
       log(`pm_explore \u2014 step ${step} VLM ${Date.now() - tVlm}ms`);
-      logTrace({ type: "vlm_think", step, thought: call.note || call.tool, model: process.env.VISION_MODEL || "MiniMax-M3", latency_ms: Date.now() - tVlm, session_id: sessionId });
       const call = _parseToolCall(raw);
+      logTrace({ type: "vlm_think", step, thought: call.note || call.tool, model: process.env.VISION_MODEL || "MiniMax-M3", latency_ms: Date.now() - tVlm, session_id: sessionId });
       const isInteractive = INTERACTIVE_TOOLS.has(call.tool);
       if (texts === lastDumpText) {
         if (SETTLING_TOOLS.has(call.tool)) {
