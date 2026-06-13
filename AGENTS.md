@@ -44,7 +44,7 @@
   - ✅ Timber 全链路日志（ViewModel → Repository → MockDataSource → NewsRemoteMediator）
   - ✅ Compose 多状态 Preview（Loading / Success / Error / Empty / Refreshing）
   - ✅ 搜索功能双入口（首页顶部搜索栏 + 独立 `SearchScreen` 子页面，均展示 Mock 搜索结果）
-  - ✅ Video 视频列表页（独立页面，展示视频封面、播放按钮、时长、作者、播放量）
+  - ✅ Video 视频列表页（底部「视频」Tab：VerticalPager 抖音式全屏翻页 + 顶部 4 Tab + 右下操作栏 + 左下账号描述，点击中心直接在 Pager 内播放，× 按钮退出播放，滑到末尾前 2 页自动加载更多）
   - ✅ 性能优化基础（FeedCard @Immutable、Room channel 索引、Coil ImageLoader 内存缓存配置）
   - ✅ MCP Skill 增强：新增 `measure_app_launch` 启动速度测量工具（冷启动/热启动/页面跳转，TTID/TTFD/TotalTime/WaitTime 多指标，多次采样统计，智能评分 A/B/C_D）
   - ✅ MCP Skill 优化：全部 57 个工具 description 质量提升（统一 6 要素模板：功能 / 何时用 / 何时不用 / 返回结构 / 耗时 / 示例）
@@ -58,7 +58,7 @@
   - ✅ 财经频道差异化：风险提示条（投资有风险）+ 股票指数卡（上证/深证/创业板 22sp Bold 数字）
   - ⚠️ 军事/畅听/体育频道差异化组件已编码（`MilitaryRankView` / `AudioChannelView` / `SportsChannelView`），但未接入顶部 Tab 切换，当前不可达
   - ✅ 小说频道差异化：书架入口 + 3 本推荐书（"为你推荐" 标签）+ 排行榜（推荐榜/完结榜...）+ 双列榜项（1-3 红色 Bold 排名）+ 猜你喜欢大卡（金色评分）
-  - ✅ 视频频道沉浸式改造：VerticalPager 全屏 + 顶部 Tab（关注/精选/推荐/找短剧）+ 右上 + 号 + 右下垂直操作栏（头像+关注/点赞/评论/收藏/分享）+ 左下账号+描述+话题
+  - ✅ 视频频道沉浸式改造：VerticalPager 全屏 + 顶部 Tab（关注/精选/推荐/找短剧）+ 右上 + 号 + 右下垂直操作栏（头像+关注/点赞/评论/收藏/分享）+ 左下账号+描述+话题；点击中心播放按钮直接在 Pager 内播放（不走 VideoDetailScreen），× 按钮或滑到下一页可退出播放
   - ✅ 赚钱页"看头条赚金币"6 格时间奖励网格（3x2 红底方格 16 待领取/16 3分钟/14 10分钟/20 20分钟/50 45分钟/90 90分钟）
   - ✅ 首页 Tab 间距收紧：edgePadding 16dp→12dp，下划线 padding 8dp→6dp
   - ✅ 首页右下角悬浮提示卡（设计稿「高考作文题来了，去热榜看详情 ›」），点击跳转热榜频道
@@ -69,7 +69,7 @@
   - ⬜ ktlint 代码规范配置：尚未在 `build.gradle.kts` / `libs.versions.toml` 中接入，`./gradlew ktlintCheck` 当前不可用
   - ✅ Compose 性能 baseline 报告（`docs/performance-baseline.md`）：冷启动 1.3-1.6s（TTID A 级 / TTFD B 级），热启动 < 400ms，滚动 60fps，PSS 142MB
   - ✅ 新闻详情页：点击非视频卡片 → HTTP 抓取源 URL → Jsoup 手动解析（失败回退 LLM / Mock 兜底） → 渲染详情页框架；含 OkHttp 抓取、Jsoup 解析、Minimax LLM 解析、MockFallback、NewsContentRepository 编排、NewsDetailViewModel 状态机、NewsDetailScreen 全屏 UI
-  - ✅ 视频详情页：Video 卡片点击进入 `VideoDetailScreen`，含沉浸式播放占位 + 评论列表
+  - ✅ 视频详情页：首页 Feed / 搜索 / AI 中的 Video 卡片点击进入 `VideoDetailScreen`，含沉浸式播放（16:9 玩家 + 全屏切换）+ 评论列表
   - ✅ AI 聊天页（`AiChatScreen`）：首页顶部「豆包AI」入口进入，支持会话与嵌入新闻卡片点击跳转详情
   - ✅ 热榜专题子页（`HotTopicScreen`）：热榜频道顶部快捷入口进入，展示对应主题榜单
   - ✅ 搜索页：首页顶部搜索栏与独立 `SearchScreen` 双入口，支持搜索历史持久化、搜索发现 Chip、热搜徽标
@@ -78,7 +78,7 @@
   - ✅ 评论组件（`CommentSection`）：视频详情页接入评论列表与评论发布
   - ✅ 发现频道小红书式双列网格（`XhsGridList`）
 - **当前未开始**：
-  - ⬜ 视频实际播放能力（VideoCard / VideoDetailScreen 仅封面 + 播放按钮 UI，无真实播放器）
+  - ⬜ 视频实际播放能力（已实现 B 站 WebView 播放器 + 系统 VideoView 兜底；尚未接入 ExoPlayer/Media3；底部 Tab 全屏翻页的就地播放与详情页的 16:9 玩家均依赖这两个播放器；B 站链接走 `player.bilibili.com/player.html?bvid=...&page=1&high_quality=1&autoplay=1`（`autoplay=1` 触发 B 站自动播放尝试，B 站不保证一定自动播），其他 URL 走 VideoView）
   - ⬜ Compose 重组深度分析、图片尺寸严格限制
   - ⬜ ktlint / detekt 代码规范检查与自动化
   - ⬜ GitHub Actions CI/CD 流水线
@@ -225,9 +225,9 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 | TextTop | `TextTopCard` | 标题 + "置顶"标签 + 来源 + 评论数 + 时间（极少出现） |
 | LeftTextRightImage | `LeftTextRightImageCard` | 左侧文字区 + 右侧缩略图 |
 | LargeImage | `LargeImageCard` | 标题 + 底部大图 |
-| Video | `VideoCardItem` | 视频封面(16:9) + 播放按钮 + 时长标签 + 标题 + 作者/播放量 |
+| Video | `VideoCardItem`（首页 Feed 视频卡片）<br>`VideoScreen`（底部 Tab 全屏翻页） | Feed 视频卡：视频封面(16:9) + 播放按钮 + 时长标签 + 标题 + 作者/播放量<br>底部 Tab：VerticalPager 全屏翻页 + 就地播放（参见第 8 节） |
 
-> 注：4 种卡片类型均已实现。TextTop 仅在首页首条且为权威来源时出现，列表以左文右图和大图为主。VideoCard 仅展示封面和播放按钮 UI，无实际视频播放能力。
+> 注：4 种卡片类型均已实现。TextTop 仅在首页首条且为权威来源时出现，列表以左文右图和大图为主。Feed 中的 VideoCard 仅展示封面和播放按钮 UI（点击跳 VideoDetailScreen 全屏播放）；底部「视频」Tab 的 VerticalPager 内点击中心按钮则就地播放（不走 VideoDetailScreen）。
 
 所有卡片统一包裹 `clickable`：
 - 非 `FeedCard.Video` 卡片：点击时若 `sourceUrl` 非空，则打开 `NewsDetailScreen`（HTTP 抓取 → Jsoup → LLM / Mock 兜底）
@@ -262,7 +262,7 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 - `selectedIndex` 是纯本地 UI 状态（`remember { mutableIntStateOf(0) }`），不经过 ViewModel
 - 使用 `when (selectedBottomNav)` 在 `MainActivity.kt` 中切换 5 个独立页面：
   - 0 → `HomeScreen`（首页信息流 + 8 个频道差异化）
-  - 1 → `VideoScreen`（抖音式沉浸式全屏流）
+  - 1 → `VideoScreen`（抖音式沉浸式全屏流：VerticalPager + 顶部 4 Tab + 右下操作栏 + 左下账号描述；点击中心播放按钮在 Pager 内就地播放；翻页到末尾前 2 页自动加载更多）
   - 2 → `EarnScreen`（任务中心 + 6 格时间奖励网格）
   - 3 → `MallScreen`（商城 + 订单/优惠券/关注店铺子页面入口）
   - 4 → `ProfileScreen`（个人中心 + 消息/钱包/任务/历史/书架/创作者中心/全部功能入口）
@@ -393,7 +393,7 @@ com.example.toutiao/
 ├── data/parser/           # OkHttpContentFetcher / JsoupNewsContentParser / MinimaxNewsContentParser / MockFallbackNewsContentParser
 ├── data/llm/              # MinimaxChatClient
 ├── presentation/home/     # HomeScreen/ViewModel/UiState/UiEvent/components
-├── presentation/video/    # VideoScreen/VideoViewModel/VideoDetailScreen
+├── presentation/video/    # VideoScreen/VideoViewModel/VideoDetailScreen/VideoChrome（沉浸式系统栏控制 + 播放器共享）
 ├── presentation/search/   # SearchScreen/SearchViewModel
 ├── presentation/detail/   # NewsDetailScreen/NewsDetailViewModel
 ├── presentation/ai/       # AiChatScreen/AiChatViewModel
@@ -447,12 +447,12 @@ sealed class HomeUiState {
 - Room 本地缓存 + 离线展示
 - 搜索功能（双入口）
 - 新闻详情页（HTTP → Jsoup → LLM → Mock 兜底）
-- 视频详情页（沉浸式播放占位 + 评论）
+- 视频详情页（沉浸式播放 + 评论）
 - Loading / Empty / Error 状态切换
 
 **明确不做**：
 - 用户登录/注册
-- 真实视频播放（仅封面 + 播放按钮 UI，无 ExoPlayer/Media3 播放器）
+- 接入 ExoPlayer/Media3（已用 WebView 加载 B 站 player.bilibili.com iframe + 系统 VideoView 兜底，覆盖 B 站链接和其他 URL 两种场景）
 - 真实的评论/点赞/分享后端（评论数据为 Mock，仅本地展示）
 - 推送通知
 - 军事 / 畅听 / 体育频道接入顶部 Tab（组件已编码但未启用）
@@ -470,13 +470,30 @@ sealed class HomeUiState {
 - ~~Video 视频列表页~~：已实现独立页面，展示视频封面、播放按钮、时长、作者、播放量
 - ~~新闻详情页~~：已实现，点击非视频卡片跳转 `NewsDetailScreen`
 - ~~ktlint~~：当前未在构建中配置，`./gradlew ktlintCheck` 不可用（AGENTS.md 早期版本曾误标为已配置）
-- **视频播放**：VideoCard / VideoDetailScreen 仅展示封面和播放按钮 UI，无真实播放器
+- **视频播放**：已实现 B 站 WebView 播放器 + 系统 VideoView 兜底（未接入 ExoPlayer/Media3）。底部 Tab 全屏翻页的就地播放与 VideoDetailScreen 的 16:9 玩家均使用这两个播放器；B 站链接走 player.bilibili.com iframe，其他 URL 走 VideoView
 - **性能优化**：已做基础优化（FeedCard @Immutable、Room WAL 模式、channel 索引、Coil 内存缓存），未做 Compose 重组深度分析、未做图片尺寸严格限制
 - **ktlint / detekt 自动化**：尚未配置
 - **GitHub Actions CI/CD**：尚未建立
 - **军事 / 畅听 / 体育频道接入顶部 Tab**：组件已编码，但 tabs 列表未包含，当前不可达
 
 不要把 `docs/02_技术设计文档.md` 中"将来要做"误读成"现在已经有"。
+
+---
+
+## 踩过的坑
+
+### 播放器上方不要套 `fillMaxSize().clickable` 覆盖层
+
+**症状**: 视频卡片点击 → 渲染播放器(WebView / VideoView / ExoPlayer)→ 用户看到播放器 UI 但点击播放按钮 / 拖动进度条 / 暂停都无反应。
+
+**根因**: 在 `Box { player; Box(Modifier.fillMaxSize().clickable { … }) }` 这种结构里,后绘制的 `clickable` 覆盖层 z-order 在玩家之上,会拦截所有应该被玩家(WebView / VideoView)自身消费的手势事件。
+
+**修法**: 不要在播放器之上加全屏 click 覆盖层。退出播放的入口:
+- 显式 × / 返回按钮
+- 滑到下一页 / 上一页(Pager 场景)
+- 系统返回键
+
+具体见 `presentation/video/VideoScreen.kt:240-245` 的代码注释,以及 [[feedback-player-overlay-pitfall]]。
 
 ---
 

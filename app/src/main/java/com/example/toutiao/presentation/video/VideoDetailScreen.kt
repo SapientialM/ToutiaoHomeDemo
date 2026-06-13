@@ -1,8 +1,5 @@
 package com.example.toutiao.presentation.video
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -73,7 +70,6 @@ fun VideoDetailScreen(
     onBack: () -> Unit,
     commentDataSource: CommentDataSource? = null,
 ) {
-    val context = LocalContext.current
     val toast = LocalAppToastHost.current
     val bvid = remember(video.videoUrl) { extractBvid(video.videoUrl) }
     val useWebView = bvid != null
@@ -262,43 +258,14 @@ fun VideoDetailScreen(
 }
 
 // -----------------------------------------------------------------------------
-// 隐藏/显示 system bars 的工具（沉浸式）
+// 隐藏/显示 system bars 的工具（沉浸式）— 详见 VideoChrome.kt（与 VideoScreen 共用）
 // -----------------------------------------------------------------------------
-@Composable
-private fun rememberSystemBarsController(): SystemBarsController {
-    val context = LocalContext.current
-    val controller = remember { SystemBarsController(context) }
-    return controller
-}
-
-private class SystemBarsController(private val context: Context) {
-    fun hide() {
-        val activity = context.findActivity() ?: return
-        val window = activity.window
-        val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-        controller.systemBarsBehavior =
-            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-    }
-    fun show() {
-        val activity = context.findActivity() ?: return
-        val window = activity.window
-        val controller = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
-        controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-    }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
 
 // -----------------------------------------------------------------------------
 // Bilibili Web Player
 // -----------------------------------------------------------------------------
 @Composable
-private fun BilibiliWebPlayer(
+fun BilibiliWebPlayer(
     bvid: String,
     page: Int,
     highQuality: Int,
@@ -330,7 +297,7 @@ private fun BilibiliWebPlayer(
                         Timber.d("BilibiliWebPlayer — pageFinished: $url")
                     }
                 }
-                val playerUrl = "https://player.bilibili.com/player.html?bvid=$bvid&page=$page&high_quality=$highQuality"
+                val playerUrl = "https://player.bilibili.com/player.html?bvid=$bvid&page=$page&high_quality=$highQuality&autoplay=1"
                 Timber.d("BilibiliWebPlayer — loadUrl: $playerUrl")
                 loadUrl(playerUrl)
             }
@@ -353,7 +320,7 @@ private fun BilibiliWebPlayer(
 // Fallback VideoView — 视频错误时 toast
 // -----------------------------------------------------------------------------
 @Composable
-private fun FallbackVideoPlayer(
+fun FallbackVideoPlayer(
     videoUrl: String?,
     onError: (String) -> Unit,
 ) {
@@ -394,7 +361,7 @@ private fun FallbackVideoPlayer(
     )
 }
 
-private fun extractBvid(url: String?): String? {
+fun extractBvid(url: String?): String? {
     if (url.isNullOrBlank()) return null
     val regex = Regex("""BV([0-9A-Za-z]{8,})""")
     return regex.find(url)?.value
