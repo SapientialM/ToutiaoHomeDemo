@@ -30,24 +30,24 @@
 
 - **项目名**：`ToutiaoFeedDemo`
 - **定位**：仿今日头条首页信息流 Android 应用，用于展示 MVI + Clean Architecture + Jetpack Compose 的现代 Android 开发能力，为字节跳动客户端工程训练营答辩提供技术展示载体
-- **当前阶段**：骨架已落地，Mock 数据流已跑通，核心 UI（4 种卡片 + Tab + 底部导航）已完成
+- **当前阶段**：骨架已落地，Mock 数据流已跑通，核心 UI（4 种卡片 + Tab + 底部导航）已完成，新闻详情页与多个子页面已接入
 - **当前已交付**：
   - ✅ MVI + Clean Architecture 完整包结构（domain / data / presentation / di）
   - ✅ 4 种卡片类型渲染（TextTop / LeftTextRightImage / LargeImage / Video）
-  - ✅ 顶部 Tab 切换（6 个频道：关注 / 推荐 / 热榜 / 新时代 / 小说 / 视频）
-  - ✅ 底部导航栏页面切换（首页 / 视频 / 搜索 / 任务 / 我的，5 个独立页面）
+  - ✅ 顶部 Tab 切换（8 个频道：关注 / 推荐 / 热榜 / 深圳 / 小说 / 发现 / 视频 / 财经）
+  - ✅ 底部导航栏页面切换（首页 / 视频 / 赚钱 / 商城 / 我的，5 个独立页面）
   - ✅ Paging3 + RemoteMediator 混合分页（替换手动分页，支持下拉刷新与自动加载更多）
   - ✅ Room 缓存优先离线展示（PagingSource 读取 Room，RemoteMediator 写入 Room，断网展示缓存）
-  - ✅ Room 双表设计（feed_items + remote_keys）+ DAO/Database/Entity + WAL 模式
+  - ✅ Room 三表设计（feed_items + remote_keys + news_content_cache）+ DAO/Database/Entity + WAL 模式
   - ✅ MockDataSource 组件化 Mock 方案：Repository 层通过 RemoteDataSource 接口获取数据，不感知数据真伪
   - ✅ Hilt + KSP 依赖注入（NetworkModule / DatabaseModule / RepositoryModule）
   - ✅ Timber 全链路日志（ViewModel → Repository → MockDataSource → NewsRemoteMediator）
   - ✅ Compose 多状态 Preview（Loading / Success / Error / Empty / Refreshing）
-  - ✅ 搜索功能双入口（首页顶部搜索栏 + 底部导航独立搜索页，均展示 Mock 搜索结果）
+  - ✅ 搜索功能双入口（首页顶部搜索栏 + 独立 `SearchScreen` 子页面，均展示 Mock 搜索结果）
   - ✅ Video 视频列表页（独立页面，展示视频封面、播放按钮、时长、作者、播放量）
   - ✅ 性能优化基础（FeedCard @Immutable、Room channel 索引、Coil ImageLoader 内存缓存配置）
   - ✅ MCP Skill 增强：新增 `measure_app_launch` 启动速度测量工具（冷启动/热启动/页面跳转，TTID/TTFD/TotalTime/WaitTime 多指标，多次采样统计，智能评分 A/B/C_D）
-  - ✅ MCP Skill 优化：全部 44 个工具 description 质量提升（统一 6 要素模板：功能 / 何时用 / 何时不用 / 返回结构 / 耗时 / 示例）
+  - ✅ MCP Skill 优化：全部 57 个工具 description 质量提升（统一 6 要素模板：功能 / 何时用 / 何时不用 / 返回结构 / 耗时 / 示例）
   - ✅ MCP Skill 扩展：新增 `dump_hierarchy` / `find_element` / `wait_for_element`（uiautomator 元素查找）；`logcat_search` / `parse_crash`（崩溃归因）；`screenshot_region`（区域截图）；`apk_metadata`（aapt 自省）；`set_orientation` / `set_gps` / `animation_scale`（环境模拟）
   - ✅ MCP Skill 设计稿能力：新增 `list_design_files` / `extract_design_spec` / `extract_design_tokens` / `extract_design_components` / `design_to_compose`，把 design/ 下的 14 张设计稿转换为 Agent 可读的结构化规范
   - ✅ MCP Skill 多 LLM 支持：从 Kimi k2.6 切换到 Minimax（M3 / M2.7 / M2.7-highspeed），耗时 3-25x 提速，JSON 解析 0/3 → 3/3
@@ -56,10 +56,8 @@
   - ✅ 热榜频道差异化：`HotListView` 顶部 4 个圆角胶囊快捷入口 + 序号+🔥/爆/热/新/辟谣 标签徽标的纯文字榜单
   - ✅ 深圳频道差异化：天气条（29° 阴 26°/30° + 切换城市）+ 本地热榜横条
   - ✅ 财经频道差异化：风险提示条（投资有风险）+ 股票指数卡（上证/深证/创业板 22sp Bold 数字）
-  - ✅ 军事频道差异化：「军事榜」头（盾牌图标 + 完整榜单链接）+ 3 条军事榜（红圆点 + 标题 + 「新」角标）
-  - ✅ 畅听频道差异化：副 Tab（听头条/听书/听音乐）+ 双列热门榜（6 项 64x64 封面 + 评分角标）+ 分类 Chip（全部/总裁/玄幻...）+ 大卡式相关推荐
+  - ⚠️ 军事/畅听/体育频道差异化组件已编码（`MilitaryRankView` / `AudioChannelView` / `SportsChannelView`），但未接入顶部 Tab 切换，当前不可达
   - ✅ 小说频道差异化：书架入口 + 3 本推荐书（"为你推荐" 标签）+ 排行榜（推荐榜/完结榜...）+ 双列榜项（1-3 红色 Bold 排名）+ 猜你喜欢大卡（金色评分）
-  - ✅ 体育频道差异化：足球主题横幅（蓝绿渐变）+ 赛事分类 Chip（直播/NBA/CBA/世界杯）+ 比赛卡片（时间/状态/联赛/两队/比分，胜方红色加粗）
   - ✅ 视频频道沉浸式改造：VerticalPager 全屏 + 顶部 Tab（关注/精选/推荐/找短剧）+ 右上 + 号 + 右下垂直操作栏（头像+关注/点赞/评论/收藏/分享）+ 左下账号+描述+话题
   - ✅ 赚钱页"看头条赚金币"6 格时间奖励网格（3x2 红底方格 16 待领取/16 3分钟/14 10分钟/20 20分钟/50 45分钟/90 90分钟）
   - ✅ 首页 Tab 间距收紧：edgePadding 16dp→12dp，下划线 padding 8dp→6dp
@@ -68,15 +66,24 @@
   - ✅ 性能优化：ToutiaoApplication 显式声明 CachePolicy（ENABLED × 3 个维度）+ BottomInfoRow 用 remember 缓存评论数格式化结果
   - ✅ 搜索页增强：SharedPreferences 持久化搜索历史（最长 12 条）+ 每条带 X 删除 + 「搜索发现」横向 Chip 流（10 个个性化推荐词）+ 热搜前 3 名 Hot/Boom/New 徽标
   - ✅ 我的页作品 Tab 内容填充：6 个 Tab（作品/收藏/赞过/短剧/草稿/推荐）各自独立空状态页（图标 + 标题 + 副标题 + 行动按钮）
-  - ✅ ktlint 代码规范配置：ktlint 12.1.1 通过 classpath 集成（绕开 aliyun 镜像 plugin 缺失），`./gradlew ktlintCheck` 与 `ktlintFormat` 命令可用
+  - ⬜ ktlint 代码规范配置：尚未在 `build.gradle.kts` / `libs.versions.toml` 中接入，`./gradlew ktlintCheck` 当前不可用
   - ✅ Compose 性能 baseline 报告（`docs/performance-baseline.md`）：冷启动 1.3-1.6s（TTID A 级 / TTFD B 级），热启动 < 400ms，滚动 60fps，PSS 142MB
-  - ✅ 新闻详情页：接入新数据源（`app/src/main/assets/news_data.json` 2400+ 条**合成** mock，gitignored），点击卡片 → HTTP 抓取源 URL → Jsoup 手动解析（失败回退 LLM） → 渲染详情页框架；含 OkHttp 抓取、Jsoup 解析、Minimax LLM 解析、NewsContentRepository 编排、NewsDetailViewModel 状态机、NewsDetailScreen 全屏 UI
+  - ✅ 新闻详情页：点击非视频卡片 → HTTP 抓取源 URL → Jsoup 手动解析（失败回退 LLM / Mock 兜底） → 渲染详情页框架；含 OkHttp 抓取、Jsoup 解析、Minimax LLM 解析、MockFallback、NewsContentRepository 编排、NewsDetailViewModel 状态机、NewsDetailScreen 全屏 UI
+  - ✅ 视频详情页：Video 卡片点击进入 `VideoDetailScreen`，含沉浸式播放占位 + 评论列表
+  - ✅ AI 聊天页（`AiChatScreen`）：首页顶部「豆包AI」入口进入，支持会话与嵌入新闻卡片点击跳转详情
+  - ✅ 热榜专题子页（`HotTopicScreen`）：热榜频道顶部快捷入口进入，展示对应主题榜单
+  - ✅ 搜索页：首页顶部搜索栏与独立 `SearchScreen` 双入口，支持搜索历史持久化、搜索发现 Chip、热搜徽标
+  - ✅ 个人中心子页面：消息中心 / 钱包 / 任务中心 / 浏览历史 / 书架 / 创作者中心 / 全部功能（`NotificationScreen` / `WalletScreen` / `TaskScreen` / `HistoryScreen` / `BookshelfScreen` / `CreatorCenterScreen` / `AllFunctionsScreen`）
+  - ✅ 商城子页面：订单列表 / 优惠券 / 关注店铺（`OrderListScreen` / `CouponsScreen` / `FollowedShopsScreen`）
+  - ✅ 评论组件（`CommentSection`）：视频详情页接入评论列表与评论发布
+  - ✅ 发现频道小红书式双列网格（`XhsGridList`）
 - **当前未开始**：
-  - ⬜ 新闻详情页（点击卡片仅打印日志，无页面跳转）
-  - ⬜ 视频实际播放能力（VideoCard 仅封面 + 播放按钮 UI）
+  - ⬜ 视频实际播放能力（VideoCard / VideoDetailScreen 仅封面 + 播放按钮 UI，无真实播放器）
   - ⬜ Compose 重组深度分析、图片尺寸严格限制
-  - ⬜ ktlint / detekt 代码规范检查
-- **结论**：项目当前已完整实现首页信息流、5 个底部导航页面、Paging3 + RemoteMediator 分页、Room 离线缓存、搜索双入口等核心功能。如果你看到底部导航只是纯视觉展示而没有页面切换，说明你看的是旧版本代码。
+  - ⬜ ktlint / detekt 代码规范检查与自动化
+  - ⬜ GitHub Actions CI/CD 流水线
+  - ⬜ 军事 / 畅听 / 体育频道接入顶部 Tab 切换
+- **结论**：项目当前已完整实现首页信息流、5 个底部导航页面、新闻/视频详情页、Paging3 + RemoteMediator 分页、Room 离线缓存、搜索双入口、AI 聊天与多个子页面等核心功能。如果你看到底部导航只是纯视觉展示而没有页面切换，说明你看的是旧版本代码。
 
 ---
 
@@ -87,7 +94,7 @@
 - Android SDK API 36（compileSdk），最低运行设备 API 26（Android 8.0）
 - 可用的 Android 模拟器或真机（API 26+）
 
-本地构建无需真实后端，MockDataSource 会从 assets/news_data.json 加载 1421 条真实新闻数据并返回分页结果。
+本地构建无需真实后端，MockDataSource 会从 `assets/news_data.json` 加载 600 条合成新闻数据并返回分页结果。
 
 ---
 
@@ -109,18 +116,17 @@
 # 仅编译（不打包）
 ./gradlew compileDebugKotlin
 
-# ktlint 代码规范检查
-./gradlew ktlintCheck
-
-# ktlint 自动修复
-./gradlew ktlintFormat
+# ktlint / detekt 尚未配置，以下命令暂不可用
+# ./gradlew ktlintCheck
+# ./gradlew ktlintFormat
+# ./gradlew detekt
 ```
 
 APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
 ### MCP Skill：android-dev-assist
 
-`skills/` 目录包含一个 MCP Server（`android-dev-assist`），v3.1.0 共 **44 个工具 / 15 个模块**：
+`skills/` 目录包含一个 MCP Server（`android-dev-assist`），`package.json` version 为 `1.0.0`，`server.ts` 内部版本为 `3.1.0`，当前注册 **57 个工具**（模块数量随 PM 相关工具扩展有所增加）：
 
 | 模块 | 工具 | 数量 |
 |------|------|------|
@@ -141,7 +147,7 @@ APK 输出：`app/build/outputs/apk/debug/app-debug.apk`
 | APK 元数据 | `apk_metadata` | 1 |
 | **设计稿** | `list_design_files` / `extract_design_spec` / `extract_design_tokens` / `extract_design_components` / `design_to_compose` | **5** |
 
-**所有工具输出均为标准 JSON 结构**，`isError` 字段表示错误状态。每个工具的 description 遵循 6 要素模板：功能 / 何时用 / 何时不用 / 返回结构 / 耗时 / 示例。
+**所有工具输出均为标准 JSON 结构**，`isError` 字段表示错误状态。每个工具的 description 遵循 6 要素模板：功能 / 何时用 / 何时不用 / 返回结构 / 耗时 / 示例。下表仅列出主要模块，完整工具列表以 `skills/src/server.ts` 注册为准。
 
 **核心亮点工具**：
 - `vision_action`（**视觉驱动交互**）：截图 → 视觉 LLM 识别元素 → 返回坐标 → ADB 执行 → 截图确认。支持 `prompt` (单步) 和 `prompts` (多步串联)
@@ -177,25 +183,25 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 ### 1. 首页信息流
 
 - 主入口在 `MainActivity.kt` → `HomeScreen(viewModel)` → `HomeScreenContent`
-- 使用 Material3 `Scaffold` 骨架：顶部栏（搜索占位 + TabRow）/ 内容区 / 底部导航栏
+- 使用 Material3 `Scaffold` 骨架：顶部栏（品牌 Logo + 搜索占位 + 豆包AI 入口 + TabRow）/ 内容区 / 底部导航栏
 - MVI 单向数据流：用户操作 → `HomeUiEvent` → `HomeViewModel.onEvent()` → Repository → 更新 `StateFlow<HomeUiState>` → Compose 重组
 - `collectAsStateWithLifecycle()` 以生命周期感知方式订阅 StateFlow，Activity 后台时自动暂停收集
 
 ### 2. 顶部 Tab 切换
 
-- 7 个频道：关注(follow) / 推荐(recommend) / 热榜(hot) / 深圳(shenzhen) / 小说(novel) / 发现(discover) / 视频(video)
+- 8 个频道：关注(follow) / 推荐(recommend) / 热榜(hot) / 深圳(shenzhen) / 小说(novel) / 发现(discover) / 视频(video) / 财经(finance)
 - 切换 Tab 时通过 `key(currentTab)` 销毁旧 Paging 流，新 Tab 从 page=0 开始加载
 - 当前选中 Tab 字体 16sp Bold 红字+红色下划线；未选中 15sp Regular 黑字（设计稿对齐）
 - 搜索栏支持点击展开输入框、输入关键词、提交搜索、返回取消，展示 Mock 搜索结果
+- 顶部品牌栏右侧有「豆包AI」入口，点击打开 `AiChatScreen`
 - **频道差异化渲染**：
-  - `recommend` / `follow` / `discover` → `PagingFeedList`（标准 4 种 FeedCard）
+  - `recommend` / `follow` / `finance` → `PagingFeedList`（标准 4 种 FeedCard）
   - `hot` → `HotListView`（顶部 4 个圆角胶囊快捷入口 + 序号+🔥/爆/热/新/辟谣 徽标的纯文字榜单）
   - `shenzhen` → `PagingFeedList` + 顶部 `ShenzhenWeatherStrip` + `ShenzhenLocalHotBanner`
-  - `finance` → `PagingFeedList` + 顶部 `FinanceRiskNotice` + `FinanceStockIndexCard`
-  - `military` → `PagingFeedList` + 顶部 `MilitaryRankHeader` + `MilitaryRankItem` ×3
-  - `audio` → `PagingFeedList` + 顶部 `AudioSubTabs` + `AudioSectionHeader` + 2 列 `AudioHotCard` ×6 + `AudioCategoryChips` + `AudioRecommendItem`
   - `novel` → `PagingFeedList` + 顶部 `NovelBookshelfRow` + 排行榜（`NovelRankingTabs` + `NovelRankItem`）+ 猜你喜欢（`NovelRecommendItem`）
-  - `sports` → `PagingFeedList` + 顶部 `SportsBanner` + `SportsCategoryChips` + `SportsMatchRow`
+  - `discover` → `XhsGridList` 小红书式双列网格（把 FeedCard 映射为图文卡片）
+  - `video` / 其他未差异化频道 → `PagingFeedList`（标准 4 种 FeedCard）
+  - `military` / `audio` / `sports` 差异化组件（`MilitaryRankView` / `AudioChannelView` / `SportsChannelView`）已编码，但**未接入顶部 Tab 切换**，当前不可达
 
 ### 3. 下拉刷新
 
@@ -223,11 +229,14 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 
 > 注：4 种卡片类型均已实现。TextTop 仅在首页首条且为权威来源时出现，列表以左文右图和大图为主。VideoCard 仅展示封面和播放按钮 UI，无实际视频播放能力。
 
-所有卡片统一包裹 `clickable`，点击事件通过 `HomeUiEvent.OnCardClick(id)` 上报，当前仅打印日志，未跳转详情页。
+所有卡片统一包裹 `clickable`：
+- 非 `FeedCard.Video` 卡片：点击时若 `sourceUrl` 非空，则打开 `NewsDetailScreen`（HTTP 抓取 → Jsoup → LLM / Mock 兜底）
+- `FeedCard.Video` 卡片：点击打开 `VideoDetailScreen`（沉浸式视频详情 + 评论）
+- 热榜榜单项、AI 聊天中的新闻卡片、搜索结果卡片均复用同一份跳转逻辑
 
 ### 6. Mock 数据流
 
-- `MockDataSource` 实现 `RemoteDataSource` 接口，从 `assets/news_data.json` 加载 1421 条真实新闻数据
+- `MockDataSource` 实现 `RemoteDataSource` 接口，从 `assets/news_data.json` 加载 600 条合成新闻数据
 - 支持 `channel` 和 `page` 参数，按频道过滤后分页返回（page=0 返回前 8 条，依此类推）
 - `hasMore` 根据实际数据量动态计算
 - 图片使用新闻自带的封面图 URL；无封面图时自动使用 `picsum.photos` 占位图
@@ -237,12 +246,13 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 ### 7. 数据层
 
 - **网络**：Retrofit + OkHttp + Kotlinx Serialization，`NewsApi.getNewsFeed(channel, page, size)`
-- **本地**：Room，`AppDatabase` 含 `feed_items` 和 `remote_keys` 两张表，WAL 模式已开启
+- **本地**：Room，`AppDatabase` 含 `feed_items`、`remote_keys`、`news_content_cache` 三张表，WAL 模式已开启
 - **Repository**：`NewsRepositoryImpl` 实现 `NewsRepository` 接口
   - `getFeedPagingData(channel)`：返回 `Flow<PagingData<FeedCard>>`，内部使用 `Pager` + `NewsRemoteMediator`
   - `getNewsFeed()` / `hasMore()`：保留用于兼容和直接调用
   - `getCachedFeed()`：返回 `Flow<List<FeedCard>>`
   - `searchNews(query)`：Mock 搜索结果
+  - `getHotList()`：Mock 热榜数据（快捷入口 + 榜单项）
 - **RemoteMediator**：`NewsRemoteMediator` 处理 `REFRESH` / `APPEND`，网络成功后写入 Room
 - **Mapper**：`NewsMapper.kt` 负责 DTO ↔ Entity ↔ Domain 三层转换
 
@@ -251,14 +261,28 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 - 5 个 Tab：首页 / 视频 / 赚钱 / 商城 / 我的
 - `selectedIndex` 是纯本地 UI 状态（`remember { mutableIntStateOf(0) }`），不经过 ViewModel
 - 使用 `when (selectedBottomNav)` 在 `MainActivity.kt` 中切换 5 个独立页面：
-  - 0 → `HomeScreen`（首页信息流 + 7 个频道差异化）
+  - 0 → `HomeScreen`（首页信息流 + 8 个频道差异化）
   - 1 → `VideoScreen`（抖音式沉浸式全屏流）
   - 2 → `EarnScreen`（任务中心 + 6 格时间奖励网格）
-  - 3 → `MallScreen`（商城）
-  - 4 → `ProfileScreen`（个人中心）
-- 每个页面都有独立的 Screen 组件和 ViewModel（除 Earn/Profile 为静态展示页）
+  - 3 → `MallScreen`（商城 + 订单/优惠券/关注店铺子页面入口）
+  - 4 → `ProfileScreen`（个人中心 + 消息/钱包/任务/历史/书架/创作者中心/全部功能入口）
+- 每个页面都有独立的 Screen 组件和 ViewModel（Earn/Profile 为静态展示页）
 
-### 9. 「上次看到这里」功能
+### 9. 子页面导航
+
+除底部导航 5 个主页面外，`MainActivity.kt` 通过 `SubPage` 状态管理一组顶层覆盖子页面：
+
+- `SearchOverlay` → `SearchScreen`（搜索页，支持结果卡片跳转详情/视频）
+- `AiChat` → `AiChatScreen`（AI 聊天页，嵌入新闻卡片可跳转详情）
+- `Notifications` → `NotificationScreen`（消息中心）
+- `Wallet` → `WalletScreen`（钱包）
+- `OrderList` / `Coupons` / `FollowedShops` → 商城相关子页面
+- `Tasks` → `TaskScreen`（任务中心）
+- `History` / `Bookshelf` / `CreatorCenter` / `AllFunctions` → 个人中心相关子页面
+
+子页面与详情页均在 `Box` 中最后渲染，覆盖在主页面之上；详情页层级高于子页面，保证从 Search / AI 聊天中点击卡片能正确进入详情。
+
+### 10. 「上次看到这里」功能
 
 - 持久化：`ReadPositionRepository`（`SharedPreferences`，按 channel 维度存 `last_seen_id_<channel>` 和 `last_seen_at_<channel>`）
 - 写入时机：用户滚动列表，`firstVisibleItemIndex > 0` 且首条 card id 变化时，上报 `HomeUiEvent.OnFirstVisibleCardChanged(id)`，ViewModel 写入
@@ -269,7 +293,7 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 - 交互：点击 `LastSeenHint` 触发 `animateScrollToItem(lastSeenIndex)` 跳回原位置
 - 隐藏时机：用户滚过 `lastSeenIndex` 后自动隐藏（不擦除持久化，再次进入仍可恢复）
 
-### 10. 新闻详情页「点击 → 解析 → 渲染」全链路
+### 11. 新闻详情页「点击 → 解析 → 渲染」全链路
 
 **触发**：首页/搜索结果中点击带 `sourceUrl` 的卡片（`HomeScreen` → `MainActivity.onCardClick` → `NewsDetailScreen`）
 
@@ -302,7 +326,7 @@ LLM_MODEL=MiniMax-Text-01
 
 **依赖**：
 - `okhttp` 抓取（已存在）
-- `jsoup` HTML 解析（新增，libs.versions.toml 1.18.3）
+- `jsoup` HTML 解析（libs.versions.toml 1.17.2）
 
 **已知陷阱（调试时遇到）**：
 
@@ -313,7 +337,7 @@ LLM_MODEL=MiniMax-Text-01
   - Minimax 复用 `OkHttpClient` + `kotlinx.serialization.json`
 - **Hilt 绑定**：`NewsContentModule` 用 `@ManualParser` / `@LlmParser` 限定符区分同一个 `NewsContentParser` 接口的两个实现
 
-### 11. 主题
+### 12. 主题
 
 - 头条红白配色：主色 `Color(0xFFD81E06)`
 - 背景色 `Color(0xFFF5F5F5)`（浅灰）
@@ -355,24 +379,35 @@ Presentation (Screen/ViewModel) → Domain (Model/Repository接口)
 
 ```
 com.example.toutiao/
-├── domain/model/          # FeedCard 密封类（4种子类型）
-├── domain/repository/     # NewsRepository 接口
+├── domain/model/          # FeedCard 密封类（4种子类型）/ HotListItem / Product / NewsContent
+├── domain/repository/     # NewsRepository / ReadPositionRepository / NewsContentRepository / MallRepository 等接口
 ├── data/remote/api/       # Retrofit API 接口
 ├── data/remote/dto/       # Kotlinx Serialization DTO
-├── data/remote/datasource/# RemoteDataSource 接口 + MockDataSource + RetrofitDataSource
+├── data/remote/datasource/# RemoteDataSource 接口 + MockDataSource + RealRemoteDataSource
 ├── data/remote/mediator/  # NewsRemoteMediator（Paging3 混合分页）
-├── data/local/entity/     # Room Entity（FeedItemEntity + RemoteKeyEntity）
-├── data/local/dao/        # Room DAO（FeedDao + RemoteKeyDao）
+├── data/local/entity/     # Room Entity（FeedItemEntity + RemoteKeyEntity + NewsContentCacheEntity）
+├── data/local/dao/        # Room DAO（FeedDao + RemoteKeyDao + NewsContentCacheDao）
 ├── data/local/database/   # AppDatabase
-├── data/repository/       # NewsRepositoryImpl
+├── data/repository/       # NewsRepositoryImpl / ReadPositionRepositoryImpl / NewsContentRepositoryImpl / MallRepositoryImpl
 ├── data/mapper/           # DTO ↔ Entity ↔ Domain 转换
+├── data/parser/           # OkHttpContentFetcher / JsoupNewsContentParser / MinimaxNewsContentParser / MockFallbackNewsContentParser
+├── data/llm/              # MinimaxChatClient
 ├── presentation/home/     # HomeScreen/ViewModel/UiState/UiEvent/components
-├── presentation/video/    # VideoScreen/VideoViewModel（视频列表页）
-├── presentation/search/   # SearchScreen/SearchViewModel（独立搜索页）
-├── presentation/task/     # TaskScreen（任务中心）
+├── presentation/video/    # VideoScreen/VideoViewModel/VideoDetailScreen
+├── presentation/search/   # SearchScreen/SearchViewModel
+├── presentation/detail/   # NewsDetailScreen/NewsDetailViewModel
+├── presentation/ai/       # AiChatScreen/AiChatViewModel
+├── presentation/earn/     # EarnScreen
+├── presentation/mall/     # MallScreen + sub/ 子页面
 ├── presentation/profile/  # ProfileScreen（个人中心）
-├── presentation/common/   # AppBottomNav/FeedCardItem（公共组件）
-├── di/                    # Hilt Module（Network/Database/Repository/DataSource）
+├── presentation/task/     # TaskScreen
+├── presentation/tools/    # AllFunctionsScreen/CreatorCenterScreen/HistoryScreen/BookshelfScreen
+├── presentation/notification/ # NotificationScreen
+├── presentation/wallet/   # WalletScreen
+├── presentation/hot/      # HotTopicScreen
+├── presentation/comment/  # CommentSection
+├── presentation/common/   # AppBottomNav/FeedCardItem/AppToast/Formatters（公共组件）
+├── di/                    # Hilt Module（Network/Database/Repository/DataSource/NewsContent/Ai）
 └── ui/theme/              # Compose Theme
 ```
 
@@ -406,19 +441,21 @@ sealed class HomeUiState {
 
 **必须实现**：
 - 4 种卡片类型渲染（TextTop / LeftTextRightImage / LargeImage / Video）
-- 顶部 Tab 切换（至少推荐、热榜两个频道）
+- 顶部 Tab 切换（8 个频道：关注 / 推荐 / 热榜 / 深圳 / 小说 / 发现 / 视频 / 财经）
 - 底部导航栏页面切换（5 个独立页面）
 - 下拉刷新 + 加载更多
 - Room 本地缓存 + 离线展示
 - 搜索功能（双入口）
+- 新闻详情页（HTTP → Jsoup → LLM → Mock 兜底）
+- 视频详情页（沉浸式播放占位 + 评论）
 - Loading / Empty / Error 状态切换
 
 **明确不做**：
 - 用户登录/注册
-- 新闻详情页（仅预留点击事件）
-- 视频播放（仅封面 + 播放按钮 UI）
-- 评论/点赞/分享
+- 真实视频播放（仅封面 + 播放按钮 UI，无 ExoPlayer/Media3 播放器）
+- 真实的评论/点赞/分享后端（评论数据为 Mock，仅本地展示）
 - 推送通知
+- 军事 / 畅听 / 体育频道接入顶部 Tab（组件已编码但未启用）
 
 ---
 
@@ -429,12 +466,15 @@ sealed class HomeUiState {
 - ~~Paging3 + RemoteMediator~~：已接入，替换手动分页逻辑
 - ~~Room 缓存优先离线展示~~：已通过 Paging3 + RemoteMediator 实现，PagingSource 读取 Room，RemoteMediator 自动写入
 - ~~搜索栏交互~~：已实现点击展开、输入、提交、取消，展示 Mock 搜索结果
-- ~~底部导航页面切换~~：已实现 5 个独立页面（Home/Video/Search/Task/Profile）
+- ~~底部导航页面切换~~：已实现 5 个独立页面（Home/Video/Earn/Mall/Profile）
 - ~~Video 视频列表页~~：已实现独立页面，展示视频封面、播放按钮、时长、作者、播放量
-- **新闻详情页**：点击卡片仅上报事件，无页面跳转
-- **视频播放**：VideoCard 仅展示封面和播放按钮 UI，无实际视频播放能力
+- ~~新闻详情页~~：已实现，点击非视频卡片跳转 `NewsDetailScreen`
+- ~~ktlint~~：当前未在构建中配置，`./gradlew ktlintCheck` 不可用（AGENTS.md 早期版本曾误标为已配置）
+- **视频播放**：VideoCard / VideoDetailScreen 仅展示封面和播放按钮 UI，无真实播放器
 - **性能优化**：已做基础优化（FeedCard @Immutable、Room WAL 模式、channel 索引、Coil 内存缓存），未做 Compose 重组深度分析、未做图片尺寸严格限制
-- **ktlint / detekt**：规划中但尚未配置
+- **ktlint / detekt 自动化**：尚未配置
+- **GitHub Actions CI/CD**：尚未建立
+- **军事 / 畅听 / 体育频道接入顶部 Tab**：组件已编码，但 tabs 列表未包含，当前不可达
 
 不要把 `docs/02_技术设计文档.md` 中"将来要做"误读成"现在已经有"。
 
@@ -456,14 +496,14 @@ Domain (NewsRepository 接口)
 Data (NewsRepositoryImpl)
     ↕
 RemoteDataSource 接口 ←── MockDataSource（实现）
-                         （或 RetrofitDataSource（实现））
+                         （或 RealRemoteDataSource（实现））
     ↕
 Room LocalDataSource
 ```
 
 **MockDataSource 职责**：
-- 实现 `RemoteDataSource` 接口，从 `assets/news_data.json` 加载 1421 条真实新闻数据
-- 按频道过滤（推荐/热榜/视频/社会）+ 时间倒序排序 + 分页截取
+- 实现 `RemoteDataSource` 接口，从 `assets/news_data.json` 加载 600 条合成新闻数据
+- 按频道过滤（推荐/热榜/视频/财经等）+ 时间倒序排序 + 分页截取
 - 支持模拟网络延迟（通过 `DebugControls.networkDelayMs` 控制）
 - 支持模拟错误状态（通过 `DebugControls.shouldSimulateError` 控制）
 - Repository 只调用 `remoteDataSource.getNewsFeed(channel, page, size)`，不关心底层是 Mock 还是真实 API
@@ -471,7 +511,7 @@ Room LocalDataSource
 **关键文件**：
 - `data/remote/datasource/RemoteDataSource.kt`（接口）
 - `data/remote/datasource/MockDataSource.kt`（Mock 实现）
-- `data/remote/datasource/RetrofitDataSource.kt`（真实 API 实现，尚未接入）
+- `data/remote/datasource/RealRemoteDataSource.kt`（真实 API 实现，当前未启用）
 - `di/DataSourceModule.kt`（绑定 RemoteDataSource 实现类）
 - `data/remote/datasource/DebugControls.kt`（调试控制：延迟/错误模拟开关）
 
@@ -652,7 +692,7 @@ jobs:
 
 ### 背景
 
-项目从 `assets/news_data.json` 加载 1421 条真实新闻数据，新闻标题 / 正文 / 作者 / 来源可能涉及以下内容，调用 LLM 视觉 API（`analyze_screenshot` / `vision_action` / `compare_screenshots`）时容易触发模型内容安全策略导致请求失败：
+项目从 `assets/news_data.json` 加载 600 条合成新闻数据，新闻标题 / 正文 / 作者 / 来源可能涉及以下内容，调用 LLM 视觉 API（`analyze_screenshot` / `vision_action` / `compare_screenshots`）时容易触发模型内容安全策略导致请求失败：
 
 - 政治敏感（领导人、政策、事件等）
 - 暴力血腥（灾难、事故、凶杀、战争）
@@ -827,7 +867,9 @@ jobs:
 | compileSdk | API 36 |
 | minSdk | API 26（Android 8.0）|
 | targetSdk | API 36 |
+| AGP | 9.2.1 |
 | Kotlin | 2.2.10 |
+| KSP | 2.3.8 |
 | Compose BOM | 2026.02.01 |
 | Hilt | 2.59.2 |
 | Room | 2.7.0 |
@@ -835,3 +877,5 @@ jobs:
 | Retrofit | 2.11.0 |
 | Coil | 2.7.0 |
 | OkHttp | 4.12.0 |
+| Jsoup | 1.17.2 |
+| kotlinx-serialization-json | 1.8.0 |
