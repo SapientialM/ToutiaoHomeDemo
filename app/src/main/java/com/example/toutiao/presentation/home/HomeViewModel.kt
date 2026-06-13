@@ -205,7 +205,8 @@ class HomeViewModel @Inject constructor(
     private fun persistReadPosition(cardId: String) {
         if (cardId.isBlank()) return
         val tab = _currentTab.value
-        readPositionRepository.setLastSeenId(tab, cardId)
+        // 显式传 timestamp,避免依赖接口默认参数(impl 无默认值,看似 OK 但显式更安全)
+        readPositionRepository.setLastSeenId(tab, cardId, System.currentTimeMillis())
     }
 
     private fun performSearch(query: String) {

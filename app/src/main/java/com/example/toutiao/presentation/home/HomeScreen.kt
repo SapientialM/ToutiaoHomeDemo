@@ -78,6 +78,7 @@ import androidx.paging.compose.itemKey
 import com.example.toutiao.data.remote.datasource.DebugControls
 import com.example.toutiao.domain.model.FeedCard
 import com.example.toutiao.presentation.common.FeedCardItem
+import com.example.toutiao.presentation.common.LocalAppToastHost
 import com.example.toutiao.presentation.home.components.AudioCategoryChips
 import com.example.toutiao.presentation.home.components.AudioHotCard
 import com.example.toutiao.presentation.home.components.AudioRecommendItem
@@ -120,9 +121,11 @@ import com.example.toutiao.ui.theme.RedMain
 import timber.log.Timber
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 // =============================================================================
 // HomeScreen — MVI 入口 + Tab 切换数据隔离
@@ -365,6 +368,7 @@ private fun PagingFeedList(
     fakeRefreshing: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val toast = LocalAppToastHost.current
     val refreshLoadState = lazyPagingItems.loadState.refresh
     // isRefreshing 合并：Paging 真实刷新 + 假刷新
     val pagingRefreshing = refreshLoadState is LoadState.Loading && lazyPagingItems.itemCount > 0
@@ -445,6 +449,11 @@ private fun PagingFeedList(
         derivedStateOf {
             lastSeenIndex > 0 && firstVisibleIndex <= lastSeenIndex
         }
+    }
+
+    // 数据未到位:持久化有 lastSeenCardId 但当前 snapshot 找不到(用户上次滚到了 list 深处)
+    val isResolving by remember {
+        derivedStateOf { !lastSeenCardId.isNullOrBlank() && lastSeenIndex < 0 }
     }
 
     val relativeMinutes: Long = remember(lastSeenAt) {
@@ -939,11 +948,22 @@ private fun PagingFeedList(
                         if (canShowHint) {
                             LastSeenHint(
                                 relativeMinutes = relativeMinutes,
+                                isResolving = isResolving,
                                 onClick = {
                                     onEvent(HomeUiEvent.OnLastSeenHintClicked)
                                     coroutineScope.launch {
-                                        val target = if (lastSeenIndex > 0) lastSeenIndex else 0
-                                        listState.animateScrollToItem(target)
+                                        val target = resolveLastSeenTarget(
+                                            cardId = lastSeenCardId,
+                                            currentIndex = lastSeenIndex,
+                                            lazyPagingItems = lazyPagingItems,
+                                        )
+                                        if (target != null) {
+                                            listState.animateScrollToItem(target)
+                                        } else {
+                                            // 3s 内未在 snapshot 找到 → 提示用户,本次 hint 标记为已 dismiss
+                                            toast.showInfo("上次阅读的内容正在加载，请稍后再试")
+                                            onEvent(HomeUiEvent.OnLastSeenHintDismissed)
+                                        }
                                     }
                                 },
                             )
@@ -989,10 +1009,22 @@ private fun PagingFeedList(
                             ) {
                                 LastSeenHint(
                                     relativeMinutes = relativeMinutes,
+                                    isResolving = isResolving,
                                     onClick = {
                                         onEvent(HomeUiEvent.OnLastSeenHintClicked)
                                         coroutineScope.launch {
-                                            listState.animateScrollToItem(globalIndex)
+                                            // 兜底:此时 lastSeenIndex 通常已知,直接 scrollToItem
+                                            val target = resolveLastSeenTarget(
+                                                cardId = lastSeenCardId,
+                                                currentIndex = globalIndex,
+                                                lazyPagingItems = lazyPagingItems,
+                                            )
+                                            if (target != null) {
+                                                listState.animateScrollToItem(target)
+                                            } else {
+                                                toast.showInfo("上次阅读的内容正在加载，请稍后再试")
+                                                onEvent(HomeUiEvent.OnLastSeenHintDismissed)
+                                            }
                                         }
                                     },
                                 )
@@ -1498,5 +1530,33 @@ private fun HomeScreenEmptyPreview() {
         ) {
             Text("暂无内容", color = Color.Gray)
         }
+    }
+}
+
+/**
+ * 解析「上次看到这里」card id 在当前 LazyPagingItems 中的目标 index。
+ *
+ * 修复:之前 `HomeScreen.kt:944-947` 在 `lastSeenIndex == -1` 时 scrollToItem(0) 是 no-op,
+ * 导致"hint 出现但点击无效"。这里改用 snapshotFlow 监听 snapshot 变化,
+ * 一旦 id 出现就返回该 index,最多等 3s(避免永久挂起)。
+ *
+ * 边界:
+ *  - cardId 空 / currentIndex 已 > 0 → 直接返回
+ *  - 3s 内 snapshot 始终不含该 id(可能数据源已不含此 card)→ 返回 null,
+ *    调用方应给 toast 并标记 hint 已 dismiss
+ *  - 不强制 Paging 刷新(避免引入新数据流导致首页闪现);让用户先滚下去触
+ *    发 Paging 加载,或者接受"上次阅读内容已不可用"的提示
+ */
+private suspend fun resolveLastSeenTarget(
+    cardId: String?,
+    currentIndex: Int,
+    lazyPagingItems: LazyPagingItems<FeedCard>,
+): Int? {
+    if (cardId.isNullOrBlank()) return null
+    if (currentIndex > 0) return currentIndex
+    return withTimeoutOrNull(3_000L) {
+        snapshotFlow { lazyPagingItems.itemSnapshotList.items }
+            .map { items -> items.indexOfFirst { it.id == cardId } }
+            .first { it >= 0 }
     }
 }

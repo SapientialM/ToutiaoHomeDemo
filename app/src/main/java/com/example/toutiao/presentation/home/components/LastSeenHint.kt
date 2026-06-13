@@ -35,6 +35,8 @@ import com.example.toutiao.ui.theme.RedMain
  *  - 当前 tab 持久化的 lastSeenCardId 不为 null
  *
  * @param relativeMinutes 距离上次阅读的分钟数（用于文案）
+ * @param isResolving 数据尚未加载到位（lastSeenCardId 不在当前 snapshot）,
+ *                   文案改为"正在加载原位置..."提示用户系统正在工作
  * @param onClick 用户点击提示
  */
 @Composable
@@ -42,6 +44,7 @@ fun LastSeenHint(
     relativeMinutes: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isResolving: Boolean = false,
 ) {
     Row(
         modifier = modifier
@@ -88,7 +91,7 @@ fun LastSeenHint(
         )
         Spacer(Modifier.width(4.dp))
         Text(
-            text = "点击回到原位置",
+            text = if (isResolving) "正在加载原位置..." else "点击回到原位置",
             color = Color(0xFF999999),
             fontSize = 11.sp,
         )

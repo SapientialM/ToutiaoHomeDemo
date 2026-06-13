@@ -51,7 +51,7 @@
   - ✅ MCP Skill 扩展：新增 `dump_hierarchy` / `find_element` / `wait_for_element`（uiautomator 元素查找）；`logcat_search` / `parse_crash`（崩溃归因）；`screenshot_region`（区域截图）；`apk_metadata`（aapt 自省）；`set_orientation` / `set_gps` / `animation_scale`（环境模拟）
   - ✅ MCP Skill 设计稿能力：新增 `list_design_files` / `extract_design_spec` / `extract_design_tokens` / `extract_design_components` / `design_to_compose`，把 design/ 下的 14 张设计稿转换为 Agent 可读的结构化规范
   - ✅ MCP Skill 多 LLM 支持：从 Kimi k2.6 切换到 Minimax（M3 / M2.7 / M2.7-highspeed），耗时 3-25x 提速，JSON 解析 0/3 → 3/3
-  - ✅ 「上次看到这里」按 tab 独立持久化（`ReadPositionRepository` / SharedPreferences），回到首页时在原阅读位置上方显示「X 分钟前看过，点击回到原位置」提示，点击跳回原位置
+  - ✅ 「上次看到这里」按 tab 独立持久化（`ReadPositionRepository` 内存 ConcurrentHashMap + SharedPreferences 双层缓存）；覆盖关注/推荐/深圳/小说/视频/财经 6 频道（热榜/发现 UI 形态不同未纳入）；点击 hint 用 `snapshotFlow` 等待数据加载（最多 3s）后 scroll 跳转；跨进程保留 force-stop 后仍可恢复
   - ✅ 字体对齐设计稿：首页 Tab 选中 18sp→16sp Bold / LargeImage & TextTop 标题 18sp→17sp Medium / VideoScreen Tab 17sp/14sp→15sp Medium/Regular / Earn 大数字 40sp→36sp / Profile 用户名 22sp→17sp / Mall 商城 Tab 18sp→16sp / BrandTopRow Logo 18sp→17sp Medium / 豆包AI 9sp→10sp / Mall 商品卡 12sp→14sp 价格 15sp→18sp / Profile 6月幸运签 17sp→15sp
   - ✅ 热榜频道差异化：`HotListView` 顶部 4 个圆角胶囊快捷入口 + 序号+🔥/爆/热/新/辟谣 标签徽标的纯文字榜单
   - ✅ 深圳频道差异化：天气条（29° 阴 26°/30° + 切换城市）+ 本地热榜横条
@@ -284,14 +284,21 @@ cd skills && npm run test:vision-bench  # 多模型基准（~5 分钟，默认�
 
 ### 10. 「上次看到这里」功能
 
-- 持久化：`ReadPositionRepository`（`SharedPreferences`，按 channel 维度存 `last_seen_id_<channel>` 和 `last_seen_at_<channel>`）
-- 写入时机：用户滚动列表，`firstVisibleItemIndex > 0` 且首条 card id 变化时，上报 `HomeUiEvent.OnFirstVisibleCardChanged(id)`，ViewModel 写入
-- 读取时机：进入 tab（`switchTab` / init）时 ViewModel 同步到 `UiState.Success.lastSeenCardId / lastSeenAt`
-- 展示条件：UI 端
+- **存储双层**：内存层 `ConcurrentHashMap<String, CachedPosition>` + 持久化层 `SharedPreferences`（key = `last_seen_id_<channel>` / `last_seen_at_<channel>`）。命中内存直接返回，未命中才读 SharedPreferences 并回填缓存。写入双写保证重启后行为一致。
+  - 注意：`ConcurrentHashMap` 运行时禁止 null value（即使 Kotlin 声明为 `V?` 也会抛 NPE），故仅缓存"有数据"的结果，"未记录"分支每次都走 SharedPreferences（开销可忽略）
+- **覆盖范围**：6 个使用 `PagingFeedList` 的频道（关注/推荐/深圳/小说/视频/财经）均生效。热榜（`HotListView`）/ 发现（`XhsGridList`）UI 形态不同，本次不纳入，留作未来增强
+- **写入时机**：用户滚动列表，`firstVisibleItemIndex > 0` 且首条 card id 变化时，上报 `HomeUiEvent.OnFirstVisibleCardChanged(id)` → `HomeViewModel.persistReadPosition` → `ReadPositionRepository.setLastSeenId(tab, cardId, System.currentTimeMillis())` 显式传时间戳
+- **读取时机**：进入 tab（`switchTab` / `init`）时 `HomeViewModel.syncLastSeenForTab(tab)` 调用 `repo.getLastSeenId(tab)` / `getLastSeenAt(tab)` 同步到 `UiState.Success.lastSeenCardId / lastSeenAt`
+- **展示条件**：UI 端
   - `lastSeenCardId != null` 且在当前 `LazyPagingItems` 中能定位到 index（≥0）
   - `firstVisibleItemIndex <= lastSeenIndex`（用户尚未滚过该位置）
-- 交互：点击 `LastSeenHint` 触发 `animateScrollToItem(lastSeenIndex)` 跳回原位置
-- 隐藏时机：用户滚过 `lastSeenIndex` 后自动隐藏（不擦除持久化，再次进入仍可恢复）
+  - `lastSeenIndex < 0`（数据尚未加载到位）→ 仍显示 hint 但文案改为「正在加载原位置...」（`isResolving` 派生状态控制）
+- **交互（修复点）**：点击 `LastSeenHint` 触发 `resolveLastSeenTarget`：
+  - `lastSeenIndex > 0` → 立即 `animateScrollToItem(lastSeenIndex)` 跳回
+  - `lastSeenIndex == -1`（用户上次滚到 list 深处，该 card 不在当前 snapshot）→ `snapshotFlow` 监听 snapshot，最多等 3s；3s 内 id 出现则 scroll；超时给 toast「上次阅读的内容正在加载，请稍后再试」并 `OnLastSeenHintDismissed`
+  - **不强制 Paging 刷新**避免首页数据流闪烁
+- **隐藏时机**：用户滚过 `lastSeenIndex` 后自动隐藏（`firstVisibleIndex > lastSeenIndex` → `showLastSeenHint = false`），持久化不擦除，再次进入 tab 仍可恢复
+- **跨进程保留**：`adb shell am force-stop` 杀掉进程后重启，hint 仍能正常显示并跳转（`@Singleton` 仓库从 SharedPreferences 重建缓存）
 
 ### 11. 新闻详情页「点击 → 解析 → 渲染」全链路
 
